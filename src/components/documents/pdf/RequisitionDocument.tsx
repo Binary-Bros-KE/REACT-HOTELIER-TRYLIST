@@ -12,16 +12,19 @@ export type RequisitionDocData = {
   neededBy: string | null
   purpose: string | null
   notes: string | null
-  estimatedTotal: string
+  // null means redacted — the viewer who printed this doesn't hold
+  // REQUISITION_APPROVE, so cost was never sent to them at all.
+  estimatedTotal: string | null
   suggestedSupplier: { name: string } | null
   createdByEmployee: Employee
   reviewedByEmployee: Employee
   reviewedAt: string | null
   reviewNote: string | null
-  items: { product: { name: string; unit: string }; quantity: string; estimatedUnitCost: string; lineTotal: string; note: string | null }[]
+  items: { product: { name: string; unit: string }; quantity: string; estimatedUnitCost: string | null; lineTotal: string | null; note: string | null }[]
 }
 
 const fullName = (e: Employee) => (e ? `${e.firstName} ${e.lastName}` : '')
+const moneyOrDash = (v: string | null, currency: string) => (v == null ? '—' : money(v, currency))
 
 export default function RequisitionDocument({ data, profile }: { data: RequisitionDocData; profile: DocProfile }) {
   const currency = profile?.currency ?? 'KES'
@@ -29,8 +32,8 @@ export default function RequisitionDocument({ data, profile }: { data: Requisiti
     name: i.product.name,
     sub: i.note ?? undefined,
     qty: `${Number(i.quantity)} ${i.product.unit}`,
-    unit: money(i.estimatedUnitCost, currency),
-    total: money(i.lineTotal, currency),
+    unit: moneyOrDash(i.estimatedUnitCost, currency),
+    total: moneyOrDash(i.lineTotal, currency),
   }))
 
   return (
@@ -53,7 +56,7 @@ export default function RequisitionDocument({ data, profile }: { data: Requisiti
 
         <ItemsTable unitHeader="Est. unit cost" lines={lines} />
 
-        <Totals rows={[]} grand={{ key: 'Estimated Total', value: money(data.estimatedTotal, currency) }} />
+        <Totals rows={[]} grand={{ key: 'Estimated Total', value: moneyOrDash(data.estimatedTotal, currency) }} />
 
         {data.notes ? <Text style={s.note}>Notes: {data.notes}</Text> : null}
 

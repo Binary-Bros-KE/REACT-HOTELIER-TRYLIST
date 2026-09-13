@@ -22,8 +22,15 @@ import { PERMISSION_SECTIONS as sections, sectionLabels, type PermissionSection 
 // hide sidebar/routes client-side. These are checked by the server on the
 // specific actions they name, so unlike a section they actually reject a
 // request.
-type Capability = 'POS_APPROVE_CANCELLATION' | 'POS_APPROVE_COUNTER' | 'POS_VIEW_ALL_ORDERS' | 'SHIFT_MANAGE' | 'ATTENDANCE_MANAGE' | 'SHIFT_EXEMPT'
-const capabilities: Capability[] = ['POS_APPROVE_CANCELLATION', 'POS_APPROVE_COUNTER', 'POS_VIEW_ALL_ORDERS', 'SHIFT_MANAGE', 'ATTENDANCE_MANAGE', 'SHIFT_EXEMPT']
+type Capability =
+  | 'POS_APPROVE_CANCELLATION' | 'POS_APPROVE_COUNTER' | 'POS_VIEW_ALL_ORDERS'
+  | 'SHIFT_MANAGE' | 'ATTENDANCE_MANAGE' | 'SHIFT_EXEMPT'
+  | 'REQUISITION_CREATE' | 'REQUISITION_APPROVE'
+const capabilities: Capability[] = [
+  'POS_APPROVE_CANCELLATION', 'POS_APPROVE_COUNTER', 'POS_VIEW_ALL_ORDERS',
+  'SHIFT_MANAGE', 'ATTENDANCE_MANAGE', 'SHIFT_EXEMPT',
+  'REQUISITION_CREATE', 'REQUISITION_APPROVE',
+]
 const capabilityLabels: Record<Capability, { label: string; hint: string }> = {
   POS_APPROVE_CANCELLATION: { label: 'Approve order cancellations', hint: 'Decide a waiter’s cancellation request (Sales ▸ Approvals) — approve or reject it.' },
   POS_APPROVE_COUNTER: { label: 'Approve counter orders', hint: 'Mark an order served at a Counter-mode location (Locations ▸ Order Handling) — the counter’s approval step.' },
@@ -31,6 +38,8 @@ const capabilityLabels: Record<Capability, { label: string; hint: string }> = {
   SHIFT_MANAGE: { label: 'Manage shifts and rotations', hint: 'Create/edit shift templates (Team ▸ Shifts) and assign or change an employee’s rotation.' },
   ATTENDANCE_MANAGE: { label: 'Mark attendance', hint: 'Record an employee as present, absent, late, or on leave for a day (Team ▸ Attendance).' },
   SHIFT_EXEMPT: { label: 'Sign in outside shift hours', hint: 'This role can use the system anytime, regardless of any employee’s assigned shift — for owners/managers/accountants who aren’t shift workers. A Super Admin always has this, implicitly.' },
+  REQUISITION_CREATE: { label: 'Raise purchase requisitions', hint: 'Create, edit, submit, and cancel a purchase requisition (Inventory ▸ Purchase Requisitions) — product and quantity only, never cost.' },
+  REQUISITION_APPROVE: { label: 'Approve requisitions & convert to purchase', hint: 'Set the estimated cost on a submitted requisition, approve or reject it, and convert an approved one into a Purchase order. Reaches Purchase Requisitions even without Inventory section access.' },
 }
 
 type Role = {

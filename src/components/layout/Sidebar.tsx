@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { LuChevronLeft, LuChevronRight, LuLogOut, LuX } from 'react-icons/lu'
 import { IoPersonCircleSharp } from 'react-icons/io5'
-import { navigation, navItemMatchesExactly, type PermissionSection } from '@/config/navigation'
+import { navigation, navItemAllowed, navItemMatchesExactly, type PermissionSection } from '@/config/navigation'
 import { cn } from '@/lib/utils'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import { logout } from '@/store/authSlice'
@@ -46,9 +46,8 @@ export default function Sidebar({ className, mobile = false, onNavigate }: Sideb
   const permissions = useAppSelector((s) => s.auth.user?.role?.permissions) ?? []
   const moduleKeys = useAppSelector((s) => s.tenant.moduleKeys)
   const visibleNavigation = navigation
-    .filter((group) => allowedSections.includes(group.section))
     .filter((group) => { const need = SECTION_MODULE[group.section]; return !need || moduleKeys.includes(need) })
-    .map((group) => ({ ...group, items: group.items.filter((item) => !item.permission || permissions.includes(item.permission)) }))
+    .map((group) => ({ ...group, items: group.items.filter((item) => navItemAllowed(item, allowedSections.includes(group.section), permissions)) }))
     .filter((group) => group.items.length > 0)
 
   function handleLogout() {

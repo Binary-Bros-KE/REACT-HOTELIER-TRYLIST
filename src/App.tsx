@@ -57,7 +57,8 @@ import ServiceProviders from "@/pages/ServiceProviders";
 import ServiceSchedules from "@/pages/ServiceSchedules";
 import {
   navigation,
-  sectionForPath,
+  navItemAllowed,
+  navItemForPath,
   type PermissionSection,
 } from "@/config/navigation";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
@@ -92,18 +93,30 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
-/** Blocks direct navigation to a route whose section isn't in the current
- * user's role — the sidebar already hides these, this stops typing the URL
- * from bypassing that. The Dashboard ("/") is always reachable so there's
- * no possible redirect loop for a role missing OVERVIEW. */
+/** Blocks direct navigation to a route the sidebar wouldn't have shown —
+ * this stops typing the URL from bypassing that. Mirrors Sidebar.tsx's own
+ * navItemAllowed check exactly, so a permission-gated item (e.g. Purchase
+ * Requisitions for an Accountant with no Inventory section) is reachable by
+ * URL too, not just when clicked from a sidebar that already renders it.
+ * The Dashboard ("/") is always reachable so there's no possible redirect
+ * loop for a role missing OVERVIEW. */
 function SectionGuard({ children }: { children: ReactNode }) {
   const location = useLocation();
   const allowedSections =
     useAppSelector((s) => s.auth.user?.role?.allowedSections) ??
     DEFAULT_SECTIONS;
+  const permissions =
+    useAppSelector((s) => s.auth.user?.role?.permissions) ?? [];
   if (location.pathname === "/") return <>{children}</>;
-  const section = sectionForPath(location.pathname);
-  if (section && !allowedSections.includes(section))
+  const found = navItemForPath(location.pathname);
+  if (
+    found &&
+    !navItemAllowed(
+      found.item,
+      allowedSections.includes(found.section),
+      permissions,
+    )
+  )
     return <Navigate to="/" replace />;
   return <>{children}</>;
 }

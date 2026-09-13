@@ -33,17 +33,18 @@ const STATUS_META: Record<Status, { label: string; className: string }> = {
   CONVERTED: { label: 'Converted', className: 'bg-success/10 text-success' },
   CANCELLED: { label: 'Cancelled', className: 'bg-muted text-muted-foreground' },
 }
-const REVIEW_ROLES = ['Super Admin', 'Manager', 'Accountant']
 
 type Supplier = { id: string; name: string }
 type Product = { id: string; name: string; unit: string }
 type Employee = { id: string; firstName: string; lastName: string }
+// Cost fields come back null from the API for anyone without
+// REQUISITION_APPROVE — the server redacts them, not just the UI.
 type ReqItem = {
   id: string
   productId: string
   quantity: string
-  estimatedUnitCost: string
-  lineTotal: string
+  estimatedUnitCost: string | null
+  lineTotal: string | null
   note: string | null
   product: { id: string; name: string; unit: string }
 }
@@ -55,7 +56,7 @@ type Requisition = {
   neededBy: string | null
   purpose: string | null
   notes: string | null
-  estimatedTotal: string
+  estimatedTotal: string | null
   suggestedSupplier: { id: string; name: string } | null
   submittedAt: string | null
   reviewedAt: string | null
@@ -69,11 +70,15 @@ type Requisition = {
 }
 type Summary = { total: number; byStatus: Record<Status, number>; awaitingReview: number }
 
-type LineRow = { productId: string; quantity: string; estimatedUnitCost: string; note: string }
+// The raiser only ever deals in product + quantity — no cost field here at
+// all. Cost gets set later, by whoever reviews it (see reviewCosts below).
+type LineRow = { productId: string; quantity: string }
 type ReqForm = { requisitionDate: string; neededBy: string; purpose: string; suggestedSupplierId: string; notes: string; items: LineRow[] }
 const emptyForm: ReqForm = { requisitionDate: '', neededBy: '', purpose: '', suggestedSupplierId: '', notes: '', items: [] }
 
 const formatKes = (v: number) => `KSh ${v.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+// Cost values come back null (redacted) for anyone without REQUISITION_APPROVE.
+const formatCost = (v: string | null) => (v == null ? '—' : formatKes(Number(v)))
 const toDateInput = (iso: string | null) => (iso ? iso.slice(0, 10) : '')
 const todayInput = () => {
   const d = new Date()
@@ -86,8 +91,9 @@ function SetupMessage() {
 
 export default function PurchaseRequisitions() {
   const toast = useToast()
-  const roleName = useAppSelector((s) => s.auth.user?.role?.name) ?? ''
-  const canReview = REVIEW_ROLES.includes(roleName)
+  const permissions = useAppSelector((s) => s.auth.user?.role?.permissions) ?? []
+  const canCreate = permissions.includes('REQUISITION_CREATE')
+  const canApprove = permissions.includes('REQUISITION_APPROVE')
 
   const [rows, setRows] = useState<Requisition[]>([])
   const [summary, setSummary] = useState<Summary>({ total: 0, byStatus: { DRAFT: 0, SUBMITTED: 0, APPROVED: 0, REJECTED: 0, CONVERTED: 0, CANCELLED: 0 }, awaitingReview: 0 })
@@ -113,6 +119,15 @@ export default function PurchaseRequisitions() {
 
   const [converting, setConverting] = useState<Requisition | null>(null)
   const [convertForm, setConvertForm] = useState({ supplierId: '', taxRate: '0', expectedDate: '', reference: '', notes: '' })
+
+  // Cost entry for a reviewer: keyed by item id, populated when opening a
+  // SUBMITTED requisition for review. The raiser never set these — this is
+  // where a reviewer with REQUISITION_APPROVE fills them in before deciding.
+  const [reviewCosts, setReviewCosts] = useState<Record<string, string>>({})
+  const reviewTotal = useMemo(
+    () => (detail?.items ?? []).reduce((sum, i) => sum + Number(i.quantity) * (Number(reviewCosts[i.id]) || 0), 0),
+    [detail, reviewCosts],
+  )
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -145,11 +160,6 @@ export default function PurchaseRequisitions() {
     return (id: string) => map.get(id)
   }, [products])
 
-  const liveTotal = useMemo(
-    () => form.items.reduce((sum, r) => sum + (Number(r.quantity) || 0) * (Number(r.estimatedUnitCost) || 0), 0),
-    [form.items],
-  )
-
   const productMatches = useMemo(() => {
     const q = productQuery.trim().toLowerCase()
     if (!q) return []
@@ -158,7 +168,7 @@ export default function PurchaseRequisitions() {
   }, [productQuery, products, form.items])
 
   function addProduct(p: Product) {
-    setForm((f) => (f.items.some((i) => i.productId === p.id) ? f : { ...f, items: [...f.items, { productId: p.id, quantity: '', estimatedUnitCost: '', note: '' }] }))
+    setForm((f) => (f.items.some((i) => i.productId === p.id) ? f : { ...f, items: [...f.items, { productId: p.id, quantity: '' }] }))
     setProductQuery('')
   }
 
@@ -178,7 +188,7 @@ export default function PurchaseRequisitions() {
       purpose: r.purpose ?? '',
       suggestedSupplierId: r.suggestedSupplier?.id ?? '',
       notes: r.notes ?? '',
-      items: r.items.map((i) => ({ productId: i.productId, quantity: String(Number(i.quantity)), estimatedUnitCost: String(Number(i.estimatedUnitCost)), note: i.note ?? '' })),
+      items: r.items.map((i) => ({ productId: i.productId, quantity: String(Number(i.quantity)) })),
     })
     setFormError('')
     setShowForm(true)
@@ -193,7 +203,7 @@ export default function PurchaseRequisitions() {
     event.preventDefault()
     const items = form.items
       .filter((r) => r.productId && Number(r.quantity) > 0)
-      .map((r) => ({ productId: r.productId, quantity: Number(r.quantity), estimatedUnitCost: Number(r.estimatedUnitCost) || 0, note: r.note.trim() || undefined }))
+      .map((r) => ({ productId: r.productId, quantity: Number(r.quantity) }))
     if (!items.length) { setFormError('Add at least one item with a quantity'); return }
     setSaving(true)
     setFormError('')
@@ -245,6 +255,29 @@ export default function PurchaseRequisitions() {
     }
   }
 
+  /** Reviewer's approve: the raiser never set a cost, so this first saves
+   * whatever the reviewer just entered per line (PATCH, allowed on a
+   * SUBMITTED requisition for a REQUISITION_APPROVE holder), then moves the
+   * requisition to APPROVED. */
+  async function approveWithCosts(r: Requisition) {
+    if (!window.confirm(`Approve ${r.requisitionNo}?`)) return
+    setWorking(true)
+    setNotice('')
+    try {
+      const items = r.items.map((i) => ({ productId: i.productId, quantity: Number(i.quantity), estimatedUnitCost: Number(reviewCosts[i.id]) || 0 }))
+      await api(`/purchase-requisitions/${r.id}`, { method: 'PATCH', body: JSON.stringify({ items }) })
+      const { requisition } = await api<{ requisition: Requisition }>(`/purchase-requisitions/${r.id}/status`, { method: 'POST', body: JSON.stringify({ status: 'APPROVED' }) })
+      setNotice(`${r.requisitionNo} is now approved.`)
+      toast.success('Status updated.')
+      setDetail((d) => (d && d.id === requisition.id ? requisition : d))
+      await load()
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : 'Could not approve requisition')
+    } finally {
+      setWorking(false)
+    }
+  }
+
   async function deleteRequisition(r: Requisition) {
     if (!window.confirm(`Delete draft ${r.requisitionNo}?`)) return
     try {
@@ -256,6 +289,11 @@ export default function PurchaseRequisitions() {
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : 'Could not delete requisition')
     }
+  }
+
+  function openDetail(r: Requisition) {
+    setDetail(r)
+    setReviewCosts(Object.fromEntries(r.items.map((i) => [i.id, i.estimatedUnitCost != null ? String(Number(i.estimatedUnitCost)) : ''])))
   }
 
   function openConvert(r: Requisition) {
@@ -293,24 +331,26 @@ export default function PurchaseRequisitions() {
     const btn = 'rounded-sm border px-2.5 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-50'
     switch (r.status) {
       case 'DRAFT':
-        return (
+        return canCreate ? (
           <>
             <button onClick={() => void changeStatus(r, 'SUBMITTED')} disabled={working} className={btn}>Submit</button>
             <button onClick={() => openEdit(r)} title="Edit" className="rounded-sm p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuPencil /></button>
             <button onClick={() => void deleteRequisition(r)} title="Delete" className="rounded-sm p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><LuTrash2 /></button>
           </>
-        )
+        ) : null
       case 'SUBMITTED':
-        return canReview ? (
+        // Approving needs a cost per line first (the raiser never set one) —
+        // that happens in the detail view, not a one-click list action.
+        return canApprove ? (
           <>
-            <button onClick={() => void changeStatus(r, 'APPROVED')} disabled={working} className={btn}>Approve</button>
+            <button onClick={() => openDetail(r)} className={btn}>Review</button>
             <button onClick={() => void changeStatus(r, 'REJECTED', { promptReason: true })} disabled={working} className={cn(btn, 'text-destructive')}>Reject</button>
           </>
         ) : <span className="text-xs text-muted-foreground">Awaiting review</span>
       case 'APPROVED':
-        return <button onClick={() => openConvert(r)} disabled={working} className={btn}>Convert to purchase</button>
+        return canApprove ? <button onClick={() => openConvert(r)} disabled={working} className={btn}>Convert to purchase</button> : null
       case 'REJECTED':
-        return <button onClick={() => void changeStatus(r, 'DRAFT')} disabled={working} className={btn}>Reopen</button>
+        return canCreate ? <button onClick={() => void changeStatus(r, 'DRAFT')} disabled={working} className={btn}>Reopen</button> : null
       default:
         return null
     }
@@ -324,11 +364,13 @@ export default function PurchaseRequisitions() {
         <div>
           <p className="text-sm font-semibold text-secondary">Inventory</p>
           <h1 className="mt-1 font-display text-3xl font-semibold">Purchase Requisitions</h1>
-          <p className="mt-2 text-sm text-muted-foreground">Request items to be bought. A storekeeper raises it, an accountant approves, then it converts to a purchase order.</p>
+          <p className="mt-2 text-sm text-muted-foreground">Request items to be bought — product and quantity only. Whoever can approve sets the cost, then converts it to a purchase order.</p>
         </div>
-        <Button onClick={openCreate}>
-          <LuPlus /> New requisition
-        </Button>
+        {canCreate && (
+          <Button onClick={openCreate}>
+            <LuPlus /> New requisition
+          </Button>
+        )}
       </header>
 
       <section className="mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -378,7 +420,7 @@ export default function PurchaseRequisitions() {
                 {rows.map((r) => (
                   <tr key={r.id} className="border-t transition hover:bg-muted/30">
                     <td className="px-5 py-4">
-                      <button onClick={() => setDetail(r)} className="font-semibold text-secondary hover:underline">{r.requisitionNo}</button>
+                      <button onClick={() => openDetail(r)} className="font-semibold text-secondary hover:underline">{r.requisitionNo}</button>
                       <p className="text-xs text-muted-foreground">
                         {new Date(r.requisitionDate).toLocaleDateString()}
                         {r.purchase && <> · {r.purchase.purchaseNo}</>}
@@ -386,7 +428,7 @@ export default function PurchaseRequisitions() {
                     </td>
                     <td className="px-5 py-4 text-muted-foreground">{r.purpose ?? '—'}</td>
                     <td className="px-5 py-4 text-muted-foreground">{r.items.length}</td>
-                    <td className="px-5 py-4 text-right font-semibold tabular-nums">{formatKes(Number(r.estimatedTotal))}</td>
+                    <td className="px-5 py-4 text-right font-semibold tabular-nums">{formatCost(r.estimatedTotal)}</td>
                     <td className="px-5 py-4"><span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', STATUS_META[r.status].className)}>{STATUS_META[r.status].label}</span></td>
                     <td className="px-5 py-4"><div className="flex items-center justify-end gap-1">
                       <button onClick={() => setPrinting(r)} title="Print / PDF" className="rounded-sm p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuPrinter /></button>
@@ -444,31 +486,25 @@ export default function PurchaseRequisitions() {
                 <p className="mt-3 rounded-sm border border-dashed p-4 text-center text-sm text-muted-foreground">No items yet — search above to add products.</p>
               ) : (
                 <div className="mt-3 space-y-2">
-                  <div className="grid grid-cols-[1fr_5rem_6.5rem_6.5rem_2rem] gap-2 px-1 text-xs font-medium text-muted-foreground">
-                    <span>Product</span><span>Qty</span><span>Est. cost</span><span className="text-right">Total</span><span />
+                  <div className="grid grid-cols-[1fr_6rem_2rem] gap-2 px-1 text-xs font-medium text-muted-foreground">
+                    <span>Product</span><span>Qty</span><span />
                   </div>
                   {form.items.map((row, index) => {
                     const product = productById(row.productId)
-                    const lineTotal = (Number(row.quantity) || 0) * (Number(row.estimatedUnitCost) || 0)
                     return (
-                      <div key={row.productId} className="grid grid-cols-[1fr_5rem_6.5rem_6.5rem_2rem] items-center gap-2">
+                      <div key={row.productId} className="grid grid-cols-[1fr_6rem_2rem] items-center gap-2">
                         <div className="min-w-0">
                           <p className="truncate text-sm font-medium">{product?.name ?? 'Unknown product'}</p>
                           {product?.unit && <p className="text-xs text-muted-foreground">per {product.unit}</p>}
                         </div>
                         <input type="number" min="0" step="0.001" placeholder="Qty" value={row.quantity} onChange={(e) => setRow(index, { quantity: e.target.value })} className="input" />
-                        <input type="number" min="0" step="0.01" placeholder="Est. cost" value={row.estimatedUnitCost} onChange={(e) => setRow(index, { estimatedUnitCost: e.target.value })} className="input" />
-                        <span className="text-right text-sm tabular-nums text-muted-foreground">{lineTotal ? formatKes(lineTotal) : '—'}</span>
                         <button type="button" onClick={() => removeRow(index)} title="Remove" className="rounded-sm p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><LuX className="size-4" /></button>
                       </div>
                     )
                   })}
                 </div>
               )}
-
-              <div className="mt-4 flex justify-between border-t pt-3 text-sm font-semibold">
-                <span>Estimated total</span><span className="tabular-nums">{formatKes(liveTotal)}</span>
-              </div>
+              <p className="mt-3 text-xs text-muted-foreground">No cost here — whoever reviews this sets the estimated cost per item before approving.</p>
             </div>
 
             <FieldGroup title="Notes">
@@ -506,24 +542,52 @@ export default function PurchaseRequisitions() {
 
             {detail.purpose && <p className="mt-4 text-sm">{detail.purpose}</p>}
 
-            <div className="mt-5 overflow-hidden rounded-sm border">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
-                  <tr><th className="px-4 py-2">Product</th><th className="px-4 py-2 text-right">Qty</th><th className="px-4 py-2 text-right">Est. unit cost</th><th className="px-4 py-2 text-right">Line total</th></tr>
-                </thead>
-                <tbody>
-                  {detail.items.map((i) => (
-                    <tr key={i.id} className="border-t">
-                      <td className="px-4 py-2">{i.product.name}</td>
-                      <td className="px-4 py-2 text-right tabular-nums">{Number(i.quantity)} {i.product.unit}</td>
-                      <td className="px-4 py-2 text-right tabular-nums">{formatKes(Number(i.estimatedUnitCost))}</td>
-                      <td className="px-4 py-2 text-right tabular-nums">{formatKes(Number(i.lineTotal))}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="mt-3 flex justify-between text-sm font-semibold"><span>Estimated total</span><span className="tabular-nums">{formatKes(Number(detail.estimatedTotal))}</span></div>
+            {(() => {
+              const reviewing = detail.status === 'SUBMITTED' && canApprove
+              return (
+                <>
+                  <div className="mt-5 overflow-hidden rounded-sm border">
+                    <table className="w-full text-left text-sm">
+                      <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+                        <tr>
+                          <th className="px-4 py-2">Product</th>
+                          <th className="px-4 py-2 text-right">Qty</th>
+                          <th className="px-4 py-2 text-right">Est. unit cost</th>
+                          <th className="px-4 py-2 text-right">Line total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {detail.items.map((i) => (
+                          <tr key={i.id} className="border-t">
+                            <td className="px-4 py-2">{i.product.name}</td>
+                            <td className="px-4 py-2 text-right tabular-nums">{Number(i.quantity)} {i.product.unit}</td>
+                            {reviewing ? (
+                              <td className="px-4 py-2 text-right">
+                                <input
+                                  type="number" min="0" step="0.01" placeholder="0.00"
+                                  value={reviewCosts[i.id] ?? ''}
+                                  onChange={(e) => setReviewCosts((c) => ({ ...c, [i.id]: e.target.value }))}
+                                  className="input h-8 w-24 text-right text-sm"
+                                />
+                              </td>
+                            ) : (
+                              <td className="px-4 py-2 text-right tabular-nums">{formatCost(i.estimatedUnitCost)}</td>
+                            )}
+                            <td className="px-4 py-2 text-right tabular-nums">
+                              {reviewing ? formatKes(Number(i.quantity) * (Number(reviewCosts[i.id]) || 0)) : formatCost(i.lineTotal)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="mt-3 flex justify-between text-sm font-semibold">
+                    <span>Estimated total</span>
+                    <span className="tabular-nums">{reviewing ? formatKes(reviewTotal) : formatCost(detail.estimatedTotal)}</span>
+                  </div>
+                </>
+              )
+            })()}
 
             {detail.suggestedSupplier && <p className="mt-3 text-xs text-muted-foreground">Suggested supplier: {detail.suggestedSupplier.name}</p>}
             {detail.reviewedByEmployee && (
@@ -539,22 +603,22 @@ export default function PurchaseRequisitions() {
             <div className="mt-6 flex flex-wrap justify-end gap-2 border-t pt-5">
               <button onClick={() => setPrinting(detail)} className="mr-auto inline-flex items-center gap-1.5 rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted"><LuPrinter className="size-4" /> Print</button>
               <button onClick={() => setDetail(null)} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Close</button>
-              {detail.status === 'DRAFT' && (
+              {detail.status === 'DRAFT' && canCreate && (
                 <>
                   <button onClick={() => { const d = detail; setDetail(null); openEdit(d) }} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Edit</button>
                   <button onClick={() => void changeStatus(detail, 'SUBMITTED')} disabled={working} className="rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">Submit</button>
                 </>
               )}
-              {detail.status === 'SUBMITTED' && canReview && (
+              {detail.status === 'SUBMITTED' && canApprove && (
                 <>
                   <button onClick={() => void changeStatus(detail, 'REJECTED', { promptReason: true })} disabled={working} className="rounded-sm border px-4 py-2.5 text-sm font-semibold text-destructive hover:bg-destructive/10 disabled:opacity-60">Reject</button>
-                  <button onClick={() => void changeStatus(detail, 'APPROVED')} disabled={working} className="rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">Approve</button>
+                  <button onClick={() => void approveWithCosts(detail)} disabled={working} className="rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">Approve</button>
                 </>
               )}
-              {detail.status === 'APPROVED' && (
+              {detail.status === 'APPROVED' && canApprove && (
                 <button onClick={() => openConvert(detail)} disabled={working} className="rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">Convert to purchase</button>
               )}
-              {detail.status === 'REJECTED' && (
+              {detail.status === 'REJECTED' && canCreate && (
                 <button onClick={() => void changeStatus(detail, 'DRAFT')} disabled={working} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted disabled:opacity-60">Reopen</button>
               )}
             </div>

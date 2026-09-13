@@ -73,11 +73,14 @@ export interface NavItem {
   href: string
   icon: IconType
   moduleKey?: string
-  // Beyond the section-level allowedSections gate, this item also needs a
-  // specific Role.permissions capability — e.g. Approvals is only useful to
-  // someone who can actually decide a cancellation, not every Sales-section
-  // role (a waiter has SALES access for POS itself).
-  permission?: string
+  // A specific Role.permissions capability tied to this item. Two roles:
+  // (1) narrowing — e.g. Approvals only being useful to someone who can
+  // actually decide a cancellation, not every Sales-section role; (2)
+  // standalone access — holding the permission makes the item reachable
+  // even without its group's section at all (e.g. an Accountant granted
+  // REQUISITION_APPROVE reaching Purchase Requisitions with no Inventory
+  // section access). See navItemAllowed(). A list means "any of these".
+  permission?: string | string[]
 }
 
 export interface NavGroup {
@@ -171,7 +174,7 @@ export const navigation: NavGroup[] = [
       { label: 'Assets', href: '/inventory/assets', icon: LuBox },
       { label: 'Stock Ledger', href: '/inventory/stock-ledger', icon: LuBookOpen },
       { label: 'Suppliers', href: '/inventory/suppliers', icon: LuTruck },
-      { label: 'Purchase Requisitions', href: '/inventory/purchase-requisitions', icon: LuClipboardList },
+      { label: 'Purchase Requisitions', href: '/inventory/purchase-requisitions', icon: LuClipboardList, permission: ['REQUISITION_CREATE', 'REQUISITION_APPROVE'] },
       { label: 'Purchases', href: '/inventory/purchases', icon: LuShoppingBag },
       { label: 'Daily Expenses', href: '/inventory/daily-expenses', icon: LuReceipt },
     ],
@@ -227,6 +230,26 @@ export const navigation: NavGroup[] = [
 
 export function sectionForPath(pathname: string): PermissionSection | undefined {
   return navigation.find((group) => group.items.some((item) => item.href === pathname))?.section
+}
+
+export function navItemForPath(pathname: string): { item: NavItem; section: PermissionSection } | undefined {
+  for (const group of navigation) {
+    const item = group.items.find((i) => i.href === pathname)
+    if (item) return { item, section: group.section }
+  }
+  return undefined
+}
+
+/** Whether a role can reach this nav item: holding its own `permission`
+ * (any one, if a list) makes it reachable on its own, regardless of section
+ * — e.g. an Accountant granted REQUISITION_APPROVE reaching Purchase
+ * Requisitions with no Inventory section access at all. Otherwise it needs
+ * the group's section, AND the item's permission too if it declares one
+ * (narrowing within an already-accessible section, e.g. Approvals). */
+export function navItemAllowed(item: NavItem, hasSection: boolean, permissions: string[]): boolean {
+  const required = item.permission == null ? [] : Array.isArray(item.permission) ? item.permission : [item.permission]
+  if (required.length > 0 && required.some((p) => permissions.includes(p))) return true
+  return hasSection && required.length === 0
 }
 
 // Hrefs that are a route-segment prefix of another nav item's href — e.g.
