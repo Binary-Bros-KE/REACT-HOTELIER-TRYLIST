@@ -100,6 +100,7 @@ type ProductForm = {
   reorderLevel: string
   maxStockLevel: string
   unitCost: string
+  sellsDirectly: boolean
   sellingPrice: string
   preferredSupplier: string
   isActive: boolean
@@ -108,7 +109,7 @@ const emptyForm: ProductForm = {
   categoryId: '', name: '', sku: '', barcode: '', brand: '', description: '',
   unit: 'Each', isPerishable: false, shelfLifeDays: '',
   packLabel: '', packSize: '', packUnitId: '',
-  openingStock: '0', locationId: '', reorderLevel: '0', maxStockLevel: '', unitCost: '', sellingPrice: '', preferredSupplier: '',
+  openingStock: '0', locationId: '', reorderLevel: '0', maxStockLevel: '', unitCost: '', sellsDirectly: false, sellingPrice: '', preferredSupplier: '',
   isActive: true,
 }
 const emptyTransfer = { productId: '', productName: '', fromLocationId: '', toLocationId: '', quantity: '', stockByLocation: [] as StockByLocation[], packSize: 0, packLabel: '', unitName: '' }
@@ -217,6 +218,7 @@ export default function Products() {
       reorderLevel: product.reorderLevel,
       maxStockLevel: product.maxStockLevel ?? '',
       unitCost: product.unitCost ?? '',
+      sellsDirectly: product.sellingPrice != null,
       sellingPrice: product.sellingPrice ?? '',
       preferredSupplier: product.preferredSupplier ?? '',
       isActive: product.isActive,
@@ -233,7 +235,8 @@ export default function Products() {
     setError('')
     setNotice('')
     try {
-      const payload = { ...form, ...(editing ? { openingStock: undefined, locationId: undefined } : {}) }
+      const { sellsDirectly: _sellsDirectly, ...rest } = form
+      const payload = { ...rest, ...(editing ? { openingStock: undefined, locationId: undefined } : {}) }
       await api(editing ? `/products/${editing.id}` : '/products', { method: editing ? 'PATCH' : 'POST', body: JSON.stringify(payload) })
       setNotice(editing ? 'Product updated.' : 'Product added.')
       toast.success(editing ? 'Product updated.' : 'Product added.')
@@ -559,11 +562,22 @@ export default function Products() {
 
             <FieldGroup title="Costing">
               <Field label="Unit Cost (KES)"><input type="number" min="0" step="0.01" placeholder="e.g. 45.50" value={form.unitCost} onChange={(e) => setForm({ ...form, unitCost: e.target.value })} className="input" /></Field>
-              <Field label="Selling Price (KES)">
-                <input type="number" min="0" step="0.01" placeholder="e.g. 65.00" value={form.sellingPrice} onChange={(e) => setForm({ ...form, sellingPrice: e.target.value })} className="input" />
-                <span className="mt-1 block text-xs text-muted-foreground">Leave blank if this is never sold directly (e.g. a recipe ingredient only) — the Products POS only lists items with a price set.</span>
-              </Field>
-              <Field label="Preferred Supplier" className="sm:col-span-2"><input placeholder="e.g. Nairobi Bottlers Ltd" value={form.preferredSupplier} onChange={(e) => setForm({ ...form, preferredSupplier: e.target.value })} className="input" /></Field>
+              <Field label="Preferred Supplier"><input placeholder="e.g. Nairobi Bottlers Ltd" value={form.preferredSupplier} onChange={(e) => setForm({ ...form, preferredSupplier: e.target.value })} className="input" /></Field>
+              <label className="flex items-center gap-2 text-sm font-medium sm:col-span-2">
+                <input
+                  type="checkbox"
+                  checked={form.sellsDirectly}
+                  onChange={(e) => setForm({ ...form, sellsDirectly: e.target.checked, sellingPrice: e.target.checked ? form.sellingPrice : '' })}
+                  className="size-4 accent-secondary"
+                />
+                Also sold directly, as a whole unit, via Products POS
+              </label>
+              {form.sellsDirectly && (
+                <Field label="Selling Price (KES)" required className="sm:col-span-2">
+                  <input required type="number" min="0" step="0.01" placeholder="e.g. 65.00" value={form.sellingPrice} onChange={(e) => setForm({ ...form, sellingPrice: e.target.value })} className="input" />
+                  <span className="mt-1 block text-xs text-muted-foreground">This is the price for one whole {form.packLabel || form.unit.toLowerCase()} — a pack-tracked product sold as a Tot/Double instead needs a Menu Item variant, not this.</span>
+                </Field>
+              )}
             </FieldGroup>
 
             <label className="mt-6 flex items-center justify-between rounded-sm border bg-background px-3 py-2.5 text-sm font-medium">
