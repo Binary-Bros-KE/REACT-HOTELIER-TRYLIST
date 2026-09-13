@@ -7,6 +7,7 @@ import {
   LuCircleCheck,
   LuLoaderCircle,
   LuPackage,
+  LuPackagePlus,
   LuPencil,
   LuPlus,
   LuRuler,
@@ -66,6 +67,20 @@ const MOVEMENT_LABELS: Record<MovementType, string> = {
 }
 type Movement = { id: string; type: MovementType; location: { id: string; name: string }; quantity: string; note: string | null; occurredAt: string }
 
+// Matches the backend's MANUAL_MOVEMENT_TYPES (products.routes.ts) — the
+// only types the "Adjust stock" action is allowed to record. Everything
+// except ADJUSTMENT only ever adds to stock; the quantity input's sign
+// convention is enforced both here (min="0") and again server-side.
+type ManualMovementType = 'PURCHASE' | 'RETURN' | 'DAMAGE_LOSS' | 'ADJUSTMENT' | 'OPENING_STOCK'
+const MANUAL_MOVEMENT_TYPES: ManualMovementType[] = ['PURCHASE', 'RETURN', 'DAMAGE_LOSS', 'ADJUSTMENT', 'OPENING_STOCK']
+const MANUAL_MOVEMENT_HINTS: Record<ManualMovementType, string> = {
+  PURCHASE: 'Stock bought in outside the normal Purchases/Goods-Receipt flow — adds to stock.',
+  RETURN: 'Stock physically handed back in (e.g. a customer return) — adds to stock.',
+  DAMAGE_LOSS: 'Enter how much was lost — this always reduces stock, regardless of sign.',
+  ADJUSTMENT: 'A plain count correction. Enter a positive number to add, negative to remove.',
+  OPENING_STOCK: "A baseline this product didn't get when it was created — adds to stock.",
+}
+
 type ProductForm = {
   categoryId: string
   name: string
@@ -96,6 +111,10 @@ const emptyForm: ProductForm = {
   isActive: true,
 }
 const emptyTransfer = { productId: '', productName: '', fromLocationId: '', toLocationId: '', quantity: '', stockByLocation: [] as StockByLocation[] }
+const emptyAdjust = {
+  productId: '', productName: '', type: 'PURCHASE' as ManualMovementType,
+  locationId: '', quantity: '', unitCost: '', note: '', stockByLocation: [] as StockByLocation[],
+}
 
 // "7,500 ml (10 bottles)" when pack-tracked, else "7,500 Each".
 function packAndUnit(qty: number, packSize: number, packLabel: string, unitName: string): string {
@@ -135,6 +154,10 @@ export default function Products() {
   const [showTransfer, setShowTransfer] = useState(false)
   const [transferring, setTransferring] = useState(false)
   const [transferError, setTransferError] = useState('')
+  const [adjust, setAdjust] = useState(emptyAdjust)
+  const [showAdjust, setShowAdjust] = useState(false)
+  const [adjusting, setAdjusting] = useState(false)
+  const [adjustError, setAdjustError] = useState('')
   const [showUnits, setShowUnits] = useState(false)
   const [units, setUnits] = useState<{ id: string; name: string }[]>([])
 
@@ -280,6 +303,48 @@ export default function Products() {
     }
   }
 
+  function openAdjust(product: Product) {
+    setAdjust({
+      productId: product.id,
+      productName: product.name,
+      type: 'PURCHASE',
+      locationId: product.stockByLocation[0]?.locationId ?? (locations.length === 1 ? locations[0].id : ''),
+      quantity: '',
+      unitCost: product.unitCost ?? '',
+      note: '',
+      stockByLocation: product.stockByLocation,
+    })
+    setAdjustError('')
+    setShowAdjust(true)
+  }
+
+  async function saveAdjust(event: FormEvent) {
+    event.preventDefault()
+    setAdjusting(true)
+    setAdjustError('')
+    try {
+      await api(`/products/${adjust.productId}/movements`, {
+        method: 'POST',
+        body: JSON.stringify({
+          type: adjust.type,
+          locationId: adjust.locationId,
+          quantity: Number(adjust.quantity),
+          unitCost: adjust.unitCost ? Number(adjust.unitCost) : undefined,
+          note: adjust.note.trim() || undefined,
+        }),
+      })
+      toast.success('Stock updated.')
+      setShowAdjust(false)
+      await loadProducts()
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'Could not update stock'
+      setAdjustError(message)
+      toast.error(message)
+    } finally {
+      setAdjusting(false)
+    }
+  }
+
   if (!hasApiTenant()) return <SetupMessage />
 
   return (
@@ -387,6 +452,7 @@ export default function Products() {
                       <td className="px-5 py-4 text-muted-foreground">{product.unitCost ? `KSh ${Number(product.unitCost).toLocaleString()}` : '—'}</td>
                       <td className="px-5 py-4">
                         <div className="flex justify-end gap-1">
+                          <button onClick={() => openAdjust(product)} title="Add or remove stock" className="rounded-sm p-2 text-muted-foreground hover:bg-success/10 hover:text-success"><LuPackagePlus /></button>
                           <button onClick={() => openTransfer(product)} title="Transfer stock" className="rounded-sm p-2 text-muted-foreground hover:bg-accent/10 hover:text-accent"><LuArrowLeftRight /></button>
                           <button onClick={() => openEdit(product)} title="Edit product" className="rounded-sm p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuPencil /></button>
                           <button onClick={() => void deleteProduct(product)} title="Delete product" className="rounded-sm p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><LuTrash2 /></button>
@@ -578,6 +644,63 @@ export default function Products() {
               <button disabled={transferring} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
                 {transferring && <LuLoaderCircle className="animate-spin" />}
                 Transfer
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {showAdjust && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowAdjust(false) }}>
+          <form onSubmit={saveAdjust} className="w-full max-w-md rounded-sm border bg-card p-6 shadow-2xl">
+            <div>
+              <p className="text-sm font-semibold text-secondary">Add or remove stock</p>
+              <h2 className="mt-1 font-display text-2xl font-semibold">{adjust.productName}</h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {adjust.stockByLocation.length === 0 ? 'No stock recorded yet' : adjust.stockByLocation.map((s) => `${s.locationName}: ${Number(s.quantity).toLocaleString()}`).join(' · ')}
+              </p>
+            </div>
+
+            {adjustError && (
+              <div className="mt-4 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive">
+                <LuCircleAlert />
+                {adjustError}
+              </div>
+            )}
+
+            <div className="mt-5 space-y-4">
+              <Field label="Action" required>
+                <select required className="input" value={adjust.type} onChange={(e) => setAdjust({ ...adjust, type: e.target.value as ManualMovementType })}>
+                  {MANUAL_MOVEMENT_TYPES.map((t) => <option key={t} value={t}>{MOVEMENT_LABELS[t]}</option>)}
+                </select>
+                <span className="mt-1 block text-xs text-muted-foreground">{MANUAL_MOVEMENT_HINTS[adjust.type]}</span>
+              </Field>
+              <Field label="Location" required>
+                <select required className="input" value={adjust.locationId} onChange={(e) => setAdjust({ ...adjust, locationId: e.target.value })}>
+                  <option value="" disabled>Select location</option>
+                  {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+                </select>
+              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Quantity" required>
+                  <input
+                    required autoFocus type="number" step="0.001"
+                    min={adjust.type === 'ADJUSTMENT' ? undefined : '0'}
+                    value={adjust.quantity}
+                    onChange={(e) => setAdjust({ ...adjust, quantity: e.target.value })}
+                    className="input"
+                  />
+                </Field>
+                <Field label="Unit cost (KSh)"><input type="number" min="0" step="0.01" placeholder="Optional" value={adjust.unitCost} onChange={(e) => setAdjust({ ...adjust, unitCost: e.target.value })} className="input" /></Field>
+              </div>
+              <Field label="Note"><input placeholder="Optional" value={adjust.note} onChange={(e) => setAdjust({ ...adjust, note: e.target.value })} className="input" /></Field>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2 border-t pt-5">
+              <button type="button" onClick={() => setShowAdjust(false)} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Cancel</button>
+              <button disabled={adjusting} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+                {adjusting && <LuLoaderCircle className="animate-spin" />}
+                Record
               </button>
             </div>
           </form>
