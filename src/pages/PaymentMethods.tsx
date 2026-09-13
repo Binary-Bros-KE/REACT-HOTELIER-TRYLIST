@@ -189,7 +189,7 @@ export default function PaymentMethods() {
       </div>
 
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowForm(false) }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
           <form onSubmit={saveMethod} className="w-full max-w-lg rounded-sm border bg-card p-6 shadow-2xl">
             <p className="text-sm font-semibold text-accent">{editing ? 'Edit payment method' : 'New payment method'}</p>
             <h2 className="mt-1 font-display text-2xl font-semibold">{editing ? editing.name : 'How customers can pay'}</h2>

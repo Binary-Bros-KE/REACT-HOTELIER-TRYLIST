@@ -457,7 +457,7 @@ export default function Purchases() {
       </section>
 
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm" onMouseDown={(e) => { if (e.target === e.currentTarget) setShowForm(false) }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
           <form onSubmit={savePurchase} className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-sm border bg-card p-6 shadow-2xl">
             <div>
               <p className="text-sm font-semibold text-secondary">{editing ? 'Edit purchase' : 'New purchase'}</p>
@@ -567,7 +567,7 @@ export default function Purchases() {
       )}
 
       {detail && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm" onMouseDown={(e) => { if (e.target === e.currentTarget) setDetail(null) }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
           <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-sm border bg-card p-6 shadow-2xl">
             <div className="flex items-start justify-between">
               <div>
@@ -736,7 +736,7 @@ function ReceiveGoodsModal({ purchase, locations, onClose, onReceived }: {
   }
 
   return (
-    <div className="fixed inset-0 z-[55] flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
+    <div className="fixed inset-0 z-[55] flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
       <form onSubmit={submit} className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-sm border bg-card p-6 shadow-2xl">
         <div>
           <p className="text-sm font-semibold text-secondary">Goods receipt</p>

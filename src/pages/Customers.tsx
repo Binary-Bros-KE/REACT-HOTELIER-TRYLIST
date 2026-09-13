@@ -380,7 +380,6 @@ export default function Customers() {
       {showForm && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm"
-          onMouseDown={(event) => { if (event.target === event.currentTarget) setShowForm(false) }}
         >
           <form onSubmit={saveCustomer} className="max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-sm border bg-card p-6 shadow-2xl">
             <div>
@@ -521,7 +520,7 @@ function CreditHistoryModal({ customer, onClose }: { customer: Customer; onClose
   }, [customer.id])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
       <div className="grid max-h-[85vh] w-full max-w-lg grid-rows-[auto_1fr] overflow-hidden rounded-sm border bg-card shadow-2xl">
         <div className="flex items-center justify-between border-b p-4">
           <div>

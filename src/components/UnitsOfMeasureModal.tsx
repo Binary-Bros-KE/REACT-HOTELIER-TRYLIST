@@ -96,7 +96,6 @@ export default function UnitsOfMeasureModal({ open, onClose }: Props) {
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm"
-      onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}
     >
       <div className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-sm border bg-card p-6 shadow-2xl">
         <div className="flex items-start justify-between gap-4">

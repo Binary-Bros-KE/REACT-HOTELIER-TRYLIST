@@ -248,7 +248,7 @@ export default function LostAndFound() {
       </div>
 
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowForm(false) }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
           <form onSubmit={saveItem} className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-sm border bg-card p-6 shadow-2xl">
             <p className="text-sm font-semibold text-secondary">{editing ? 'Edit item' : 'New item'}</p>
             <h2 className="mt-1 font-display text-2xl font-semibold">{editing ? editing.itemName : 'Log a found item'}</h2>
@@ -314,7 +314,7 @@ function CollectModal({ item, onClose, onCollected }: { item: LostFoundItem; onC
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
       <form onSubmit={submit} className="w-full max-w-sm rounded-sm border bg-card p-6 shadow-2xl">
         <div className="flex items-start justify-between">
           <div>

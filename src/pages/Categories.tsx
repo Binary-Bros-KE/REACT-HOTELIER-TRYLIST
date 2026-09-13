@@ -205,7 +205,6 @@ export default function Categories({ scope = 'STORE', title = 'Categories', subt
       {showForm && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm"
-          onMouseDown={(event) => { if (event.target === event.currentTarget) setShowForm(false) }}
         >
           <form onSubmit={saveCategory} className="w-full max-w-md rounded-sm border bg-card p-6 shadow-2xl">
             <div>

@@ -507,9 +507,6 @@ export default function Rooms() {
       {showForm && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setShowForm(false);
-          }}
         >
           <form
             onSubmit={saveRoom}
@@ -690,9 +687,6 @@ export default function Rooms() {
       {showTypes && (
         <div
           className="fixed inset-0 z-70 flex items-center justify-center bg-primary/60 p-4 backdrop-blur-sm"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setShowTypes(false);
-          }}
         >
           <div className="grid max-h-[90vh] w-full max-w-4xl gap-5 overflow-y-auto rounded-sm bg-card p-6 shadow-2xl lg:grid-cols-[320px_1fr]">
             <form onSubmit={saveRoomType}>

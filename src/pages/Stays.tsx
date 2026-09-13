@@ -163,7 +163,7 @@ export default function Stays() {
 function StayDetailModal({ stay, onClose }: { stay: Stay; onClose: () => void }) {
   const totals = folioTotals(stay.folio)
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
       <div className="flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden rounded-sm border bg-card shadow-2xl">
         <div className="flex items-start justify-between border-b p-5">
           <div>

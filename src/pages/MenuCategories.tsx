@@ -250,7 +250,7 @@ export default function MenuCategories() {
       </section>
 
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm" onMouseDown={(e) => { if (e.target === e.currentTarget) setShowForm(false) }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
           <form onSubmit={save} className="w-full max-w-md rounded-sm border bg-card p-6 shadow-2xl">
             <div>
               <p className="text-sm font-semibold text-secondary">{editing ? 'Edit category' : 'New category'}</p>

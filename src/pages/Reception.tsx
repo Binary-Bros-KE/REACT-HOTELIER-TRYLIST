@@ -440,7 +440,7 @@ function CancelModal({ reservation, onClose, onCancelled }: { reservation: Reser
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
       <form onSubmit={submit} className="w-full max-w-sm rounded-sm border bg-card p-6 shadow-2xl">
         <p className="text-sm font-semibold text-destructive">Cancel reservation</p>
         <h2 className="mt-1 font-display text-xl font-semibold">{reservation.customer.firstName} {reservation.customer.lastName} — {reservation.reservationNo}</h2>
@@ -611,7 +611,7 @@ function StayModal({ reservation, onClose, onChanged, onCheckedOut }: { reservat
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
       <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-sm border bg-card shadow-2xl">
         <div className="flex items-start justify-between border-b p-5">
           <div>

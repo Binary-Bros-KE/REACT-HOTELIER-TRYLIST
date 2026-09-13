@@ -66,7 +66,7 @@ export default function ReceiptPreviewModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
       <div className="flex max-h-[88vh] w-full max-w-sm flex-col overflow-hidden rounded-sm bg-card shadow-2xl">
         <div className="flex items-center justify-between border-b p-3 print:hidden">
           <p className="text-sm font-semibold text-secondary">Receipt</p>

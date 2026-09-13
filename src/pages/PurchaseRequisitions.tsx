@@ -443,7 +443,7 @@ export default function PurchaseRequisitions() {
       </section>
 
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm" onMouseDown={(e) => { if (e.target === e.currentTarget) setShowForm(false) }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
           <form onSubmit={saveRequisition} className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-sm border bg-card p-6 shadow-2xl">
             <div>
               <p className="text-sm font-semibold text-secondary">{editing ? 'Edit requisition' : 'New requisition'}</p>
@@ -525,7 +525,7 @@ export default function PurchaseRequisitions() {
       )}
 
       {detail && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm" onMouseDown={(e) => { if (e.target === e.currentTarget) setDetail(null) }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
           <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-sm border bg-card p-6 shadow-2xl">
             <div className="flex items-start justify-between">
               <div>
@@ -627,7 +627,7 @@ export default function PurchaseRequisitions() {
       )}
 
       {converting && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm" onMouseDown={(e) => { if (e.target === e.currentTarget) setConverting(null) }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
           <form onSubmit={submitConvert} className="w-full max-w-md rounded-sm border bg-card p-6 shadow-2xl">
             <p className="text-sm font-semibold text-secondary">Convert to purchase</p>
             <h2 className="mt-1 font-display text-xl font-semibold">{converting.requisitionNo}</h2>

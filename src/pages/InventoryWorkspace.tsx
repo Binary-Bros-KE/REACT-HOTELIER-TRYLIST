@@ -172,7 +172,7 @@ export default function InventoryWorkspace() {
       )}
 
       {detail && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm" onMouseDown={(e) => { if (e.target === e.currentTarget) setDetail(null) }}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
           <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-sm border bg-card p-6 shadow-2xl">
             <p className="text-sm font-semibold text-secondary">Stock transfer</p>
             <h2 className="mt-1 font-display text-2xl font-semibold">{detail.transferNo}</h2>
@@ -311,7 +311,7 @@ function DistributeModal({ locations, onClose, onRecorded }: { locations: Locati
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
       <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-sm border bg-card p-6 shadow-2xl">
         <p className="text-sm font-semibold text-secondary">New stock transfer</p>
         <h2 className="mt-1 font-display text-2xl font-semibold">Distribute stock</h2>

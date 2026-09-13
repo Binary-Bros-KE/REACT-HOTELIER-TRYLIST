@@ -1126,7 +1126,7 @@ function CustomizeModal({ item, allAddons, initial, onClose, onSubmit }: {
   const unitPrice = (variant?.price ?? item.price) + chosenAddons.reduce((sum, a) => sum + a.price, 0)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
       <div className="grid max-h-[88vh] w-full max-w-lg grid-rows-[auto_1fr_auto] overflow-hidden rounded-sm border bg-card shadow-2xl">
         <div className="flex items-center justify-between border-b p-4">
           <div className="min-w-0">
@@ -1376,7 +1376,7 @@ function AddItemsModal({ order, menuItems, allAddons, onClose, onRefresh, onAdde
   const editingExistingItem = editingExisting?.menuItemId ? menuById.get(editingExisting.menuItemId) ?? null : null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
       <div className="grid max-h-[88vh] w-full max-w-3xl grid-rows-[auto_1fr_auto] overflow-hidden rounded-sm border bg-card shadow-2xl">
         <div className="flex items-center justify-between border-b p-4">
           <div>
