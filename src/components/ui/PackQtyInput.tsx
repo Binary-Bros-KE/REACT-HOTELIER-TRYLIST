@@ -53,7 +53,7 @@ export default function PackQtyInput({ value, onChange, packSize, packLabel, uni
         className={className ?? 'input'}
       />
       {packSize > 0 && (
-        <div className="mt-1.5 flex items-center gap-2 text-xs text-muted-foreground">
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
           <span>{unitName} — or enter</span>
           <input
             type="number"

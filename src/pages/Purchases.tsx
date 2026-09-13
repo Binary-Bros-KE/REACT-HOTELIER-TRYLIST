@@ -44,10 +44,10 @@ const NEXT_ACTIONS: Record<Status, { to: Status; label: string }[]> = {
 }
 
 type Supplier = { id: string; name: string }
-type Product = { id: string; name: string; unit: string }
 type Employee = { id: string; firstName: string; lastName: string }
 type Location = { id: string; name: string; type: string | null }
 type StockProduct = { id: string; name: string; unit: string; packSize: string | null; packLabel: string | null; packUnit: { id: string; name: string } | null }
+type Product = StockProduct
 type PurchaseItem = {
   id: string
   productId: string
@@ -440,22 +440,24 @@ export default function Purchases() {
                 <p className="mt-3 rounded-sm border border-dashed p-4 text-center text-sm text-muted-foreground">No items yet — search above to add products.</p>
               ) : (
                 <div className="mt-3 space-y-2">
-                  <div className="grid grid-cols-[1fr_5rem_6rem_6.5rem_2rem] gap-2 px-1 text-xs font-medium text-muted-foreground">
+                  <div className="grid grid-cols-[1fr_8rem_6rem_6.5rem_2rem] gap-2 px-1 text-xs font-medium text-muted-foreground">
                     <span>Product</span><span>Qty</span><span>Unit cost</span><span className="text-right">Total</span><span />
                   </div>
                   {form.items.map((row, index) => {
                     const product = productLabel(row.productId)
+                    const packSize = Number(product?.packSize) || 0
+                    const unitLabel = product?.packUnit?.name ?? product?.unit ?? ''
                     const lineTotal = (Number(row.quantity) || 0) * (Number(row.unitCost) || 0)
                     return (
-                      <div key={row.productId} className="grid grid-cols-[1fr_5rem_6rem_6.5rem_2rem] items-center gap-2">
-                        <div className="min-w-0">
+                      <div key={row.productId} className="grid grid-cols-[1fr_8rem_6rem_6.5rem_2rem] items-start gap-2">
+                        <div className="min-w-0 pt-2">
                           <p className="truncate text-sm font-medium">{product?.name ?? 'Unknown product'}</p>
-                          {product?.unit && <p className="text-xs text-muted-foreground">per {product.unit}</p>}
+                          {unitLabel && <p className="text-xs text-muted-foreground">per {unitLabel}</p>}
                         </div>
-                        <input type="number" min="0" step="0.001" placeholder="Qty" value={row.quantity} onChange={(e) => setRow(index, { quantity: e.target.value })} className="input" />
+                        <PackQtyInput value={row.quantity} onChange={(v) => setRow(index, { quantity: v })} packSize={packSize} packLabel={product?.packLabel ?? ''} unitName={unitLabel} />
                         <input type="number" min="0" step="0.01" placeholder="Unit cost" value={row.unitCost} onChange={(e) => setRow(index, { unitCost: e.target.value })} className="input" />
-                        <span className="text-right text-sm tabular-nums text-muted-foreground">{lineTotal ? formatKes(lineTotal) : '—'}</span>
-                        <button type="button" onClick={() => removeRow(index)} title="Remove" className="rounded-sm p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><LuX className="size-4" /></button>
+                        <span className="pt-2 text-right text-sm tabular-nums text-muted-foreground">{lineTotal ? formatKes(lineTotal) : '—'}</span>
+                        <button type="button" onClick={() => removeRow(index)} title="Remove" className="rounded-sm p-1.5 pt-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><LuX className="size-4" /></button>
                       </div>
                     )
                   })}
