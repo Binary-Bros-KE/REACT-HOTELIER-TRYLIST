@@ -21,9 +21,12 @@ type ApiProduct = {
   packLabel: string | null
   packUnit: { id: string; name: string } | null
   category: { id: string; name: string } | null
+  taxRate: string | number | null
+  taxMode: 'INCLUSIVE' | 'EXCLUSIVE' | null
+  taxTreatment: 'STANDARD' | 'ZERO_RATED' | 'EXEMPT' | null
 }
 type RestaurantLocation = { id: string; name: string; type: string | null; isActive: boolean }
-type BusinessProfile = { businessName: string; taxRate: string | null; taxMode: 'INCLUSIVE' | 'EXCLUSIVE' }
+type BusinessProfile = { businessName: string; taxRate: string | null; taxMode: 'INCLUSIVE' | 'EXCLUSIVE'; taxTreatment: 'STANDARD' | 'ZERO_RATED' | 'EXEMPT' }
 type PosProduct = Omit<ApiProduct, 'sellingPrice' | 'availableQuantity'> & { price: number; availableQuantity: number }
 type CartItem = PosProduct & { quantity: number }
 
@@ -33,15 +36,26 @@ function computeFinancials(cart: CartItem[], discountInput: string, profile: Bus
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0)
   const discount = Math.min(Number(discountInput) || 0, subtotal)
   const taxable = subtotal - discount
-  const rate = profile?.taxRate ? Number(profile.taxRate) : 0
-  const taxMode = profile?.taxMode ?? 'INCLUSIVE'
+  const discountRatio = subtotal > 0 ? discount / subtotal : 0
   let taxAmount = 0
-  let total = taxable
-  if (rate > 0) {
-    if (taxMode === 'EXCLUSIVE') { taxAmount = taxable * (rate / 100); total = taxable + taxAmount }
-    else { taxAmount = taxable - taxable / (1 + rate / 100); total = taxable }
+  let exclusiveTax = 0
+  const rates = new Set<number>()
+  for (const item of cart) {
+    const gross = item.price * item.quantity * (1 - discountRatio)
+    const treatment = item.taxTreatment ?? profile?.taxTreatment ?? 'STANDARD'
+    const rate = item.taxRate != null ? Number(item.taxRate) : profile?.taxRate ? Number(profile.taxRate) : 0
+    const mode = item.taxMode ?? profile?.taxMode ?? 'INCLUSIVE'
+    if (treatment !== 'STANDARD' || rate <= 0) continue
+    rates.add(rate)
+    if (mode === 'EXCLUSIVE') {
+      const tax = gross * (rate / 100)
+      exclusiveTax += tax
+      taxAmount += tax
+    } else {
+      taxAmount += gross - gross / (1 + rate / 100)
+    }
   }
-  return { subtotal, discount, taxable, rate, taxMode, taxAmount, total }
+  return { subtotal, discount, taxable, rateLabel: [...rates].sort((a, b) => a - b).join(', '), taxAmount, total: taxable + exclusiveTax }
 }
 
 export default function ProductsPointOfSale() {
@@ -299,7 +313,7 @@ export default function ProductsPointOfSale() {
           <div className="space-y-1.5 border-t bg-muted/30 p-4 text-sm">
             <div className="flex justify-between text-muted-foreground"><span>Subtotal</span><span>{formatKes(financials.subtotal)}</span></div>
             {financials.discount > 0 && <div className="flex justify-between text-destructive"><span>Discount</span><span>-{formatKes(financials.discount)}</span></div>}
-            {financials.rate > 0 && <div className="flex justify-between text-muted-foreground"><span>Tax ({financials.rate}% {financials.taxMode === 'EXCLUSIVE' ? 'excl.' : 'incl.'})</span><span>{formatKes(financials.taxAmount)}</span></div>}
+            {financials.taxAmount > 0 && <div className="flex justify-between text-muted-foreground"><span>Tax{financials.rateLabel ? ` (${financials.rateLabel}%)` : ''}</span><span>{formatKes(financials.taxAmount)}</span></div>}
             <div className="flex justify-between border-t pt-1.5 text-base font-bold text-foreground"><span>Total</span><span>{formatKes(financials.total)}</span></div>
           </div>
 

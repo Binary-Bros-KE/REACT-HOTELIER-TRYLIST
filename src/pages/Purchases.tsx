@@ -46,13 +46,30 @@ const NEXT_ACTIONS: Record<Status, { to: Status; label: string }[]> = {
 type Supplier = { id: string; name: string }
 type Employee = { id: string; firstName: string; lastName: string }
 type Location = { id: string; name: string; type: string | null }
-type StockProduct = { id: string; name: string; unit: string; packSize: string | null; packLabel: string | null; packUnit: { id: string; name: string } | null }
+type TaxTreatment = 'STANDARD' | 'ZERO_RATED' | 'EXEMPT'
+type StockProduct = {
+  id: string
+  name: string
+  unit: string
+  packSize: string | null
+  packLabel: string | null
+  packUnit: { id: string; name: string } | null
+  unitCost?: string | null
+  sellingPrice?: string | null
+  taxRate?: string | null
+  taxTreatment?: TaxTreatment | null
+}
 type Product = StockProduct
 type PurchaseItem = {
   id: string
   productId: string
   quantity: string
   unitCost: string
+  sellingPrice: string | null
+  discountPerUnit: string
+  taxRate: string
+  taxTreatment: TaxTreatment
+  taxAmount: string
   lineTotal: string
   receivedQuantity: string
   note: string | null
@@ -94,21 +111,33 @@ type Purchase = {
 }
 type Summary = { total: number; byStatus: Record<Status, number>; openValue: number }
 
-type LineRow = { productId: string; quantity: string; unitCost: string; note: string }
+type LineRow = { productId: string; quantity: string; unitCost: string; sellingPrice: string; discountPerUnit: string; taxRate: string; taxTreatment: TaxTreatment; note: string }
 type PurchaseForm = {
   supplierId: string
   locationId: string
   orderDate: string
   expectedDate: string
   reference: string
-  taxRate: string
   notes: string
   items: LineRow[]
 }
-const emptyForm: PurchaseForm = { supplierId: '', locationId: '', orderDate: '', expectedDate: '', reference: '', taxRate: '0', notes: '', items: [] }
+const emptyForm: PurchaseForm = { supplierId: '', locationId: '', orderDate: '', expectedDate: '', reference: '', notes: '', items: [] }
 
 const formatKes = (value: number) => `KSh ${value.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const toDateInput = (iso: string | null) => (iso ? iso.slice(0, 10) : '')
+const taxOptions: { label: string; rate: string; treatment: TaxTreatment }[] = [
+  { label: 'VAT (16%)', rate: '16', treatment: 'STANDARD' },
+  { label: 'Zero-rated', rate: '0', treatment: 'ZERO_RATED' },
+  { label: 'Exempt', rate: '0', treatment: 'EXEMPT' },
+]
+function productTaxDefaults(product: Product) {
+  const fallback = taxOptions[0]
+  const treatment = product.taxTreatment ?? fallback.treatment
+  return {
+    taxTreatment: treatment,
+    taxRate: product.taxRate != null ? String(Number(product.taxRate)) : treatment === 'STANDARD' ? fallback.rate : '0',
+  }
+}
 const todayInput = () => {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -177,10 +206,19 @@ export default function Purchases() {
   }, [products])
 
   const liveTotals = useMemo(() => {
-    const subtotal = form.items.reduce((sum, r) => sum + (Number(r.quantity) || 0) * (Number(r.unitCost) || 0), 0)
-    const taxAmount = subtotal * ((Number(form.taxRate) || 0) / 100)
-    return { subtotal, taxAmount, total: subtotal + taxAmount }
-  }, [form.items, form.taxRate])
+    const rows = form.items.map((r) => {
+      const qty = Number(r.quantity) || 0
+      const unitCost = Number(r.unitCost) || 0
+      const discount = Number(r.discountPerUnit) || 0
+      const lineTotal = qty * Math.max(0, unitCost - discount)
+      const rate = Number(r.taxRate) || 0
+      const taxAmount = r.taxTreatment === 'STANDARD' && rate > 0 ? lineTotal - lineTotal / (1 + rate / 100) : 0
+      return { lineTotal, taxAmount }
+    })
+    const total = rows.reduce((sum, r) => sum + r.lineTotal, 0)
+    const taxAmount = rows.reduce((sum, r) => sum + r.taxAmount, 0)
+    return { subtotal: total - taxAmount, taxAmount, total }
+  }, [form.items])
 
   const productMatches = useMemo(() => {
     const q = productQuery.trim().toLowerCase()
@@ -190,7 +228,20 @@ export default function Purchases() {
   }, [productQuery, products, form.items])
 
   function addProduct(p: Product) {
-    setForm((f) => (f.items.some((i) => i.productId === p.id) ? f : { ...f, items: [...f.items, { productId: p.id, quantity: '', unitCost: '', note: '' }] }))
+    const tax = productTaxDefaults(p)
+    setForm((f) => (f.items.some((i) => i.productId === p.id) ? f : {
+      ...f,
+      items: [...f.items, {
+        productId: p.id,
+        quantity: '',
+        unitCost: p.unitCost != null ? String(Number(p.unitCost)) : '',
+        sellingPrice: p.sellingPrice != null ? String(Number(p.sellingPrice)) : '',
+        discountPerUnit: '0',
+        taxRate: tax.taxRate,
+        taxTreatment: tax.taxTreatment,
+        note: '',
+      }],
+    }))
     setProductQuery('')
   }
 
@@ -211,9 +262,17 @@ export default function Purchases() {
       orderDate: toDateInput(purchase.orderDate),
       expectedDate: toDateInput(purchase.expectedDate),
       reference: purchase.reference ?? '',
-      taxRate: purchase.taxRate ?? '0',
       notes: purchase.notes ?? '',
-      items: purchase.items.map((i) => ({ productId: i.productId, quantity: String(Number(i.quantity)), unitCost: String(Number(i.unitCost)), note: i.note ?? '' })),
+      items: purchase.items.map((i) => ({
+        productId: i.productId,
+        quantity: String(Number(i.quantity)),
+        unitCost: String(Number(i.unitCost)),
+        sellingPrice: i.sellingPrice != null ? String(Number(i.sellingPrice)) : '',
+        discountPerUnit: String(Number(i.discountPerUnit)),
+        taxRate: String(Number(i.taxRate)),
+        taxTreatment: i.taxTreatment,
+        note: i.note ?? '',
+      })),
     })
     setFormError('')
     setShowForm(true)
@@ -228,7 +287,16 @@ export default function Purchases() {
     event.preventDefault()
     const items = form.items
       .filter((r) => r.productId && Number(r.quantity) > 0)
-      .map((r) => ({ productId: r.productId, quantity: Number(r.quantity), unitCost: Number(r.unitCost) || 0, note: r.note.trim() || undefined }))
+      .map((r) => ({
+        productId: r.productId,
+        quantity: Number(r.quantity),
+        unitCost: Number(r.unitCost) || 0,
+        sellingPrice: r.sellingPrice === '' ? undefined : Number(r.sellingPrice) || 0,
+        discountPerUnit: Number(r.discountPerUnit) || 0,
+        taxRate: Number(r.taxRate) || 0,
+        taxTreatment: r.taxTreatment,
+        note: r.note.trim() || undefined,
+      }))
     if (!form.supplierId) { setFormError('Choose a supplier'); return }
     if (!items.length) { setFormError('Add at least one item with a quantity'); return }
     setSaving(true)
@@ -241,7 +309,6 @@ export default function Purchases() {
         orderDate: form.orderDate || undefined,
         expectedDate: form.expectedDate || undefined,
         reference: form.reference.trim() || undefined,
-        taxRate: Number(form.taxRate) || 0,
         notes: form.notes.trim() || undefined,
         items,
       }
@@ -391,7 +458,7 @@ export default function Purchases() {
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm" onMouseDown={(e) => { if (e.target === e.currentTarget) setShowForm(false) }}>
-          <form onSubmit={savePurchase} className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-sm border bg-card p-6 shadow-2xl">
+          <form onSubmit={savePurchase} className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-sm border bg-card p-6 shadow-2xl">
             <div>
               <p className="text-sm font-semibold text-secondary">{editing ? 'Edit purchase' : 'New purchase'}</p>
               <h2 className="mt-1 font-display text-2xl font-semibold">{editing ? editing.purchaseNo : 'Raise a purchase order'}</h2>
@@ -413,7 +480,6 @@ export default function Purchases() {
               <Field label="Reference"><input placeholder="Supplier invoice / quote no." value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} className="input" /></Field>
               <Field label="Order Date"><input type="date" value={form.orderDate} onChange={(e) => setForm({ ...form, orderDate: e.target.value })} className="input" /></Field>
               <Field label="Expected Date"><input type="date" value={form.expectedDate} onChange={(e) => setForm({ ...form, expectedDate: e.target.value })} className="input" /></Field>
-              <Field label="Tax Rate (%)"><input type="number" min="0" max="100" step="0.01" value={form.taxRate} onChange={(e) => setForm({ ...form, taxRate: e.target.value })} className="input" /></Field>
             </FieldGroup>
 
             <div className="mt-6 border-t pt-5">
@@ -440,22 +506,34 @@ export default function Purchases() {
                 <p className="mt-3 rounded-sm border border-dashed p-4 text-center text-sm text-muted-foreground">No items yet — search above to add products.</p>
               ) : (
                 <div className="mt-3 space-y-2">
-                  <div className="grid grid-cols-[1fr_8rem_6rem_6.5rem_2rem] gap-2 px-1 text-xs font-medium text-muted-foreground">
-                    <span>Product</span><span>Qty</span><span>Unit cost</span><span className="text-right">Total</span><span />
+                  <div className="grid grid-cols-[1fr_8rem_6.5rem_6.5rem_6.5rem_8rem_6.5rem_2rem] gap-2 px-1 text-xs font-medium text-muted-foreground">
+                    <span>Product</span><span>Qty</span><span>Buying</span><span>Selling</span><span>Discount</span><span>Tax</span><span className="text-right">Total</span><span />
                   </div>
                   {form.items.map((row, index) => {
                     const product = productLabel(row.productId)
                     const packSize = Number(product?.packSize) || 0
                     const unitLabel = product?.packUnit?.name ?? product?.unit ?? ''
-                    const lineTotal = (Number(row.quantity) || 0) * (Number(row.unitCost) || 0)
+                    const lineTotal = (Number(row.quantity) || 0) * Math.max(0, (Number(row.unitCost) || 0) - (Number(row.discountPerUnit) || 0))
                     return (
-                      <div key={row.productId} className="grid grid-cols-[1fr_8rem_6rem_6.5rem_2rem] items-start gap-2">
+                      <div key={row.productId} className="grid grid-cols-[1fr_8rem_6.5rem_6.5rem_6.5rem_8rem_6.5rem_2rem] items-start gap-2 rounded-sm border p-2">
                         <div className="min-w-0 pt-2">
                           <p className="truncate text-sm font-medium">{product?.name ?? 'Unknown product'}</p>
                           {unitLabel && <p className="text-xs text-muted-foreground">per {unitLabel}</p>}
                         </div>
                         <PackQtyInput value={row.quantity} onChange={(v) => setRow(index, { quantity: v })} packSize={packSize} packLabel={product?.packLabel ?? ''} unitName={unitLabel} />
-                        <input type="number" min="0" step="0.01" placeholder="Unit cost" value={row.unitCost} onChange={(e) => setRow(index, { unitCost: e.target.value })} className="input" />
+                        <input type="number" min="0" step="0.01" placeholder="Buying" value={row.unitCost} onChange={(e) => setRow(index, { unitCost: e.target.value })} className="input" />
+                        <input type="number" min="0" step="0.01" placeholder="Selling" value={row.sellingPrice} onChange={(e) => setRow(index, { sellingPrice: e.target.value })} className="input" />
+                        <input type="number" min="0" step="0.01" placeholder="Discount" value={row.discountPerUnit} onChange={(e) => setRow(index, { discountPerUnit: e.target.value })} className="input" />
+                        <select
+                          value={`${row.taxTreatment}:${row.taxRate}`}
+                          onChange={(e) => {
+                            const [taxTreatment, taxRate] = e.target.value.split(':') as [TaxTreatment, string]
+                            setRow(index, { taxTreatment, taxRate })
+                          }}
+                          className="input"
+                        >
+                          {taxOptions.map((option) => <option key={`${option.treatment}:${option.rate}`} value={`${option.treatment}:${option.rate}`}>{option.label}</option>)}
+                        </select>
                         <span className="pt-2 text-right text-sm tabular-nums text-muted-foreground">{lineTotal ? formatKes(lineTotal) : '—'}</span>
                         <button type="button" onClick={() => removeRow(index)} title="Remove" className="rounded-sm p-1.5 pt-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><LuX className="size-4" /></button>
                       </div>
@@ -465,8 +543,8 @@ export default function Purchases() {
               )}
 
               <div className="mt-4 space-y-1 border-t pt-3 text-sm">
-                <div className="flex justify-between text-muted-foreground"><span>Subtotal</span><span className="tabular-nums">{formatKes(liveTotals.subtotal)}</span></div>
-                <div className="flex justify-between text-muted-foreground"><span>Tax ({Number(form.taxRate) || 0}%)</span><span className="tabular-nums">{formatKes(liveTotals.taxAmount)}</span></div>
+                <div className="flex justify-between text-muted-foreground"><span>Subtotal before tax</span><span className="tabular-nums">{formatKes(liveTotals.subtotal)}</span></div>
+                <div className="flex justify-between text-muted-foreground"><span>Tax</span><span className="tabular-nums">{formatKes(liveTotals.taxAmount)}</span></div>
                 <div className="flex justify-between font-semibold"><span>Total</span><span className="tabular-nums">{formatKes(liveTotals.total)}</span></div>
               </div>
             </div>
@@ -529,7 +607,7 @@ export default function Purchases() {
 
             <div className="mt-4 space-y-1 text-sm">
               <div className="flex justify-between text-muted-foreground"><span>Subtotal</span><span className="tabular-nums">{formatKes(Number(detail.subtotal))}</span></div>
-              <div className="flex justify-between text-muted-foreground"><span>Tax ({Number(detail.taxRate)}%)</span><span className="tabular-nums">{formatKes(Number(detail.taxAmount))}</span></div>
+              <div className="flex justify-between text-muted-foreground"><span>Tax</span><span className="tabular-nums">{formatKes(Number(detail.taxAmount))}</span></div>
               <div className="flex justify-between font-semibold"><span>Total</span><span className="tabular-nums">{formatKes(Number(detail.total))}</span></div>
             </div>
 
