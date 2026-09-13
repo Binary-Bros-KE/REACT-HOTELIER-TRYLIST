@@ -8,6 +8,7 @@ import { fetchTenantContext } from '@/store/tenantSlice'
 import { useToast } from '@/components/ui/Toast'
 import { getErrorMessage } from '@/lib/errors'
 import { resolveLogoUrl } from '@/lib/api'
+import PinInput from '@/components/ui/PinInput'
 
 const businessTypeLabel: Record<string, string> = {
   HOTEL: 'Hotel',
@@ -179,16 +180,7 @@ export default function Login() {
                 PIN
                 <span className="relative mt-1.5 block">
                   <LuLock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                  <input
-                    required
-                    type="password"
-                    inputMode="numeric"
-                    autoComplete="current-password"
-                    placeholder="Enter your PIN"
-                    value={pin}
-                    onChange={(e) => setPin(e.target.value)}
-                    className="input pl-9!"
-                  />
+                  <PinInput required placeholder="Enter your PIN" value={pin} onChange={setPin} className="input pl-9!" />
                 </span>
               </label>
 

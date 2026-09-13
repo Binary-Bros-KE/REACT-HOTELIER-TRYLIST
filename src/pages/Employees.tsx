@@ -17,6 +17,7 @@ import { api } from '@/lib/api'
 import Button from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
 import StatCard from '@/components/ui/StatCard'
+import PinInput from '@/components/ui/PinInput'
 
 const genders = ['MALE', 'FEMALE', 'OTHER'] as const
 const employmentTypes = ['FULL_TIME', 'PART_TIME', 'CASUAL', 'CONTRACT', 'INTERN'] as const
@@ -99,6 +100,7 @@ type EmployeeForm = {
   shaNumber: string
   employeeCode: string
   pin: string
+  confirmPin: string
   emergencyContactName: string
   emergencyContactPhone: string
 }
@@ -109,7 +111,7 @@ const emptyForm: EmployeeForm = {
   departmentId: '', jobTitle: '', employmentType: 'FULL_TIME', status: 'ACTIVE', dateHired: '', supervisorId: '', roleId: '', locationIds: [],
   salaryType: 'MONTHLY', salaryAmount: '', paymentMethod: 'BANK_TRANSFER', bankName: '', bankAccountNumber: '', mpesaNumber: '',
   kraPin: '', nssfNumber: '', shaNumber: '',
-  employeeCode: '', pin: '',
+  employeeCode: '', pin: '', confirmPin: '',
   emergencyContactName: '', emergencyContactPhone: '',
 }
 
@@ -123,10 +125,6 @@ const statusStyles: Record<Status, string> = {
 }
 
 const salarySuffix: Record<SalaryType, string> = { MONTHLY: '/mo', DAILY: '/day', HOURLY: '/hr' }
-
-function generateEmployeeCode() {
-  return `EMP-${Math.floor(1000 + Math.random() * 9000)}`
-}
 
 export default function Employees() {
   const toast = useToast()
@@ -190,7 +188,7 @@ export default function Employees() {
 
   function openCreate() {
     setEditing(null)
-    setForm({ ...emptyForm, employeeCode: generateEmployeeCode() })
+    setForm(emptyForm)
     setError('')
     setShowForm(true)
   }
@@ -226,6 +224,7 @@ export default function Employees() {
       shaNumber: employee.shaNumber ?? '',
       employeeCode: employee.employeeCode,
       pin: '',
+      confirmPin: '',
       emergencyContactName: employee.emergencyContactName ?? '',
       emergencyContactPhone: employee.emergencyContactPhone ?? '',
     })
@@ -235,11 +234,13 @@ export default function Employees() {
 
   async function saveEmployee(event: FormEvent) {
     event.preventDefault()
+    if (form.pin && form.pin !== form.confirmPin) { setError("PIN and confirmation don't match"); return }
     setSaving(true)
     setError('')
     setNotice('')
     try {
-      const payload = { ...form, ...(editing && !form.pin ? { pin: undefined } : {}) }
+      const { confirmPin: _confirmPin, ...rest } = form
+      const payload = { ...rest, ...(editing && !form.pin ? { pin: undefined } : {}) }
       await api(editing ? `/employees/${editing.id}` : '/employees', {
         method: editing ? 'PATCH' : 'POST',
         body: JSON.stringify(payload),
@@ -449,9 +450,9 @@ export default function Employees() {
                   {supervisorOptions.map((s) => <option key={s.id} value={s.id}>{s.firstName} {s.lastName}</option>)}
                 </select>
               </Field>
-              <Field label="Role">
-                <select value={form.roleId} onChange={(e) => setForm({ ...form, roleId: e.target.value })} className="input">
-                  <option value="">No role assigned</option>
+              <Field label="Role" required>
+                <select required value={form.roleId} onChange={(e) => setForm({ ...form, roleId: e.target.value })} className="input">
+                  <option value="" disabled>Select a role</option>
                   {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
                 </select>
               </Field>
@@ -505,13 +506,17 @@ export default function Employees() {
 
             <FieldGroup title="Till Login">
               <Field label="Employee Code" required>
-                <div className="flex gap-2">
-                  <input required placeholder="e.g. EMP-0007" value={form.employeeCode} onChange={(e) => setForm({ ...form, employeeCode: e.target.value })} className="input" />
-                  <button type="button" onClick={() => setForm({ ...form, employeeCode: generateEmployeeCode() })} className="shrink-0 rounded-sm border px-3 text-xs font-semibold hover:bg-muted">Generate</button>
-                </div>
+                <input required placeholder="e.g. EMP-001, or a name like SCOTT" value={form.employeeCode} onChange={(e) => setForm({ ...form, employeeCode: e.target.value })} className="input" />
               </Field>
+              <div />
               <Field label={editing ? 'New PIN (optional)' : 'Login PIN'} required={!editing}>
-                <input required={!editing} type="password" inputMode="numeric" minLength={4} maxLength={8} placeholder="e.g. 4821" value={form.pin} onChange={(e) => setForm({ ...form, pin: e.target.value })} className="input" />
+                <PinInput required={!editing} placeholder="e.g. 4821" value={form.pin} onChange={(v) => setForm({ ...form, pin: v })} className="input" />
+              </Field>
+              <Field label={editing ? 'Confirm New PIN' : 'Confirm PIN'} required={!editing || form.pin !== ''}>
+                <PinInput required={!editing || form.pin !== ''} placeholder="Re-enter the PIN" value={form.confirmPin} onChange={(v) => setForm({ ...form, confirmPin: v })} className="input" />
+                {form.pin && form.confirmPin && form.pin !== form.confirmPin && (
+                  <span className="mt-1 block text-xs text-destructive">Doesn't match the PIN above.</span>
+                )}
               </Field>
             </FieldGroup>
 
