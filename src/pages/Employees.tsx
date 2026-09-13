@@ -505,7 +505,7 @@ export default function Employees() {
 
             <FieldGroup title="Till Login">
               <Field label="Employee Code" required>
-                <input required placeholder="e.g. EMP-001, or a name like SCOTT" value={form.employeeCode} onChange={(e) => setForm({ ...form, employeeCode: e.target.value })} className="input" />
+                <input required placeholder="e.g. EMP-001" value={form.employeeCode} onChange={(e) => setForm({ ...form, employeeCode: e.target.value })} className="input" />
               </Field>
               <div />
               <Field label={editing ? 'New PIN (optional)' : 'Login PIN'} required={!editing}>
