@@ -1119,7 +1119,7 @@ export default function Dashboard() {
           Dashboard
         </h1>
         <p className="mt-1.5 text-sm text-muted-foreground">
-          {getGreeting()}, {firstName} &mdash; here&apos;s what&apos;s happening across your property today.
+          {getGreeting()}, {firstName}
         </p>
       </header>
 
