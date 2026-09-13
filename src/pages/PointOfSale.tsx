@@ -14,7 +14,16 @@ import ReceiptPreviewModal from '@/components/pos/ReceiptPreviewModal'
 import { type ReceiptOrder, type ReceiptProfile } from '@/components/pos/OrderReceipt'
 import { getThermalSettings, printReceipt } from '@/lib/thermalPrinter'
 
-type ApiVariant = { id: string; name: string; price: string | number; sku: string | null; availableQuantity: number | null }
+type StockProduct = { id: string; name: string; unit: string; packUnit: { id: string; name: string } | null }
+type ApiVariant = {
+  id: string
+  name: string
+  price: string | number
+  sku: string | null
+  stockQtyPerUnit: string | number | null
+  stockProduct: StockProduct | null
+  availableQuantity: number | null
+}
 type ApiCatalogAddon = {
   id: string
   name: string
@@ -50,7 +59,14 @@ type Addon = { id: string; name: string; price: number }
 // The flat add-on catalog — each add-on optionally tagged with a menu
 // category the POS picker filters on.
 type CatalogAddon = Addon & { categoryId: string | null; categoryName: string | null }
-type Variant = { id: string; name: string; price: number; availableQuantity: number | null }
+type Variant = {
+  id: string
+  name: string
+  price: number
+  stockQtyPerUnit: number | null
+  stockProduct: StockProduct | null
+  availableQuantity: number | null
+}
 type MenuItem = {
   id: string
   name: string
@@ -104,7 +120,14 @@ function normalizeMenuItem(raw: ApiMenuItem): MenuItem {
     category: raw.category ?? { id: '', name: 'Uncategorised' },
     // Tolerate a shape drift between a deployed API and this bundle — a
     // missing list should degrade, not crash the whole POS.
-    variants: (raw.variants ?? []).map((v) => ({ id: v.id, name: v.name, price: toNumber(v.price), availableQuantity: v.availableQuantity ?? null })),
+    variants: (raw.variants ?? []).map((v) => ({
+      id: v.id,
+      name: v.name,
+      price: toNumber(v.price),
+      stockQtyPerUnit: v.stockQtyPerUnit != null ? toNumber(v.stockQtyPerUnit) : null,
+      stockProduct: v.stockProduct ?? null,
+      availableQuantity: v.availableQuantity ?? null,
+    })),
     allowsAddons: raw.allowsAddons ?? false,
     tax: {
       rate: raw.taxRate != null ? toNumber(raw.taxRate) : 0,
@@ -133,6 +156,14 @@ const lineUnitPrice = (line: CartLine) => (line.variant?.price ?? line.item.pric
 const lineTotal = (line: CartLine) => lineUnitPrice(line) * line.quantity
 
 const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100
+
+const formatQty = (value: number) => value.toLocaleString('en-KE', { maximumFractionDigits: 3 })
+
+function variantConsumptionLabel(variant: Variant) {
+  if (!variant.stockProduct) return null
+  const unit = variant.stockProduct.packUnit?.name ?? variant.stockProduct.unit
+  return `${formatQty(variant.stockQtyPerUnit ?? 1)} ${unit} of ${variant.stockProduct.name}`
+}
 
 type TaxBucket = { key: string; label: string; net: number; tax: number; gross: number }
 
@@ -1099,15 +1130,25 @@ function CustomizeModal({ item, allAddons, initial, onClose, onSubmit }: {
                 Option <span className="text-[11px] font-medium uppercase tracking-wide text-accent">Choose 1</span>
               </legend>
               <div className="space-y-1.5">
-                {item.variants.map((v) => (
-                  <label key={v.id} className={cn('flex cursor-pointer items-center justify-between gap-3 rounded-sm border px-3 py-2.5 text-sm', variantId === v.id ? 'border-secondary bg-secondary/10 font-semibold' : 'hover:bg-muted')}>
-                    <span className="flex items-center gap-2.5">
-                      <input type="radio" name="variant" checked={variantId === v.id} onChange={() => setVariantId(v.id)} className="accent-secondary" />
-                      {v.name}
-                    </span>
-                    <span>{formatKes(v.price)}</span>
-                  </label>
-                ))}
+                {item.variants.map((v) => {
+                  const consumption = variantConsumptionLabel(v)
+                  return (
+                    <label key={v.id} className={cn('flex cursor-pointer items-start justify-between gap-3 rounded-sm border px-3 py-2.5 text-sm', variantId === v.id ? 'border-secondary bg-secondary/10 font-semibold' : 'hover:bg-muted')}>
+                      <span className="flex min-w-0 items-start gap-2.5">
+                        <input type="radio" name="variant" checked={variantId === v.id} onChange={() => setVariantId(v.id)} className="mt-0.5 accent-secondary" />
+                        <span className="min-w-0">
+                          <span className="block truncate">{v.name}</span>
+                          {consumption && (
+                            <span className="mt-0.5 block text-xs font-medium text-secondary">
+                              Consumes {consumption}
+                            </span>
+                          )}
+                        </span>
+                      </span>
+                      <span className="shrink-0">{formatKes(v.price)}</span>
+                    </label>
+                  )
+                })}
               </div>
             </fieldset>
           )}
