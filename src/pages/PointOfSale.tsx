@@ -966,8 +966,8 @@ export default function PointOfSale() {
                   {sentPulse ? <><LuCircleCheck className="size-4" /> {instantServe ? 'Served!' : 'Order sent!'}</>
                     : submitting ? <><LuLoaderCircle className="animate-spin" /> Sending…</>
                     : instantServe ? `Serve now · ${formatKes(financials.total)}`
-                    : sendsToCounter ? `Send to counter · ${formatKes(financials.total)}`
-                    : `Send order · ${formatKes(financials.total)}`}
+                    : sendsToCounter ? `Post to Counter · ${formatKes(financials.total)}`
+                    : `Post to Kitchen · ${formatKes(financials.total)}`}
                 </button>
               </div>
             </div>
