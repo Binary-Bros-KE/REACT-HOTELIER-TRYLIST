@@ -196,7 +196,7 @@ export const navigation: NavGroup[] = [
       { label: 'Daily Expenses', href: '/finance/expenses', icon: LuWallet, moduleKey: 'ACCOUNTING' },
       { label: 'Salaries', href: '/finance/salaries', icon: LuBanknote },
       { label: 'Transactions', href: '/finance/transactions', icon: LuArrowLeftRight },
-      { label: 'Approvals', href: '/finance/approvals', icon: LuCircleCheck },
+      { label: 'Approvals', href: '/sales/approvals', icon: LuCircleCheck, permission: 'POS_APPROVE_CANCELLATION' },
     ],
   },
   {
