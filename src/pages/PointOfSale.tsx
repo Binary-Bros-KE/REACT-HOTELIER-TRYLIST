@@ -14,7 +14,7 @@ import ReceiptPreviewModal from '@/components/pos/ReceiptPreviewModal'
 import { type ReceiptOrder, type ReceiptProfile } from '@/components/pos/OrderReceipt'
 import { getThermalSettings, printReceipt } from '@/lib/thermalPrinter'
 
-type ApiVariant = { id: string; name: string; price: string | number; sku: string | null }
+type ApiVariant = { id: string; name: string; price: string | number; sku: string | null; availableQuantity: number | null }
 type ApiCatalogAddon = {
   id: string
   name: string
@@ -38,6 +38,8 @@ type ApiMenuItem = {
   taxRate: string | number | null
   taxMode: TaxMode | null
   taxTreatment: TaxTreatment | null
+  // null = untracked (no product/recipe link) — always orderable, no pill.
+  availableQuantity: number | null
 }
 type RestaurantTable = { id: string; label: string; area: string | null; status: 'AVAILABLE' | 'OCCUPIED' | 'RESERVED' | 'OUT_OF_SERVICE' }
 type Location = { id: string; name: string; type: string | null; isActive: boolean; serveMode: 'KITCHEN' | 'COUNTER' | 'DIRECT' }
@@ -48,7 +50,7 @@ type Addon = { id: string; name: string; price: number }
 // The flat add-on catalog — each add-on optionally tagged with a menu
 // category the POS picker filters on.
 type CatalogAddon = Addon & { categoryId: string | null; categoryName: string | null }
-type Variant = { id: string; name: string; price: number }
+type Variant = { id: string; name: string; price: number; availableQuantity: number | null }
 type MenuItem = {
   id: string
   name: string
@@ -59,6 +61,7 @@ type MenuItem = {
   variants: Variant[]
   allowsAddons: boolean
   tax: LineTax
+  availableQuantity: number | null
 }
 // One configured line in the sale: an item, the chosen variant (size/option)
 // if any, and the flattened set of chosen add-ons. Keyed by a generated id so
@@ -101,13 +104,14 @@ function normalizeMenuItem(raw: ApiMenuItem): MenuItem {
     category: raw.category ?? { id: '', name: 'Uncategorised' },
     // Tolerate a shape drift between a deployed API and this bundle — a
     // missing list should degrade, not crash the whole POS.
-    variants: (raw.variants ?? []).map((v) => ({ id: v.id, name: v.name, price: toNumber(v.price) })),
+    variants: (raw.variants ?? []).map((v) => ({ id: v.id, name: v.name, price: toNumber(v.price), availableQuantity: v.availableQuantity ?? null })),
     allowsAddons: raw.allowsAddons ?? false,
     tax: {
       rate: raw.taxRate != null ? toNumber(raw.taxRate) : 0,
       mode: raw.taxMode ?? 'INCLUSIVE',
       treatment: raw.taxTreatment ?? 'STANDARD',
     },
+    availableQuantity: raw.availableQuantity ?? null,
   }
 }
 
@@ -767,13 +771,19 @@ export default function PointOfSale() {
                   {visibleItems.map((item) => {
                     const added = justAdded === item.id
                     const customize = needsCustomize(item, allAddons.length)
+                    const outOfStock = item.availableQuantity != null && item.availableQuantity <= 0
                     return (
-                      <button key={item.id} onClick={() => onItemClick(item)} className={cn('group relative flex flex-col overflow-hidden rounded-sm border bg-card p-3.5 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-accent/50 hover:shadow-xl sm:p-5', added ? 'border-[#f2921a] ring-2 ring-[#f2921a]/40' : 'border-border')}>
+                      <button key={item.id} onClick={() => onItemClick(item)} disabled={outOfStock} className={cn('group relative flex flex-col overflow-hidden rounded-sm border bg-card p-3.5 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-accent/50 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-sm sm:p-5', added ? 'border-[#f2921a] ring-2 ring-[#f2921a]/40' : outOfStock ? 'border-destructive/20 bg-destructive/5' : 'border-border')}>
                         <div className="flex items-start justify-between gap-2">
                           <span className={cn('flex size-9 shrink-0 items-center justify-center rounded-sm sm:size-11', item.temperature === 'HOT' ? 'bg-warning/15 text-warning' : item.temperature === 'COLD' ? 'bg-secondary/10 text-secondary' : 'bg-accent/10 text-accent')}><LuCoffee className="size-5" /></span>
                           <span className="max-w-[55%] truncate rounded-sm bg-muted px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{item.category.name}</span>
                         </div>
                         <h2 className="mt-3 line-clamp-2 text-sm font-semibold text-foreground sm:mt-5 sm:text-base">{item.name}</h2>
+                        {item.availableQuantity != null && (
+                          <span className={cn('mt-1.5 inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', outOfStock ? 'bg-destructive/15 text-destructive' : 'bg-success/15 text-success')}>
+                            {outOfStock ? 'Out of stock' : `${item.availableQuantity} available`}
+                          </span>
+                        )}
                         <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground sm:min-h-10">{item.description || item.category.name}</p>
 
                         <div className="mt-3 border-t pt-3 sm:mt-4 sm:pt-4">
@@ -781,7 +791,7 @@ export default function PointOfSale() {
                             <ul className="space-y-0.5 text-[11px] leading-tight">
                               {item.variants.slice(0, 4).map((v) => (
                                 <li key={v.id} className="flex items-baseline justify-between gap-2">
-                                  <span className="truncate text-muted-foreground">{v.name}</span>
+                                  <span className="truncate text-muted-foreground">{v.name}{v.availableQuantity != null && v.availableQuantity <= 0 ? ' (out)' : ''}</span>
                                   <span className="shrink-0 font-semibold text-foreground">{formatKes(v.price)}</span>
                                 </li>
                               ))}
@@ -796,7 +806,7 @@ export default function PointOfSale() {
                           )}
 
                           <span className={cn('mt-3 flex w-full items-center justify-center gap-1.5 rounded-sm py-2 text-xs font-bold uppercase tracking-wide shadow-md transition group-hover:brightness-95', added ? 'bg-[#f2921a] text-white' : 'bg-accent text-accent-foreground')}>
-                            {added ? <><LuCheck className="size-4" /> Added</> : customize ? <><LuSlidersHorizontal className="size-4" /> Options</> : <><LuPlus className="size-4" /> Add</>}
+                            {added ? <><LuCheck className="size-4" /> Added</> : outOfStock ? 'Out of stock' : customize ? <><LuSlidersHorizontal className="size-4" /> Options</> : <><LuPlus className="size-4" /> Add</>}
                           </span>
                         </div>
                       </button>

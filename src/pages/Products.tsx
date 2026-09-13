@@ -23,11 +23,6 @@ import StatCard from '@/components/ui/StatCard'
 import UnitsOfMeasureModal from '@/components/UnitsOfMeasureModal'
 import PackQtyInput, { packAndUnit } from '@/components/ui/PackQtyInput'
 
-const UNITS_OF_MEASURE = [
-  'Each', 'Pieces', 'Kg', 'Grams', 'Litres', 'Millilitres', 'Box', 'Carton',
-  'Pack', 'Dozen', 'Roll', 'Bottle', 'Can', 'Bag', 'Set', 'Pair', 'Meter',
-] as const
-
 type Category = { id: string; name: string; level: number; parentId: string | null }
 type Location = { id: string; name: string; type?: string }
 type StockByLocation = { locationId: string; locationName: string; quantity: string }
@@ -89,7 +84,7 @@ type ProductForm = {
   barcode: string
   brand: string
   description: string
-  unit: (typeof UNITS_OF_MEASURE)[number]
+  unit: string
   isPerishable: boolean
   shelfLifeDays: string
   packLabel: string
@@ -107,7 +102,7 @@ type ProductForm = {
 }
 const emptyForm: ProductForm = {
   categoryId: '', name: '', sku: '', barcode: '', brand: '', description: '',
-  unit: 'Each', isPerishable: false, shelfLifeDays: '',
+  unit: '', isPerishable: false, shelfLifeDays: '',
   packLabel: '', packSize: '', packUnitId: '',
   openingStock: '0', locationId: '', reorderLevel: '0', maxStockLevel: '', unitCost: '', sellsDirectly: false, sellingPrice: '', preferredSupplier: '',
   isActive: true,
@@ -207,7 +202,7 @@ export default function Products() {
       barcode: product.barcode ?? '',
       brand: product.brand ?? '',
       description: product.description ?? '',
-      unit: product.unit as (typeof UNITS_OF_MEASURE)[number],
+      unit: product.unit,
       isPerishable: product.isPerishable,
       shelfLifeDays: product.shelfLifeDays?.toString() ?? '',
       packLabel: product.packLabel ?? '',
@@ -494,8 +489,9 @@ export default function Products() {
 
             <FieldGroup title="Classification">
               <Field label="Unit of Measure" required>
-                <select required className="input" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value as ProductForm['unit'] })}>
-                  {UNITS_OF_MEASURE.map((u) => <option key={u} value={u}>{u}</option>)}
+                <select required className="input" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })}>
+                  <option value="" disabled>Select a unit of measure…</option>
+                  {units.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}
                 </select>
               </Field>
               <Field label="Shelf Life (days)"><input type="number" min="0" placeholder="e.g. 180" value={form.shelfLifeDays} onChange={(e) => setForm({ ...form, shelfLifeDays: e.target.value })} className="input" /></Field>

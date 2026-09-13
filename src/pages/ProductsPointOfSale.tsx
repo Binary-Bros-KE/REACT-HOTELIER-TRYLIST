@@ -8,6 +8,7 @@ import { useAppSelector } from '@/store/hooks'
 import { useWorkingLocation } from '@/lib/useWorkingLocation'
 import { cn } from '@/lib/utils'
 import RetailCheckoutModal, { type CreatedOrder, type PaymentMethod } from '@/components/pos/RetailCheckoutModal'
+import { packAndUnit } from '@/components/ui/PackQtyInput'
 
 type ApiProduct = {
   id: string
@@ -16,6 +17,9 @@ type ApiProduct = {
   sellingPrice: string | number
   unit: string
   availableQuantity: string | number
+  packSize: string | number | null
+  packLabel: string | null
+  packUnit: { id: string; name: string } | null
   category: { id: string; name: string } | null
 }
 type RestaurantLocation = { id: string; name: string; type: string | null; isActive: boolean }
@@ -207,20 +211,24 @@ export default function ProductsPointOfSale() {
           {loading ? (
             <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><LuLoaderCircle className="animate-spin" /> Loading products…</div>
           ) : visibleItems.length === 0 ? (
-            <div className="rounded-sm border border-dashed p-10 text-center text-sm text-muted-foreground">No sellable products with stock at this location.</div>
+            <div className="rounded-sm border border-dashed p-10 text-center text-sm text-muted-foreground">No sellable products set up for this location yet.</div>
           ) : (
             <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-3">
               {visibleItems.map((item) => {
                 const inCart = cart.find((c) => c.id === item.id)?.quantity ?? 0
-                const soldOut = inCart >= item.availableQuantity
+                const remaining = item.availableQuantity - inCart
+                const soldOut = remaining <= 0
+                const stockLabel = packAndUnit(Math.max(0, remaining), Number(item.packSize) || 0, item.packLabel ?? '', item.packUnit?.name ?? item.unit)
                 return (
-                  <button key={item.id} onClick={() => addItem(item)} disabled={soldOut} className={cn('group relative flex flex-col overflow-hidden rounded-sm border bg-card p-3.5 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-accent/50 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-sm sm:p-5', justAdded === item.id ? 'border-[#f2921a] ring-2 ring-[#f2921a]/40' : 'border-border')}>
+                  <button key={item.id} onClick={() => addItem(item)} disabled={soldOut} className={cn('group relative flex flex-col overflow-hidden rounded-sm border bg-card p-3.5 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-accent/50 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-sm sm:p-5', justAdded === item.id ? 'border-[#f2921a] ring-2 ring-[#f2921a]/40' : soldOut ? 'border-destructive/20 bg-destructive/5' : 'border-border')}>
                     <div className="flex items-start justify-between gap-2">
                       <span className="flex size-9 shrink-0 items-center justify-center rounded-sm bg-accent/10 text-accent sm:size-11"><LuPackage className="size-5" /></span>
                       <span className="max-w-[55%] truncate rounded-sm bg-muted px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{item.category?.name ?? 'Uncategorized'}</span>
                     </div>
                     <h2 className="mt-3 line-clamp-2 text-sm font-semibold text-foreground sm:mt-5 sm:text-base">{item.name}</h2>
-                    <p className="mt-1 text-xs text-muted-foreground">{item.availableQuantity - inCart} {item.unit} left</p>
+                    <span className={cn('mt-1.5 inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', soldOut ? 'bg-destructive/15 text-destructive' : 'bg-success/15 text-success')}>
+                      {soldOut ? 'Out of stock' : `${stockLabel} left`}
+                    </span>
                     <div className="mt-3 border-t pt-3 sm:mt-4 sm:pt-4">
                       <span className="text-base font-bold text-foreground sm:text-lg">{formatKes(item.price)}</span>
                       <span className={cn('mt-3 flex w-full items-center justify-center gap-1.5 rounded-sm py-2 text-xs font-bold uppercase tracking-wide shadow-md transition group-hover:brightness-95', justAdded === item.id ? 'bg-[#f2921a] text-white' : 'bg-accent text-accent-foreground')}>
