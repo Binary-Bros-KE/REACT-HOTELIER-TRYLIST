@@ -23,6 +23,7 @@ type ApiVariant = {
   stockQtyPerUnit: string | number | null
   stockProduct: StockProduct | null
   availableQuantity: number | null
+  availabilityUnitLabel: string | null
 }
 type ApiCatalogAddon = {
   id: string
@@ -49,6 +50,7 @@ type ApiMenuItem = {
   taxTreatment: TaxTreatment | null
   // null = untracked (no product/recipe link) — always orderable, no pill.
   availableQuantity: number | null
+  availabilityUnitLabel: string | null
 }
 type RestaurantTable = { id: string; label: string; area: string | null; status: 'AVAILABLE' | 'OCCUPIED' | 'RESERVED' | 'OUT_OF_SERVICE' }
 type Location = { id: string; name: string; type: string | null; isActive: boolean; serveMode: 'KITCHEN' | 'COUNTER' | 'DIRECT' }
@@ -66,6 +68,7 @@ type Variant = {
   stockQtyPerUnit: number | null
   stockProduct: StockProduct | null
   availableQuantity: number | null
+  availabilityUnitLabel: string | null
 }
 type MenuItem = {
   id: string
@@ -78,6 +81,7 @@ type MenuItem = {
   allowsAddons: boolean
   tax: LineTax
   availableQuantity: number | null
+  availabilityUnitLabel: string | null
 }
 // One configured line in the sale: an item, the chosen variant (size/option)
 // if any, and the flattened set of chosen add-ons. Keyed by a generated id so
@@ -127,6 +131,7 @@ function normalizeMenuItem(raw: ApiMenuItem): MenuItem {
       stockQtyPerUnit: v.stockQtyPerUnit != null ? toNumber(v.stockQtyPerUnit) : null,
       stockProduct: v.stockProduct ?? null,
       availableQuantity: v.availableQuantity ?? null,
+      availabilityUnitLabel: v.availabilityUnitLabel ?? null,
     })),
     allowsAddons: raw.allowsAddons ?? false,
     tax: {
@@ -135,6 +140,7 @@ function normalizeMenuItem(raw: ApiMenuItem): MenuItem {
       treatment: raw.taxTreatment ?? 'STANDARD',
     },
     availableQuantity: raw.availableQuantity ?? null,
+    availabilityUnitLabel: raw.availabilityUnitLabel ?? null,
   }
 }
 
@@ -158,6 +164,10 @@ const lineTotal = (line: CartLine) => lineUnitPrice(line) * line.quantity
 const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100
 
 const formatQty = (value: number) => value.toLocaleString('en-KE', { maximumFractionDigits: 3 })
+
+function availabilityLabel(quantity: number, unitLabel: string | null) {
+  return unitLabel ? `${formatQty(quantity)} ${unitLabel}` : `${formatQty(quantity)} available`
+}
 
 function variantConsumptionLabel(variant: Variant) {
   if (!variant.stockProduct) return null
@@ -812,7 +822,7 @@ export default function PointOfSale() {
                         <h2 className="mt-3 line-clamp-2 text-sm font-semibold text-foreground sm:mt-5 sm:text-base">{item.name}</h2>
                         {item.availableQuantity != null && (
                           <span className={cn('mt-1.5 inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', outOfStock ? 'bg-destructive/15 text-destructive' : 'bg-success/15 text-success')}>
-                            {outOfStock ? 'Out of stock' : `${item.availableQuantity} available`}
+                            {outOfStock ? 'Out of stock' : availabilityLabel(item.availableQuantity, item.availabilityUnitLabel)}
                           </span>
                         )}
                         <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground sm:min-h-10">{item.description || item.category.name}</p>
@@ -822,7 +832,10 @@ export default function PointOfSale() {
                             <ul className="space-y-0.5 text-[11px] leading-tight">
                               {item.variants.slice(0, 4).map((v) => (
                                 <li key={v.id} className="flex items-baseline justify-between gap-2">
-                                  <span className="truncate text-muted-foreground">{v.name}{v.availableQuantity != null && v.availableQuantity <= 0 ? ' (out)' : ''}</span>
+                                  <span className="truncate text-muted-foreground">
+                                    {v.name}
+                                    {v.availableQuantity != null && (v.availableQuantity <= 0 ? ' (out)' : ` (${availabilityLabel(v.availableQuantity, v.availabilityUnitLabel)})`)}
+                                  </span>
                                   <span className="shrink-0 font-semibold text-foreground">{formatKes(v.price)}</span>
                                 </li>
                               ))}
