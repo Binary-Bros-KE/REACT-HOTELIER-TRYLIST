@@ -5,13 +5,15 @@ import Button from '@/components/ui/Button'
 import StatCard from '@/components/ui/StatCard'
 import { useToast } from '@/components/ui/Toast'
 import type { DocProfile } from '@/components/documents/pdf'
+import PackQtyInput, { packAndUnit } from '@/components/ui/PackQtyInput'
 
 const DocumentViewer = lazy(() => import('@/components/documents/DocumentViewer'))
 
 type Location = { id: string; name: string; type: string | null }
 type Employee = { id: string; firstName: string; lastName: string }
 type StockByLocation = { locationId: string; locationName: string; quantity: string }
-type Product = { id: string; name: string; unit: string; sku: string | null; stockByLocation: StockByLocation[] }
+type StockProduct = { id: string; name: string; unit: string; sku: string | null; packSize: string | null; packLabel: string | null; packUnit: { id: string; name: string } | null }
+type Product = StockProduct & { stockByLocation: StockByLocation[] }
 type TransferItem = {
   id: string
   quantity: string
@@ -19,7 +21,7 @@ type TransferItem = {
   fromQtyAfter: string
   toQtyBefore: string
   toQtyAfter: string
-  product: { id: string; name: string; unit: string; sku: string | null }
+  product: StockProduct
 }
 type StockTransfer = {
   id: string
@@ -198,19 +200,24 @@ export default function InventoryWorkspace() {
                   </tr>
                 </thead>
                 <tbody>
-                  {detail.items.map((i) => (
-                    <tr key={i.id} className="border-t">
-                      <td className="px-4 py-2">
-                        <p className="font-medium">{i.product.name}</p>
-                        {i.product.sku && <p className="text-xs text-muted-foreground">{i.product.sku}</p>}
-                      </td>
-                      <td className="px-4 py-2 text-right tabular-nums font-semibold">{Number(i.quantity).toLocaleString()} {i.product.unit}</td>
-                      <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">{Number(i.fromQtyBefore).toLocaleString()}</td>
-                      <td className="px-4 py-2 text-right tabular-nums">{Number(i.fromQtyAfter).toLocaleString()}</td>
-                      <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">{Number(i.toQtyBefore).toLocaleString()}</td>
-                      <td className="px-4 py-2 text-right tabular-nums">{Number(i.toQtyAfter).toLocaleString()}</td>
-                    </tr>
-                  ))}
+                  {detail.items.map((i) => {
+                    const packSize = Number(i.product.packSize) || 0
+                    const unitLabel = i.product.packUnit?.name ?? i.product.unit
+                    const fmt = (v: string) => packAndUnit(Number(v), packSize, i.product.packLabel ?? '', unitLabel)
+                    return (
+                      <tr key={i.id} className="border-t">
+                        <td className="px-4 py-2">
+                          <p className="font-medium">{i.product.name}</p>
+                          {i.product.sku && <p className="text-xs text-muted-foreground">{i.product.sku}</p>}
+                        </td>
+                        <td className="px-4 py-2 text-right tabular-nums font-semibold">{fmt(i.quantity)}</td>
+                        <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">{fmt(i.fromQtyBefore)}</td>
+                        <td className="px-4 py-2 text-right tabular-nums">{fmt(i.fromQtyAfter)}</td>
+                        <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">{fmt(i.toQtyBefore)}</td>
+                        <td className="px-4 py-2 text-right tabular-nums">{fmt(i.toQtyAfter)}</td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
@@ -234,7 +241,7 @@ export default function InventoryWorkspace() {
   )
 }
 
-type BatchItem = { productId: string; name: string; unit: string; quantity: string; maxAvailable: number }
+type BatchItem = { productId: string; name: string; unit: string; packSize: number; packLabel: string; quantity: string; maxAvailable: number }
 
 function DistributeModal({ locations, onClose, onRecorded }: { locations: Location[]; onClose: () => void; onRecorded: () => void }) {
   const toast = useToast()
@@ -262,7 +269,15 @@ function DistributeModal({ locations, onClose, onRecorded }: { locations: Locati
     setBatch((current) => {
       const existing = current.find((b) => b.productId === product.id)
       if (!quantity || Number(quantity) <= 0) return current.filter((b) => b.productId !== product.id)
-      const item: BatchItem = { productId: product.id, name: product.name, unit: product.unit, quantity, maxAvailable: availableAt(product) }
+      const item: BatchItem = {
+        productId: product.id,
+        name: product.name,
+        unit: product.packUnit?.name ?? product.unit,
+        packSize: Number(product.packSize) || 0,
+        packLabel: product.packLabel ?? '',
+        quantity,
+        maxAvailable: availableAt(product),
+      }
       return existing ? current.map((b) => (b.productId === product.id ? item : b)) : [...current, item]
     })
   }
@@ -344,16 +359,20 @@ function DistributeModal({ locations, onClose, onRecorded }: { locations: Locati
                       {visibleProducts.map((product) => {
                         const max = availableAt(product)
                         const staged = batch.find((b) => b.productId === product.id)
+                        const packSize = Number(product.packSize) || 0
+                        const unitLabel = product.packUnit?.name ?? product.unit
                         return (
                           <tr key={product.id} className="border-t bg-card">
                             <td className="px-4 py-2.5 font-medium">{product.name}</td>
-                            <td className="px-4 py-2.5 text-muted-foreground">{max.toLocaleString()} {product.unit}</td>
+                            <td className="px-4 py-2.5 text-muted-foreground">{packAndUnit(max, packSize, product.packLabel ?? '', unitLabel)}</td>
                             <td className="px-4 py-2.5">
-                              <input
-                                type="number" min="0" max={max} step="0.001"
+                              <PackQtyInput
                                 value={staged?.quantity ?? ''}
-                                onChange={(e) => setBatchQuantity(product, e.target.value)}
-                                placeholder="0"
+                                onChange={(v) => setBatchQuantity(product, v)}
+                                packSize={packSize}
+                                packLabel={product.packLabel ?? ''}
+                                unitName={unitLabel}
+                                max={max}
                                 className="w-24 rounded-sm border bg-background px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring"
                               />
                             </td>
@@ -382,7 +401,7 @@ function DistributeModal({ locations, onClose, onRecorded }: { locations: Locati
                   <div key={item.productId} className="flex items-center justify-between rounded-sm bg-card px-3 py-2 text-sm shadow-sm">
                     <span className="truncate">{item.name}</span>
                     <div className="flex items-center gap-2">
-                      <span className="font-semibold">{item.quantity} {item.unit}</span>
+                      <span className="font-semibold">{packAndUnit(Number(item.quantity), item.packSize, item.packLabel, item.unit)}</span>
                       <button onClick={() => removeFromBatch(item.productId)} className="text-muted-foreground hover:text-destructive"><LuTrash2 className="size-3.5" /></button>
                     </div>
                   </div>

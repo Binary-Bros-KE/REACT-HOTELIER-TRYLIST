@@ -21,6 +21,7 @@ import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
 import StatCard from '@/components/ui/StatCard'
 import UnitsOfMeasureModal from '@/components/UnitsOfMeasureModal'
+import PackQtyInput, { packAndUnit } from '@/components/ui/PackQtyInput'
 
 const UNITS_OF_MEASURE = [
   'Each', 'Pieces', 'Kg', 'Grams', 'Litres', 'Millilitres', 'Box', 'Carton',
@@ -110,20 +111,11 @@ const emptyForm: ProductForm = {
   openingStock: '0', locationId: '', reorderLevel: '0', maxStockLevel: '', unitCost: '', sellingPrice: '', preferredSupplier: '',
   isActive: true,
 }
-const emptyTransfer = { productId: '', productName: '', fromLocationId: '', toLocationId: '', quantity: '', stockByLocation: [] as StockByLocation[] }
+const emptyTransfer = { productId: '', productName: '', fromLocationId: '', toLocationId: '', quantity: '', stockByLocation: [] as StockByLocation[], packSize: 0, packLabel: '', unitName: '' }
 const emptyAdjust = {
   productId: '', productName: '', type: 'PURCHASE' as ManualMovementType,
   locationId: '', quantity: '', unitCost: '', note: '', stockByLocation: [] as StockByLocation[],
-}
-
-// "7,500 ml (10 bottles)" when pack-tracked, else "7,500 Each".
-function packAndUnit(qty: number, packSize: number, packLabel: string, unitName: string): string {
-  const base = `${qty.toLocaleString()} ${unitName}`
-  if (packSize > 0) {
-    const packs = +(qty / packSize).toFixed(2)
-    return `${base} (${packs.toLocaleString()} ${packLabel ? (packs === 1 ? packLabel : `${packLabel}s`) : 'packs'})`
-  }
-  return base
+  packSize: 0, packLabel: '', unitName: '',
 }
 
 function SetupMessage() {
@@ -280,6 +272,9 @@ export default function Products() {
       toLocationId: '',
       quantity: '',
       stockByLocation: product.stockByLocation,
+      packSize: Number(product.packSize) || 0,
+      packLabel: product.packLabel ?? '',
+      unitName: product.packUnit?.name ?? product.unit,
     })
     setTransferError('')
     setShowTransfer(true)
@@ -313,6 +308,9 @@ export default function Products() {
       unitCost: product.unitCost ?? '',
       note: '',
       stockByLocation: product.stockByLocation,
+      packSize: Number(product.packSize) || 0,
+      packLabel: product.packLabel ?? '',
+      unitName: product.packUnit?.name ?? product.unit,
     })
     setAdjustError('')
     setShowAdjust(true)
@@ -428,6 +426,8 @@ export default function Products() {
               <tbody>
                 {products.map((product) => {
                   const low = Number(product.totalQuantity) <= Number(product.reorderLevel)
+                  const productPackSize = Number(product.packSize) || 0
+                  const unitLabel = product.packUnit?.name ?? product.unit
                   return (
                     <tr key={product.id} className="border-t transition hover:bg-muted/30">
                       <td className="px-5 py-4">
@@ -439,13 +439,13 @@ export default function Products() {
                         {product.stockByLocation.length === 0 ? '—' : (
                           <div className="flex flex-wrap gap-1">
                             {product.stockByLocation.map((s) => (
-                              <span key={s.locationId} className="rounded-full bg-muted px-2 py-0.5 text-xs">{s.locationName}: {Number(s.quantity).toLocaleString()}</span>
+                              <span key={s.locationId} className="rounded-full bg-muted px-2 py-0.5 text-xs">{s.locationName}: {packAndUnit(Number(s.quantity), productPackSize, product.packLabel ?? '', unitLabel)}</span>
                             ))}
                           </div>
                         )}
                       </td>
                       <td className="px-5 py-4">
-                        <span className={cn('font-semibold', low ? 'text-warning' : 'text-foreground')}>{Number(product.totalQuantity).toLocaleString()} {product.unit}</span>
+                        <span className={cn('font-semibold', low ? 'text-warning' : 'text-foreground')}>{packAndUnit(Number(product.totalQuantity), productPackSize, product.packLabel ?? '', unitLabel)}</span>
                         {low && <span className="ml-2 rounded-full bg-warning/10 px-2 py-0.5 text-xs font-semibold text-warning">Low</span>}
                         {!product.isActive && <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">Inactive</span>}
                       </td>
@@ -534,19 +534,14 @@ export default function Products() {
               ) : (
                 <>
                   <Field label="Opening Stock" required>
-                    <input required type="number" min="0" step="0.001" value={form.openingStock} onChange={(e) => setForm({ ...form, openingStock: e.target.value })} className="input" />
-                    {packSizeNum > 0 && (
-                      <div className="mt-1.5 flex items-center gap-2 text-xs text-muted-foreground">
-                        <span>{units.find((u) => u.id === form.packUnitId)?.name ?? form.unit} — or enter</span>
-                        <input
-                          type="number" min="0" step="0.01"
-                          className="input h-8 w-24 text-xs"
-                          value={form.openingStock ? String(+(Number(form.openingStock) / packSizeNum).toFixed(3)) : ''}
-                          onChange={(e) => setForm({ ...form, openingStock: e.target.value ? String(+(Number(e.target.value) * packSizeNum).toFixed(3)) : '0' })}
-                        />
-                        <span>{form.packLabel ? `${form.packLabel}s` : 'packs'}</span>
-                      </div>
-                    )}
+                    <PackQtyInput
+                      required
+                      value={form.openingStock}
+                      onChange={(v) => setForm({ ...form, openingStock: v })}
+                      packSize={packSizeNum}
+                      packLabel={form.packLabel}
+                      unitName={units.find((u) => u.id === form.packUnitId)?.name ?? form.unit}
+                    />
                   </Field>
                   {Number(form.openingStock) > 0 && (
                     <Field label="Received At" required={locations.length !== 1}>
@@ -608,7 +603,7 @@ export default function Products() {
               <p className="text-sm font-semibold text-secondary">Transfer stock</p>
               <h2 className="mt-1 font-display text-2xl font-semibold">{transfer.productName}</h2>
               <p className="mt-1 text-xs text-muted-foreground">
-                {transfer.stockByLocation.length === 0 ? 'No stock recorded yet' : transfer.stockByLocation.map((s) => `${s.locationName}: ${Number(s.quantity).toLocaleString()}`).join(' · ')}
+                {transfer.stockByLocation.length === 0 ? 'No stock recorded yet' : transfer.stockByLocation.map((s) => `${s.locationName}: ${packAndUnit(Number(s.quantity), transfer.packSize, transfer.packLabel, transfer.unitName)}`).join(' · ')}
               </p>
             </div>
 
@@ -635,7 +630,15 @@ export default function Products() {
                 </Field>
               </div>
               <Field label="Quantity" required>
-                <input required autoFocus type="number" min="0" step="0.001" value={transfer.quantity} onChange={(e) => setTransfer({ ...transfer, quantity: e.target.value })} className="input" />
+                <PackQtyInput
+                  required
+                  autoFocus
+                  value={transfer.quantity}
+                  onChange={(v) => setTransfer({ ...transfer, quantity: v })}
+                  packSize={transfer.packSize}
+                  packLabel={transfer.packLabel}
+                  unitName={transfer.unitName}
+                />
               </Field>
             </div>
 
@@ -657,7 +660,7 @@ export default function Products() {
               <p className="text-sm font-semibold text-secondary">Add or remove stock</p>
               <h2 className="mt-1 font-display text-2xl font-semibold">{adjust.productName}</h2>
               <p className="mt-1 text-xs text-muted-foreground">
-                {adjust.stockByLocation.length === 0 ? 'No stock recorded yet' : adjust.stockByLocation.map((s) => `${s.locationName}: ${Number(s.quantity).toLocaleString()}`).join(' · ')}
+                {adjust.stockByLocation.length === 0 ? 'No stock recorded yet' : adjust.stockByLocation.map((s) => `${s.locationName}: ${packAndUnit(Number(s.quantity), adjust.packSize, adjust.packLabel, adjust.unitName)}`).join(' · ')}
               </p>
             </div>
 
@@ -683,12 +686,15 @@ export default function Products() {
               </Field>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Quantity" required>
-                  <input
-                    required autoFocus type="number" step="0.001"
-                    min={adjust.type === 'ADJUSTMENT' ? undefined : '0'}
+                  <PackQtyInput
+                    required
+                    autoFocus
+                    allowNegative={adjust.type === 'ADJUSTMENT'}
                     value={adjust.quantity}
-                    onChange={(e) => setAdjust({ ...adjust, quantity: e.target.value })}
-                    className="input"
+                    onChange={(v) => setAdjust({ ...adjust, quantity: v })}
+                    packSize={adjust.packSize}
+                    packLabel={adjust.packLabel}
+                    unitName={adjust.unitName}
                   />
                 </Field>
                 <Field label="Unit cost (KSh)"><input type="number" min="0" step="0.01" placeholder="Optional" value={adjust.unitCost} onChange={(e) => setAdjust({ ...adjust, unitCost: e.target.value })} className="input" /></Field>

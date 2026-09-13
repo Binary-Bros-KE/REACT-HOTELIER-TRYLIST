@@ -21,6 +21,7 @@ import { useToast } from '@/components/ui/Toast'
 import StatCard from '@/components/ui/StatCard'
 import { cn } from '@/lib/utils'
 import type { DocProfile } from '@/components/documents/pdf'
+import PackQtyInput, { packAndUnit } from '@/components/ui/PackQtyInput'
 
 const DocumentViewer = lazy(() => import('@/components/documents/DocumentViewer'))
 
@@ -46,6 +47,7 @@ type Supplier = { id: string; name: string }
 type Product = { id: string; name: string; unit: string }
 type Employee = { id: string; firstName: string; lastName: string }
 type Location = { id: string; name: string; type: string | null }
+type StockProduct = { id: string; name: string; unit: string; packSize: string | null; packLabel: string | null; packUnit: { id: string; name: string } | null }
 type PurchaseItem = {
   id: string
   productId: string
@@ -54,9 +56,9 @@ type PurchaseItem = {
   lineTotal: string
   receivedQuantity: string
   note: string | null
-  product: { id: string; name: string; unit: string }
+  product: StockProduct
 }
-type GoodsReceiptItem = { id: string; productId: string; quantity: string; unitCost: string; note: string | null; product: { id: string; name: string; unit: string } }
+type GoodsReceiptItem = { id: string; productId: string; quantity: string; unitCost: string; note: string | null; product: StockProduct }
 type GoodsReceipt = {
   id: string
   receiptNo: string
@@ -505,12 +507,14 @@ export default function Purchases() {
                   {detail.items.map((i) => {
                     const received = Number(i.receivedQuantity)
                     const ordered = Number(i.quantity)
+                    const packSize = Number(i.product.packSize) || 0
+                    const unitLabel = i.product.packUnit?.name ?? i.product.unit
                     return (
                       <tr key={i.id} className="border-t">
                         <td className="px-4 py-2">{i.product.name}</td>
-                        <td className="px-4 py-2 text-right tabular-nums">{ordered} {i.product.unit}</td>
+                        <td className="px-4 py-2 text-right tabular-nums">{packAndUnit(ordered, packSize, i.product.packLabel ?? '', unitLabel)}</td>
                         <td className="px-4 py-2 text-right tabular-nums">
-                          <span className={received >= ordered ? 'text-success' : received > 0 ? 'text-warning' : 'text-muted-foreground'}>{received}</span>
+                          <span className={received >= ordered ? 'text-success' : received > 0 ? 'text-warning' : 'text-muted-foreground'}>{packAndUnit(received, packSize, i.product.packLabel ?? '', unitLabel)}</span>
                         </td>
                         <td className="px-4 py-2 text-right tabular-nums">{formatKes(Number(i.unitCost))}</td>
                         <td className="px-4 py-2 text-right tabular-nums">{formatKes(Number(i.lineTotal))}</td>
@@ -541,7 +545,7 @@ export default function Purchases() {
                       </div>
                       <ul className="mt-1.5 space-y-0.5 text-xs text-muted-foreground">
                         {r.items.map((it) => (
-                          <li key={it.id}>{Number(it.quantity)} {it.product.unit} {it.product.name} @ {formatKes(Number(it.unitCost))}</li>
+                          <li key={it.id}>{packAndUnit(Number(it.quantity), Number(it.product.packSize) || 0, it.product.packLabel ?? '', it.product.packUnit?.name ?? it.product.unit)} {it.product.name} @ {formatKes(Number(it.unitCost))}</li>
                         ))}
                       </ul>
                       {r.note && <p className="mt-1.5 text-xs italic text-muted-foreground">{r.note}</p>}
@@ -598,7 +602,7 @@ export default function Purchases() {
   )
 }
 
-type ReceiveLine = { purchaseItemId: string; productName: string; unit: string; remaining: number; quantity: string; unitCost: string }
+type ReceiveLine = { purchaseItemId: string; productName: string; unit: string; packSize: number; packLabel: string; remaining: number; quantity: string; unitCost: string }
 
 function ReceiveGoodsModal({ purchase, locations, onClose, onReceived }: {
   purchase: Purchase
@@ -611,7 +615,15 @@ function ReceiveGoodsModal({ purchase, locations, onClose, onReceived }: {
   const [receivedAt, setReceivedAt] = useState(todayInput())
   const [note, setNote] = useState('')
   const [lines, setLines] = useState<ReceiveLine[]>(() => purchase.items
-    .map((i) => ({ purchaseItemId: i.id, productName: i.product.name, unit: i.product.unit, remaining: Number(i.quantity) - Number(i.receivedQuantity), unitCost: i.unitCost }))
+    .map((i) => ({
+      purchaseItemId: i.id,
+      productName: i.product.name,
+      unit: i.product.packUnit?.name ?? i.product.unit,
+      packSize: Number(i.product.packSize) || 0,
+      packLabel: i.product.packLabel ?? '',
+      remaining: Number(i.quantity) - Number(i.receivedQuantity),
+      unitCost: i.unitCost,
+    }))
     .filter((l) => l.remaining > 0.0005)
     .map((l) => ({ ...l, quantity: String(l.remaining) })))
   const [saving, setSaving] = useState(false)
@@ -672,9 +684,9 @@ function ReceiveGoodsModal({ purchase, locations, onClose, onReceived }: {
             <div key={l.purchaseItemId} className="grid grid-cols-[1fr_6rem_6rem] items-center gap-2">
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium">{l.productName}</p>
-                <p className="text-xs text-muted-foreground">{l.remaining} {l.unit} outstanding</p>
+                <p className="text-xs text-muted-foreground">{packAndUnit(l.remaining, l.packSize, l.packLabel, l.unit)} outstanding</p>
               </div>
-              <input type="number" min="0" max={l.remaining} step="0.001" value={l.quantity} onChange={(e) => setLine(l.purchaseItemId, { quantity: e.target.value })} className="input" />
+              <PackQtyInput value={l.quantity} onChange={(v) => setLine(l.purchaseItemId, { quantity: v })} packSize={l.packSize} packLabel={l.packLabel} unitName={l.unit} max={l.remaining} className="input" />
               <input type="number" min="0" step="0.01" value={l.unitCost} onChange={(e) => setLine(l.purchaseItemId, { unitCost: e.target.value })} className="input" />
             </div>
           ))}
