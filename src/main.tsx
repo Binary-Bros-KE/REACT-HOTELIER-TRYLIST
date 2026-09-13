@@ -10,6 +10,9 @@ import { slugFromHost } from '@/lib/tenant'
 import { applyTheme } from '@/lib/theme'
 import { applyBranding } from '@/lib/branding'
 import { readCachedTheme } from '@/lib/themeCache'
+import { installNumberInputWheelGuard } from '@/lib/numberInputWheelGuard'
+
+installNumberInputWheelGuard()
 
 // Synchronous, pre-paint: if this tenant's theme/branding is already cached
 // from a previous visit, apply it before React even mounts so there is zero
