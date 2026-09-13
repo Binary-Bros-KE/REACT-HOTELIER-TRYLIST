@@ -21,6 +21,7 @@ import StatCard from '@/components/ui/StatCard'
 import { useAppSelector } from '@/store/hooks'
 import { cn } from '@/lib/utils'
 import type { DocProfile } from '@/components/documents/pdf'
+import SupplierPickerModal, { type SupplierOption } from '@/components/SupplierPickerModal'
 
 const DocumentViewer = lazy(() => import('@/components/documents/DocumentViewer'))
 
@@ -34,7 +35,7 @@ const STATUS_META: Record<Status, { label: string; className: string }> = {
   CANCELLED: { label: 'Cancelled', className: 'bg-muted text-muted-foreground' },
 }
 
-type Supplier = { id: string; name: string }
+type Supplier = SupplierOption
 type Product = { id: string; name: string; unit: string }
 type Employee = { id: string; firstName: string; lastName: string }
 // Cost fields come back null from the API for anyone without
@@ -110,6 +111,7 @@ export default function PurchaseRequisitions() {
   const [form, setForm] = useState<ReqForm>(emptyForm)
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
+  const [supplierPickerFor, setSupplierPickerFor] = useState<'suggested' | 'convert' | null>(null)
 
   const [detail, setDetail] = useState<Requisition | null>(null)
   const [working, setWorking] = useState(false)
@@ -159,6 +161,12 @@ export default function PurchaseRequisitions() {
     const map = new Map(products.map((p) => [p.id, p]))
     return (id: string) => map.get(id)
   }, [products])
+  const suggestedSupplier = useMemo(() => suppliers.find((supplier) => supplier.id === form.suggestedSupplierId) ?? null, [suppliers, form.suggestedSupplierId])
+  const convertSupplier = useMemo(() => suppliers.find((supplier) => supplier.id === convertForm.supplierId) ?? null, [suppliers, convertForm.supplierId])
+
+  function rememberSupplier(supplier: Supplier) {
+    setSuppliers((current) => current.some((s) => s.id === supplier.id) ? current : [...current, supplier].sort((a, b) => a.name.localeCompare(b.name)))
+  }
 
   const productMatches = useMemo(() => {
     const q = productQuery.trim().toLowerCase()
@@ -453,10 +461,26 @@ export default function PurchaseRequisitions() {
             <FieldGroup title="Details">
               <Field label="Purpose"><input placeholder="e.g. Restock dry store for October" value={form.purpose} onChange={(e) => setForm({ ...form, purpose: e.target.value })} className="input" /></Field>
               <Field label="Suggested Supplier">
-                <select className="input" value={form.suggestedSupplierId} onChange={(e) => setForm({ ...form, suggestedSupplierId: e.target.value })}>
-                  <option value="">No preference</option>
-                  {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
+                <button
+                  type="button"
+                  onClick={() => setSupplierPickerFor('suggested')}
+                  className="flex min-h-12 w-full items-center justify-between rounded-sm border bg-background px-3 py-2 text-left text-sm hover:bg-muted"
+                >
+                  {suggestedSupplier ? (
+                    <span className="min-w-0">
+                      <span className="block truncate font-semibold">{suggestedSupplier.name}</span>
+                      {(suggestedSupplier.phone || suggestedSupplier.contactPerson) && <span className="mt-0.5 block truncate text-xs text-muted-foreground">{suggestedSupplier.phone ?? suggestedSupplier.contactPerson}</span>}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">No preference</span>
+                  )}
+                  <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-secondary">{suggestedSupplier ? 'Change' : 'Select'}</span>
+                </button>
+                {suggestedSupplier && (
+                  <button type="button" onClick={() => setForm({ ...form, suggestedSupplierId: '' })} className="mt-1 text-xs font-semibold text-muted-foreground hover:text-destructive">
+                    Clear preference
+                  </button>
+                )}
               </Field>
               <Field label="Requisition Date"><input type="date" value={form.requisitionDate} onChange={(e) => setForm({ ...form, requisitionDate: e.target.value })} className="input" /></Field>
               <Field label="Needed By"><input type="date" value={form.neededBy} onChange={(e) => setForm({ ...form, neededBy: e.target.value })} className="input" /></Field>
@@ -634,10 +658,21 @@ export default function PurchaseRequisitions() {
             <p className="mt-1 text-xs text-muted-foreground">Creates a draft purchase order with these items. Estimated costs become the starting unit costs.</p>
             <div className="mt-5 space-y-4">
               <Field label="Supplier" required>
-                <select required className="input" value={convertForm.supplierId} onChange={(e) => setConvertForm({ ...convertForm, supplierId: e.target.value })}>
-                  <option value="">Select supplier</option>
-                  {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
+                <button
+                  type="button"
+                  onClick={() => setSupplierPickerFor('convert')}
+                  className="flex min-h-12 w-full items-center justify-between rounded-sm border bg-background px-3 py-2 text-left text-sm hover:bg-muted"
+                >
+                  {convertSupplier ? (
+                    <span className="min-w-0">
+                      <span className="block truncate font-semibold">{convertSupplier.name}</span>
+                      {(convertSupplier.phone || convertSupplier.contactPerson) && <span className="mt-0.5 block truncate text-xs text-muted-foreground">{convertSupplier.phone ?? convertSupplier.contactPerson}</span>}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">Select supplier</span>
+                  )}
+                  <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-secondary">{convertSupplier ? 'Change' : 'Select'}</span>
+                </button>
               </Field>
               <div className="grid grid-cols-2 gap-4">
                 <Field label="Tax Rate (%)"><input type="number" min="0" max="100" step="0.01" value={convertForm.taxRate} onChange={(e) => setConvertForm({ ...convertForm, taxRate: e.target.value })} className="input" /></Field>
@@ -654,6 +689,23 @@ export default function PurchaseRequisitions() {
             </div>
           </form>
         </div>
+      )}
+
+      {supplierPickerFor && (
+        <SupplierPickerModal
+          suppliers={suppliers}
+          title="Choose Local Supplier"
+          onClose={() => setSupplierPickerFor(null)}
+          onCreated={rememberSupplier}
+          onSelect={(supplier) => {
+            rememberSupplier(supplier)
+            if (supplierPickerFor === 'suggested') {
+              setForm((current) => ({ ...current, suggestedSupplierId: supplier.id }))
+            } else {
+              setConvertForm((current) => ({ ...current, supplierId: supplier.id }))
+            }
+          }}
+        />
       )}
 
       {printing && (

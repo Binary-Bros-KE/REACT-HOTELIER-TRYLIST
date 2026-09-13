@@ -22,6 +22,7 @@ import StatCard from '@/components/ui/StatCard'
 import { cn } from '@/lib/utils'
 import type { DocProfile } from '@/components/documents/pdf'
 import PackQtyInput, { packAndUnit } from '@/components/ui/PackQtyInput'
+import SupplierPickerModal, { type SupplierOption } from '@/components/SupplierPickerModal'
 
 const DocumentViewer = lazy(() => import('@/components/documents/DocumentViewer'))
 
@@ -43,7 +44,7 @@ const NEXT_ACTIONS: Record<Status, { to: Status; label: string }[]> = {
   CANCELLED: [],
 }
 
-type Supplier = { id: string; name: string }
+type Supplier = SupplierOption
 type Employee = { id: string; firstName: string; lastName: string }
 type Location = { id: string; name: string; type: string | null }
 type TaxTreatment = 'STANDARD' | 'ZERO_RATED' | 'EXEMPT'
@@ -165,6 +166,7 @@ export default function Purchases() {
   const [form, setForm] = useState<PurchaseForm>(emptyForm)
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
+  const [supplierPickerOpen, setSupplierPickerOpen] = useState(false)
 
   const [detail, setDetail] = useState<Purchase | null>(null)
   const [working, setWorking] = useState(false)
@@ -204,6 +206,11 @@ export default function Purchases() {
     const map = new Map(products.map((p) => [p.id, p]))
     return (id: string) => map.get(id)
   }, [products])
+  const selectedSupplier = useMemo(() => suppliers.find((supplier) => supplier.id === form.supplierId) ?? null, [suppliers, form.supplierId])
+
+  function rememberSupplier(supplier: Supplier) {
+    setSuppliers((current) => current.some((s) => s.id === supplier.id) ? current : [...current, supplier].sort((a, b) => a.name.localeCompare(b.name)))
+  }
 
   const liveTotals = useMemo(() => {
     const rows = form.items.map((r) => {
@@ -466,10 +473,21 @@ export default function Purchases() {
 
             <FieldGroup title="Order">
               <Field label="Supplier" required>
-                <select required className="input" value={form.supplierId} onChange={(e) => setForm({ ...form, supplierId: e.target.value })}>
-                  <option value="">Select supplier</option>
-                  {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
+                <button
+                  type="button"
+                  onClick={() => setSupplierPickerOpen(true)}
+                  className="flex min-h-12 w-full items-center justify-between rounded-sm border bg-background px-3 py-2 text-left text-sm hover:bg-muted"
+                >
+                  {selectedSupplier ? (
+                    <span className="min-w-0">
+                      <span className="block truncate font-semibold">{selectedSupplier.name}</span>
+                      {(selectedSupplier.phone || selectedSupplier.contactPerson) && <span className="mt-0.5 block truncate text-xs text-muted-foreground">{selectedSupplier.phone ?? selectedSupplier.contactPerson}</span>}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">Select supplier</span>
+                  )}
+                  <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-secondary">{selectedSupplier ? 'Change' : 'Select'}</span>
+                </button>
               </Field>
               <Field label="Deliver to">
                 <select className="input" value={form.locationId} onChange={(e) => setForm({ ...form, locationId: e.target.value })}>
@@ -564,6 +582,19 @@ export default function Purchases() {
             </div>
           </form>
         </div>
+      )}
+
+      {supplierPickerOpen && (
+        <SupplierPickerModal
+          suppliers={suppliers}
+          title="Choose Local Supplier"
+          onClose={() => setSupplierPickerOpen(false)}
+          onCreated={rememberSupplier}
+          onSelect={(supplier) => {
+            rememberSupplier(supplier)
+            setForm((current) => ({ ...current, supplierId: supplier.id }))
+          }}
+        />
       )}
 
       {detail && (
