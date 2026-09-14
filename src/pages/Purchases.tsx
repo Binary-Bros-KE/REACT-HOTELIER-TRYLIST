@@ -48,6 +48,14 @@ type Supplier = SupplierOption
 type Employee = { id: string; firstName: string; lastName: string }
 type Location = { id: string; name: string; type: string | null }
 type TaxTreatment = 'STANDARD' | 'ZERO_RATED' | 'EXEMPT'
+type TaxMode = 'INCLUSIVE' | 'EXCLUSIVE'
+type PaymentStatus = 'UNPAID' | 'PARTIAL' | 'PAID'
+const PAYMENT_META: Record<PaymentStatus, { label: string; className: string }> = {
+  UNPAID: { label: 'Unpaid', className: 'bg-warning/10 text-warning' },
+  PARTIAL: { label: 'Partially paid', className: 'bg-secondary/10 text-secondary' },
+  PAID: { label: 'Paid', className: 'bg-success/10 text-success' },
+}
+type MenuPriceRef = { id: string; name: string; price: string }
 type StockProduct = {
   id: string
   name: string
@@ -58,9 +66,14 @@ type StockProduct = {
   unitCost?: string | null
   sellingPrice?: string | null
   taxRate?: string | null
+  taxMode?: TaxMode | null
   taxTreatment?: TaxTreatment | null
+  menuItems?: MenuPriceRef[]
+  variantStocks?: { menuItem: MenuPriceRef }[]
+  recipeIngredients?: { recipe: { menuItems: MenuPriceRef[] } }[]
 }
 type Product = StockProduct
+type MenuPriceUpdate = { menuItemId: string; sellingPrice: string }
 type PurchaseItem = {
   id: string
   productId: string
@@ -69,12 +82,14 @@ type PurchaseItem = {
   sellingPrice: string | null
   discountPerUnit: string
   taxRate: string
+  taxMode: TaxMode
   taxTreatment: TaxTreatment
   taxAmount: string
   lineTotal: string
   receivedQuantity: string
   note: string | null
   product: StockProduct
+  menuPriceUpdates: { id: string; menuItemId: string; sellingPrice: string; menuItem: MenuPriceRef }[]
 }
 type GoodsReceiptItem = { id: string; productId: string; quantity: string; unitCost: string; note: string | null; product: StockProduct }
 type GoodsReceipt = {
@@ -90,6 +105,7 @@ type Purchase = {
   id: string
   purchaseNo: string
   status: Status
+  paymentStatus: PaymentStatus
   orderDate: string
   expectedDate: string | null
   reference: string | null
@@ -103,6 +119,8 @@ type Purchase = {
   requisition: { id: string; requisitionNo: string } | null
   items: PurchaseItem[]
   goodsReceipts: GoodsReceipt[]
+  payments: SupplierPayment[]
+  supplierBalanceEntries: SupplierBalanceEntry[]
   orderedAt: string | null
   receivedAt: string | null
   createdAt: string
@@ -110,9 +128,12 @@ type Purchase = {
   createdByEmployee: Employee | null
   updatedByEmployee: Employee | null
 }
+type PaymentMethod = { id: string; name: string; requiresReference: boolean }
+type SupplierPayment = { id: string; paymentNo: string; amount: string; reference: string | null; note: string | null; paidAt: string; paymentMethod: PaymentMethod | null }
+type SupplierBalanceEntry = { id: string; type: 'OPENING_BALANCE' | 'GOODS_RECEIPT' | 'PAYMENT' | 'ADJUSTMENT'; amount: string }
 type Summary = { total: number; byStatus: Record<Status, number>; openValue: number }
 
-type LineRow = { productId: string; quantity: string; unitCost: string; sellingPrice: string; discountPerUnit: string; taxRate: string; taxTreatment: TaxTreatment; note: string }
+type LineRow = { productId: string; quantity: string; unitCost: string; sellingPrice: string; discountPerUnit: string; taxRate: string; taxMode: TaxMode; taxTreatment: TaxTreatment; menuPriceUpdates: MenuPriceUpdate[]; note: string }
 type PurchaseForm = {
   supplierId: string
   locationId: string
@@ -127,18 +148,28 @@ const emptyForm: PurchaseForm = { supplierId: '', locationId: '', orderDate: '',
 const formatKes = (value: number) => `KSh ${value.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const toDateInput = (iso: string | null) => (iso ? iso.slice(0, 10) : '')
 const costUnits = (quantity: number, packSize: number) => (packSize > 0 ? quantity / packSize : quantity)
-const taxOptions: { label: string; rate: string; treatment: TaxTreatment }[] = [
-  { label: 'VAT (16%)', rate: '16', treatment: 'STANDARD' },
-  { label: 'Zero-rated', rate: '0', treatment: 'ZERO_RATED' },
-  { label: 'Exempt', rate: '0', treatment: 'EXEMPT' },
+const taxOptions: { label: string; rate: string; mode: TaxMode; treatment: TaxTreatment }[] = [
+  { label: 'VAT 16% inclusive', rate: '16', mode: 'INCLUSIVE', treatment: 'STANDARD' },
+  { label: 'VAT 16% exclusive', rate: '16', mode: 'EXCLUSIVE', treatment: 'STANDARD' },
+  { label: 'Zero-rated', rate: '0', mode: 'INCLUSIVE', treatment: 'ZERO_RATED' },
+  { label: 'Exempt', rate: '0', mode: 'INCLUSIVE', treatment: 'EXEMPT' },
 ]
 function productTaxDefaults(product: Product) {
   const fallback = taxOptions[0]
   const treatment = product.taxTreatment ?? fallback.treatment
+  const mode = product.taxMode ?? fallback.mode
   return {
     taxTreatment: treatment,
+    taxMode: mode,
     taxRate: product.taxRate != null ? String(Number(product.taxRate)) : treatment === 'STANDARD' ? fallback.rate : '0',
   }
+}
+function menuReferencesForProduct(product: Product | undefined) {
+  const refs = new Map<string, MenuPriceRef>()
+  product?.menuItems?.forEach((item) => refs.set(item.id, item))
+  product?.variantStocks?.forEach((entry) => refs.set(entry.menuItem.id, entry.menuItem))
+  product?.recipeIngredients?.forEach((entry) => entry.recipe.menuItems.forEach((item) => refs.set(item.id, item)))
+  return [...refs.values()].sort((a, b) => a.name.localeCompare(b.name))
 }
 const todayInput = () => {
   const d = new Date()
@@ -156,6 +187,7 @@ export default function Purchases() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [locations, setLocations] = useState<Location[]>([])
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | Status>('all')
   const [loading, setLoading] = useState(true)
@@ -175,6 +207,7 @@ export default function Purchases() {
   const [profile, setProfile] = useState<DocProfile>(null)
   const [printing, setPrinting] = useState<Purchase | null>(null)
   const [receiving, setReceiving] = useState<Purchase | null>(null)
+  const [paying, setPaying] = useState<Purchase | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -201,6 +234,7 @@ export default function Purchases() {
     api<{ products: Product[] }>('/products?active=true').then((r) => setProducts(r.products)).catch(() => {})
     api<{ profile: DocProfile }>('/business-profile').then((r) => setProfile(r.profile)).catch(() => {})
     api<{ locations: Location[] }>('/locations').then((r) => setLocations(r.locations)).catch(() => {})
+    api<{ methods: PaymentMethod[] }>('/payment-methods?activeOnly=true').then((r) => setPaymentMethods(r.methods)).catch(() => {})
   }, [])
 
   const productLabel = useMemo(() => {
@@ -220,9 +254,14 @@ export default function Purchases() {
       const packSize = Number(product?.packSize) || 0
       const unitCost = Number(r.unitCost) || 0
       const discount = Number(r.discountPerUnit) || 0
-      const lineTotal = costUnits(qty, packSize) * Math.max(0, unitCost - discount)
+      const baseAmount = costUnits(qty, packSize) * Math.max(0, unitCost - discount)
       const rate = Number(r.taxRate) || 0
-      const taxAmount = r.taxTreatment === 'STANDARD' && rate > 0 ? lineTotal - lineTotal / (1 + rate / 100) : 0
+      const taxAmount = r.taxTreatment === 'STANDARD' && rate > 0
+        ? r.taxMode === 'EXCLUSIVE'
+          ? baseAmount * (rate / 100)
+          : baseAmount - baseAmount / (1 + rate / 100)
+        : 0
+      const lineTotal = r.taxMode === 'EXCLUSIVE' ? baseAmount + taxAmount : baseAmount
       return { lineTotal, taxAmount }
     })
     const total = rows.reduce((sum, r) => sum + r.lineTotal, 0)
@@ -239,6 +278,7 @@ export default function Purchases() {
 
   function addProduct(p: Product) {
     const tax = productTaxDefaults(p)
+    const menuPriceUpdates = menuReferencesForProduct(p).map((item) => ({ menuItemId: item.id, sellingPrice: String(Number(item.price)) }))
     setForm((f) => (f.items.some((i) => i.productId === p.id) ? f : {
       ...f,
       items: [...f.items, {
@@ -248,7 +288,9 @@ export default function Purchases() {
         sellingPrice: p.sellingPrice != null ? String(Number(p.sellingPrice)) : '',
         discountPerUnit: '0',
         taxRate: tax.taxRate,
+        taxMode: tax.taxMode,
         taxTreatment: tax.taxTreatment,
+        menuPriceUpdates,
         note: '',
       }],
     }))
@@ -280,7 +322,9 @@ export default function Purchases() {
         sellingPrice: i.sellingPrice != null ? String(Number(i.sellingPrice)) : '',
         discountPerUnit: String(Number(i.discountPerUnit)),
         taxRate: String(Number(i.taxRate)),
+        taxMode: i.taxMode,
         taxTreatment: i.taxTreatment,
+        menuPriceUpdates: i.menuPriceUpdates.map((update) => ({ menuItemId: update.menuItemId, sellingPrice: String(Number(update.sellingPrice)) })),
         note: i.note ?? '',
       })),
     })
@@ -293,7 +337,7 @@ export default function Purchases() {
   }
   const removeRow = (index: number) => setForm((f) => ({ ...f, items: f.items.filter((_, i) => i !== index) }))
 
-  async function savePurchase(event: FormEvent) {
+  async function savePurchase(event: FormEvent, status?: 'DRAFT' | 'ORDERED') {
     event.preventDefault()
     const items = form.items
       .filter((r) => r.productId && Number(r.quantity) > 0)
@@ -304,7 +348,11 @@ export default function Purchases() {
         sellingPrice: r.sellingPrice === '' ? undefined : Number(r.sellingPrice) || 0,
         discountPerUnit: Number(r.discountPerUnit) || 0,
         taxRate: Number(r.taxRate) || 0,
+        taxMode: r.taxMode,
         taxTreatment: r.taxTreatment,
+        menuPriceUpdates: r.menuPriceUpdates
+          .filter((update) => update.menuItemId && update.sellingPrice !== '')
+          .map((update) => ({ menuItemId: update.menuItemId, sellingPrice: Number(update.sellingPrice) || 0 })),
         note: r.note.trim() || undefined,
       }))
     if (!form.supplierId) { setFormError('Choose a supplier'); return }
@@ -320,6 +368,7 @@ export default function Purchases() {
         expectedDate: form.expectedDate || undefined,
         reference: form.reference.trim() || undefined,
         notes: form.notes.trim() || undefined,
+        ...(editing || !status ? {} : { status }),
         items,
       }
       await api(editing ? `/purchases/${editing.id}` : '/purchases', { method: editing ? 'PATCH' : 'POST', body: JSON.stringify(payload) })
@@ -440,6 +489,7 @@ export default function Purchases() {
                     <td className="px-5 py-4 text-right font-semibold tabular-nums">{formatKes(Number(p.total))}</td>
                     <td className="px-5 py-4">
                       <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', STATUS_META[p.status].className)}>{STATUS_META[p.status].label}</span>
+                      <span className={cn('ml-1 rounded-full px-2 py-0.5 text-xs font-semibold', PAYMENT_META[p.paymentStatus].className)}>{PAYMENT_META[p.paymentStatus].label}</span>
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex items-center justify-end gap-1">
@@ -447,13 +497,16 @@ export default function Purchases() {
                         {(p.status === 'ORDERED' || p.status === 'PARTIALLY_RECEIVED') && (
                           <button onClick={() => setReceiving(p)} className="inline-flex items-center gap-1 rounded-sm border border-secondary/40 px-2.5 py-1.5 text-xs font-semibold text-secondary hover:bg-secondary/10"><LuPackageCheck className="size-3.5" /> Receive</button>
                         )}
+                        {(p.status === 'PARTIALLY_RECEIVED' || p.status === 'RECEIVED') && p.paymentStatus !== 'PAID' && (
+                          <button onClick={() => setPaying(p)} className="inline-flex items-center gap-1 rounded-sm border px-2.5 py-1.5 text-xs font-semibold hover:bg-muted"><LuWallet className="size-3.5" /> Pay</button>
+                        )}
                         {NEXT_ACTIONS[p.status].filter((a) => a.to !== 'CANCELLED').map((a) => (
                           <button key={a.to} onClick={() => void changeStatus(p, a.to)} disabled={working} className="rounded-sm border px-2.5 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-50">{a.label}</button>
                         ))}
-                        {p.status === 'DRAFT' && (
+                        {(p.status === 'DRAFT' || (p.status === 'ORDERED' && p.payments.length === 0 && p.items.every((i) => Number(i.receivedQuantity) <= 0))) && (
                           <>
                             <button onClick={() => openEdit(p)} title="Edit" className="rounded-sm p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuPencil /></button>
-                            <button onClick={() => void deletePurchase(p)} title="Delete" className="rounded-sm p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><LuTrash2 /></button>
+                            {p.status === 'DRAFT' && <button onClick={() => void deletePurchase(p)} title="Delete" className="rounded-sm p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><LuTrash2 /></button>}
                           </>
                         )}
                       </div>
@@ -472,6 +525,7 @@ export default function Purchases() {
             <div>
               <p className="text-sm font-semibold text-secondary">{editing ? 'Edit purchase' : 'New purchase'}</p>
               <h2 className="mt-1 font-display text-2xl font-semibold">{editing ? editing.purchaseNo : 'Raise a purchase order'}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Buying, selling and VAT changes are saved on this order and applied to products only when goods are received.</p>
             </div>
 
             <FieldGroup title="Order">
@@ -527,16 +581,21 @@ export default function Purchases() {
                 <p className="mt-3 rounded-sm border border-dashed p-4 text-center text-sm text-muted-foreground">No items yet — search above to add products.</p>
               ) : (
                 <div className="mt-3 space-y-2">
-                  <div className="grid grid-cols-[1fr_8rem_6.5rem_6.5rem_6.5rem_8rem_6.5rem_2rem] gap-2 px-1 text-xs font-medium text-muted-foreground">
+                  <div className="grid grid-cols-[1fr_8rem_6.5rem_6.5rem_6.5rem_10rem_6.5rem_2rem] gap-2 px-1 text-xs font-medium text-muted-foreground">
                     <span>Product</span><span>Qty</span><span>Buying</span><span>Selling</span><span>Discount</span><span>Tax</span><span className="text-right">Total</span><span />
                   </div>
                   {form.items.map((row, index) => {
                     const product = productLabel(row.productId)
                     const packSize = Number(product?.packSize) || 0
                     const unitLabel = product?.packUnit?.name ?? product?.unit ?? ''
-                    const lineTotal = costUnits(Number(row.quantity) || 0, packSize) * Math.max(0, (Number(row.unitCost) || 0) - (Number(row.discountPerUnit) || 0))
+                    const menuRefs = menuReferencesForProduct(product)
+                    const baseAmount = costUnits(Number(row.quantity) || 0, packSize) * Math.max(0, (Number(row.unitCost) || 0) - (Number(row.discountPerUnit) || 0))
+                    const rate = Number(row.taxRate) || 0
+                    const taxAmount = row.taxTreatment === 'STANDARD' && rate > 0 ? (row.taxMode === 'EXCLUSIVE' ? baseAmount * (rate / 100) : baseAmount - baseAmount / (1 + rate / 100)) : 0
+                    const lineTotal = row.taxMode === 'EXCLUSIVE' ? baseAmount + taxAmount : baseAmount
                     return (
-                      <div key={row.productId} className="grid grid-cols-[1fr_8rem_6.5rem_6.5rem_6.5rem_8rem_6.5rem_2rem] items-start gap-2 rounded-sm border p-2">
+                      <div key={row.productId} className="rounded-sm border p-2">
+                        <div className="grid grid-cols-[1fr_8rem_6.5rem_6.5rem_6.5rem_10rem_6.5rem_2rem] items-start gap-2">
                         <div className="min-w-0 pt-2">
                           <p className="truncate text-sm font-medium">{product?.name ?? 'Unknown product'}</p>
                           {unitLabel && (
@@ -550,17 +609,46 @@ export default function Purchases() {
                         <input type="number" min="0" step="0.01" placeholder="Selling" value={row.sellingPrice} onChange={(e) => setRow(index, { sellingPrice: e.target.value })} className="input" />
                         <input type="number" min="0" step="0.01" placeholder="Discount" value={row.discountPerUnit} onChange={(e) => setRow(index, { discountPerUnit: e.target.value })} className="input" />
                         <select
-                          value={`${row.taxTreatment}:${row.taxRate}`}
+                          value={`${row.taxTreatment}:${row.taxRate}:${row.taxMode}`}
                           onChange={(e) => {
-                            const [taxTreatment, taxRate] = e.target.value.split(':') as [TaxTreatment, string]
-                            setRow(index, { taxTreatment, taxRate })
+                            const [taxTreatment, taxRate, taxMode] = e.target.value.split(':') as [TaxTreatment, string, TaxMode]
+                            setRow(index, { taxTreatment, taxRate, taxMode })
                           }}
                           className="input"
                         >
-                          {taxOptions.map((option) => <option key={`${option.treatment}:${option.rate}`} value={`${option.treatment}:${option.rate}`}>{option.label}</option>)}
+                          {taxOptions.map((option) => <option key={`${option.treatment}:${option.rate}:${option.mode}`} value={`${option.treatment}:${option.rate}:${option.mode}`}>{option.label}</option>)}
                         </select>
                         <span className="pt-2 text-right text-sm tabular-nums text-muted-foreground">{lineTotal ? formatKes(lineTotal) : '—'}</span>
                         <button type="button" onClick={() => removeRow(index)} title="Remove" className="rounded-sm p-1.5 pt-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><LuX className="size-4" /></button>
+                        </div>
+                        {menuRefs.length > 0 && (
+                          <div className="mt-2 rounded-sm bg-muted/35 p-2">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Menu items using this product</p>
+                            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                              {menuRefs.map((item) => {
+                                const value = row.menuPriceUpdates.find((update) => update.menuItemId === item.id)?.sellingPrice ?? String(Number(item.price))
+                                return (
+                                  <label key={item.id} className="grid grid-cols-[1fr_6.5rem] items-center gap-2 text-xs">
+                                    <span className="truncate text-muted-foreground">{item.name}</span>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="0.01"
+                                      value={value}
+                                      onChange={(e) => {
+                                        const updates = row.menuPriceUpdates.some((update) => update.menuItemId === item.id)
+                                          ? row.menuPriceUpdates.map((update) => update.menuItemId === item.id ? { ...update, sellingPrice: e.target.value } : update)
+                                          : [...row.menuPriceUpdates, { menuItemId: item.id, sellingPrice: e.target.value }]
+                                        setRow(index, { menuPriceUpdates: updates })
+                                      }}
+                                      className="input h-9"
+                                    />
+                                  </label>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )
                   })}
@@ -582,9 +670,15 @@ export default function Purchases() {
 
             <div className="mt-6 flex justify-end gap-2 border-t pt-5">
               <button type="button" onClick={() => setShowForm(false)} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Cancel</button>
-              <button disabled={saving} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+              {!editing && (
+                <button type="button" disabled={saving} onClick={(event) => void savePurchase(event as unknown as FormEvent, 'DRAFT')} className="inline-flex items-center gap-2 rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted disabled:opacity-60">
+                  {saving && <LuLoaderCircle className="animate-spin" />}
+                  Save draft
+                </button>
+              )}
+              <button disabled={saving} onClick={(event) => !editing && void savePurchase(event as unknown as FormEvent, 'ORDERED')} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
                 {saving && <LuLoaderCircle className="animate-spin" />}
-                {editing ? 'Save changes' : 'Create purchase'}
+                {editing ? 'Save changes' : 'Save as ordered'}
               </button>
             </div>
           </form>
@@ -613,7 +707,10 @@ export default function Purchases() {
                 <h2 className="mt-1 font-display text-2xl font-semibold">{detail.purchaseNo}</h2>
                 <p className="mt-1 text-xs text-muted-foreground">{detail.supplier.name} · ordered {new Date(detail.orderDate).toLocaleDateString()}{detail.requisition && <> · from requisition {detail.requisition.requisitionNo}</>}</p>
               </div>
-              <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', STATUS_META[detail.status].className)}>{STATUS_META[detail.status].label}</span>
+              <div className="flex flex-wrap justify-end gap-1">
+                <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', STATUS_META[detail.status].className)}>{STATUS_META[detail.status].label}</span>
+                <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', PAYMENT_META[detail.paymentStatus].className)}>{PAYMENT_META[detail.paymentStatus].label}</span>
+              </div>
             </div>
 
             <div className="mt-5 overflow-hidden rounded-sm border">
@@ -673,6 +770,26 @@ export default function Purchases() {
               </div>
             )}
 
+            {detail.payments.length > 0 && (
+              <div className="mt-5 border-t pt-4">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Payment history</p>
+                <div className="space-y-2">
+                  {detail.payments.map((payment) => (
+                    <div key={payment.id} className="flex items-center justify-between rounded-sm border bg-muted/30 p-3 text-sm">
+                      <div>
+                        <p className="font-semibold">{payment.paymentNo}</p>
+                        <p className="text-xs text-muted-foreground">{payment.paymentMethod?.name ?? 'Payment'}{payment.reference && ` · ${payment.reference}`}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-semibold tabular-nums">{formatKes(Number(payment.amount))}</p>
+                        <p className="text-xs text-muted-foreground">{new Date(payment.paidAt).toLocaleDateString()}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <p className="mt-4 border-t pt-3 text-xs text-muted-foreground">
               {detail.createdByEmployee && <>Created by {detail.createdByEmployee.firstName} {detail.createdByEmployee.lastName} on {new Date(detail.createdAt).toLocaleDateString()}</>}
               {detail.orderedAt && <> · ordered {new Date(detail.orderedAt).toLocaleDateString()}</>}
@@ -682,9 +799,12 @@ export default function Purchases() {
             <div className="mt-6 flex flex-wrap justify-end gap-2 border-t pt-5">
               <button onClick={() => setPrinting(detail)} className="mr-auto inline-flex items-center gap-1.5 rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted"><LuPrinter className="size-4" /> Print</button>
               <button onClick={() => setDetail(null)} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Close</button>
-              {detail.status === 'DRAFT' && <button onClick={() => { const d = detail; setDetail(null); openEdit(d) }} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Edit</button>}
+              {(detail.status === 'DRAFT' || (detail.status === 'ORDERED' && detail.payments.length === 0 && detail.items.every((i) => Number(i.receivedQuantity) <= 0))) && <button onClick={() => { const d = detail; setDetail(null); openEdit(d) }} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Edit</button>}
               {(detail.status === 'ORDERED' || detail.status === 'PARTIALLY_RECEIVED') && (
                 <button onClick={() => setReceiving(detail)} className="inline-flex items-center gap-1.5 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground"><LuPackageCheck className="size-4" /> Receive goods</button>
+              )}
+              {(detail.status === 'PARTIALLY_RECEIVED' || detail.status === 'RECEIVED') && detail.paymentStatus !== 'PAID' && (
+                <button onClick={() => setPaying(detail)} className="inline-flex items-center gap-1.5 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground"><LuWallet className="size-4" /> Record payment</button>
               )}
               {NEXT_ACTIONS[detail.status].map((a) => (
                 <button key={a.to} onClick={() => void changeStatus(detail, a.to)} disabled={working}
@@ -712,6 +832,20 @@ export default function Purchases() {
             setReceiving(null)
             setDetail((d) => (d && d.id === result.purchase.id ? result.purchase : d))
             toast.success(`${result.receiptNo} received.`)
+            void load()
+          }}
+        />
+      )}
+
+      {paying && (
+        <PurchasePaymentModal
+          purchase={paying}
+          paymentMethods={paymentMethods}
+          onClose={() => setPaying(null)}
+          onPaid={(updated) => {
+            setPaying(null)
+            setDetail((d) => (d && d.id === updated.id ? updated : d))
+            toast.success('Payment recorded.')
             void load()
           }}
         />
@@ -793,8 +927,11 @@ function ReceiveGoodsModal({ purchase, locations, onClose, onReceived }: {
         </div>
 
         <div className="mt-5 space-y-2">
-          <div className="grid grid-cols-[1fr_6rem_6rem] gap-2 px-1 text-xs font-medium text-muted-foreground">
-            <span>Product</span><span>Qty received</span><span>Unit cost</span>
+          <div className="flex items-center justify-between gap-3 px-1">
+            <div className="grid flex-1 grid-cols-[1fr_6rem_6rem] gap-2 text-xs font-medium text-muted-foreground">
+              <span>Product</span><span>Qty received</span><span>Unit cost</span>
+            </div>
+            <button type="button" onClick={() => setLines((cur) => cur.map((line) => ({ ...line, quantity: String(line.remaining) })))} className="text-xs font-semibold uppercase tracking-wide text-secondary hover:underline">Receive all</button>
           </div>
           {lines.length === 0 ? (
             <p className="rounded-sm border border-dashed p-4 text-center text-sm text-muted-foreground">Nothing left to receive on this order.</p>
@@ -820,6 +957,95 @@ function ReceiveGoodsModal({ purchase, locations, onClose, onReceived }: {
           <button type="button" onClick={onClose} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Cancel</button>
           <button disabled={saving || lines.length === 0} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
             {saving && <LuLoaderCircle className="animate-spin" />} Post receipt
+          </button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
+function purchaseOutstanding(purchase: Purchase) {
+  const receivedDebt = purchase.supplierBalanceEntries
+    .filter((entry) => entry.type === 'GOODS_RECEIPT')
+    .reduce((sum, entry) => sum + Number(entry.amount), 0)
+  const paid = purchase.payments.reduce((sum, payment) => sum + Number(payment.amount), 0)
+  return Math.max(0, receivedDebt - paid)
+}
+
+function PurchasePaymentModal({ purchase, paymentMethods, onClose, onPaid }: {
+  purchase: Purchase
+  paymentMethods: PaymentMethod[]
+  onClose: () => void
+  onPaid: (purchase: Purchase) => void
+}) {
+  const toast = useToast()
+  const outstanding = purchaseOutstanding(purchase)
+  const [amount, setAmount] = useState(outstanding.toFixed(2))
+  const [paymentMethodId, setPaymentMethodId] = useState(paymentMethods[0]?.id ?? '')
+  const [reference, setReference] = useState('')
+  const [paidAt, setPaidAt] = useState(todayInput())
+  const [note, setNote] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const method = paymentMethods.find((m) => m.id === paymentMethodId) ?? null
+
+  async function submit(event: FormEvent) {
+    event.preventDefault()
+    if (!paymentMethodId) { setError('Choose a payment method'); return }
+    if (method?.requiresReference && !reference.trim()) { setError(`${method.name} requires a reference number`); return }
+    if (Number(amount) <= 0) { setError('Enter an amount paid'); return }
+    if (Number(amount) > outstanding + 0.0005) { setError('Payment cannot be more than the outstanding balance'); return }
+    setSaving(true)
+    setError('')
+    try {
+      const { purchase: updated } = await api<{ purchase: Purchase }>(`/purchases/${purchase.id}/payments`, {
+        method: 'POST',
+        body: JSON.stringify({
+          amount: Number(amount),
+          paymentMethodId,
+          reference: reference.trim() || undefined,
+          paidAt: paidAt || undefined,
+          note: note.trim() || undefined,
+        }),
+      })
+      onPaid(updated)
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'Could not record payment'
+      setError(message)
+      toast.error(message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[55] flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
+      <form onSubmit={submit} className="w-full max-w-lg rounded-sm border bg-card p-6 shadow-2xl">
+        <div>
+          <p className="text-sm font-semibold text-secondary">Supplier payment</p>
+          <h2 className="mt-1 font-display text-2xl font-semibold">Pay {purchase.purchaseNo}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Outstanding received balance: {formatKes(outstanding)}</p>
+        </div>
+
+        <div className="mt-5 grid gap-4 sm:grid-cols-2">
+          <Field label="Amount" required><input required type="number" min="0" max={outstanding} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} className="input" /></Field>
+          <Field label="Payment method" required>
+            <select required className="input" value={paymentMethodId} onChange={(e) => setPaymentMethodId(e.target.value)}>
+              <option value="">Select method</option>
+              {paymentMethods.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
+          </Field>
+          <Field label="Reference"><input value={reference} onChange={(e) => setReference(e.target.value)} className="input" /></Field>
+          <Field label="Paid on"><input type="date" value={paidAt} onChange={(e) => setPaidAt(e.target.value)} className="input" /></Field>
+          <Field label="Note" className="sm:col-span-2"><input value={note} onChange={(e) => setNote(e.target.value)} className="input" /></Field>
+        </div>
+
+        {error && <div className="mt-5 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert />{error}</div>}
+
+        <div className="mt-6 flex justify-end gap-2 border-t pt-5">
+          <button type="button" onClick={onClose} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Cancel</button>
+          <button disabled={saving || outstanding <= 0} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+            {saving && <LuLoaderCircle className="animate-spin" />} Record payment
           </button>
         </div>
       </form>
