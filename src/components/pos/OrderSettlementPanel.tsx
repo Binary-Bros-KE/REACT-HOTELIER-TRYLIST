@@ -101,10 +101,14 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, profile
   const [cancelling, setCancelling] = useState(false)
   const [settling, setSettling] = useState(false)
   const [custModalOpen, setCustModalOpen] = useState(false)
+  const [creditReason, setCreditReason] = useState('')
+  const [creditExpectedAt, setCreditExpectedAt] = useState('')
 
   const selectedMethod = paymentMethods.find((m) => m.id === paymentMethodId)
   const selectedStay = stays.find((s) => s.id === reservationId)
   const remaining = order ? Math.max(0, order.total - order.paid) : 0
+  const isComplementary = order?.saleType === 'COMPLIMENTARY'
+  const isCreditOverdue = !!order?.creditExpectedAt && remaining > 0.01 && new Date(order.creditExpectedAt).getTime() < Date.now()
 
   async function loadOrder() {
     setLoading(true)
@@ -113,6 +117,8 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, profile
       const response = await api<{ order: Order }>(`/pos/orders/${orderId}`)
       setOrder(response.order)
       setAmount(String(Math.max(0, response.order.total - response.order.paid)))
+      setCreditReason(response.order.creditReason ?? '')
+      setCreditExpectedAt(response.order.creditExpectedAt ? response.order.creditExpectedAt.slice(0, 10) : '')
       if (response.order.reservation) {
         setMode('ROOM')
         setReservationId(response.order.reservation.id)
@@ -141,13 +147,17 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, profile
     if (!order || settling) return
     if (remaining > 0.01) {
       if (!order.customer) { setCustModalOpen(true); return }
+      if (!creditReason.trim() || !creditExpectedAt) { setError('Give a credit reason and expected payment date'); return }
       const who = `${order.customer.firstName} ${order.customer.lastName ?? ''}`.trim()
       if (!window.confirm(`${formatKes(remaining)} will be added to ${who}'s balance as credit. Complete the order now?`)) return
     }
     setError('')
     setSettling(true)
     try {
-      const response = await api<{ order: Order }>(`/pos/orders/${order.id}/settle`, { method: 'POST', body: JSON.stringify({}) })
+      const response = await api<{ order: Order }>(`/pos/orders/${order.id}/settle`, {
+        method: 'POST',
+        body: JSON.stringify(remaining > 0.01 ? { creditReason: creditReason.trim(), creditExpectedAt } : {}),
+      })
       setOrder(response.order)
       onChanged()
     } catch (cause) {
@@ -281,7 +291,8 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, profile
                 <span className="font-semibold">Balance due</span>
                 <span className="flex items-center gap-2">
                   {order.paymentStatus === 'PARTIAL' && <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-bold uppercase text-warning">Part-paid</span>}
-                  {order.paymentStatus === 'UNPAID' && remaining > 0 && order.status === 'COMPLETED' && <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-bold uppercase text-destructive">On credit</span>}
+                  {isComplementary && <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-bold uppercase text-warning">Complementary</span>}
+                  {!isComplementary && order.paymentStatus === 'UNPAID' && remaining > 0 && order.status === 'COMPLETED' && <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-bold uppercase', isCreditOverdue ? 'bg-destructive/10 text-destructive' : 'bg-warning/15 text-warning')}>{isCreditOverdue ? 'Overdue' : 'On credit'}</span>}
                   <span className="font-bold">{formatKes(remaining)}</span>
                 </span>
               </div>
@@ -398,9 +409,21 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, profile
                       <LuUserPlus className="size-3.5" /> Add a customer to complete on credit
                     </button>
                   )}
+                  {remaining > 0.01 && order.customer && (
+                    <div className="space-y-2 rounded-sm border bg-warning/5 p-3">
+                      <label className="block text-xs font-semibold text-warning">
+                        Reason for credit
+                        <textarea rows={2} value={creditReason} onChange={(e) => setCreditReason(e.target.value)} placeholder="e.g. client requested credit until salary date" className="mt-1.5 w-full rounded-sm border bg-background px-2.5 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring" />
+                      </label>
+                      <label className="block text-xs font-semibold text-warning">
+                        Expected payment date
+                        <input type="date" value={creditExpectedAt} onChange={(e) => setCreditExpectedAt(e.target.value)} className="input mt-1.5" />
+                      </label>
+                    </div>
+                  )}
                   <button
                     type="button"
-                    disabled={settling || (remaining > 0.01 && !order.customer)}
+                    disabled={settling || (remaining > 0.01 && (!order.customer || !creditReason.trim() || !creditExpectedAt))}
                     onClick={() => void completeOrder()}
                     className="inline-flex w-full items-center justify-center gap-2 rounded-sm bg-secondary py-2.5 text-sm font-semibold text-secondary-foreground disabled:opacity-50"
                   >
@@ -411,9 +434,13 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, profile
               )}
 
               {order.status === 'READY' && <p className="mt-5 text-sm text-warning">Waiting for the waiter to mark this order served before payment can be taken.</p>}
-              {order.status === 'COMPLETED' && remaining <= 0.01 && <p className="mt-5 text-sm font-semibold text-success">Paid in full.</p>}
+              {order.status === 'COMPLETED' && remaining <= 0.01 && <p className="mt-5 text-sm font-semibold text-success">{isComplementary ? 'Completed.' : 'Paid in full.'}</p>}
               {order.status === 'COMPLETED' && remaining > 0.01 && (
-                <p className="mt-5 text-sm font-semibold text-warning">Completed with {formatKes(remaining)} on the customer's balance.</p>
+                <div className={cn('mt-5 rounded-sm border p-3 text-sm', isCreditOverdue ? 'border-destructive/30 bg-destructive/10 text-destructive' : 'border-warning/30 bg-warning/10 text-warning')}>
+                  <p className="font-semibold">{isCreditOverdue ? 'Overdue credit' : 'Completed on credit'}: {formatKes(remaining)} owing.</p>
+                  {order.creditReason && <p className="mt-1 text-xs">Reason: {order.creditReason}</p>}
+                  {order.creditExpectedAt && <p className="mt-1 text-xs">Expected: {new Date(order.creditExpectedAt).toLocaleDateString()}</p>}
+                </div>
               )}
             </>
           )}

@@ -256,6 +256,11 @@ function wrapWords(text: string, width: number): string[] {
 
 export function buildReceiptBytes(order: ReceiptOrder, profile: ReceiptProfile, s: ThermalSettings): Uint8Array {
   const cols = Math.max(24, Math.min(64, Math.round(s.columns) || 48))
+  const isComplementary = order.saleType === 'COMPLIMENTARY'
+  const paid = order.payments.reduce((sum, p) => sum + Number(p.amount), 0)
+  const owed = Math.max(0, order.financials.total - paid)
+  const creditOverdue = !isComplementary && owed > 0.01 && order.creditExpectedAt ? new Date(order.creditExpectedAt).getTime() < Date.now() : false
+  const statusText = isComplementary ? 'Complementary' : creditOverdue ? 'Overdue credit' : owed > 0.01 ? 'On credit' : order.status
   const e = new ReceiptPrinterEncoder({
     language: 'esc-pos',
     columns: cols,
@@ -296,7 +301,12 @@ export function buildReceiptBytes(order: ReceiptOrder, profile: ReceiptProfile, 
   e.line(`Date: ${new Date(order.updatedAt).toLocaleString()}`)
   const served = servedByName(order)
   if (served) e.line(`Served by: ${served}`)
+  e.line(`Status: ${statusText}`)
   e.line(order.table ? `Table: ${order.table.label}` : 'Takeaway')
+  if (isComplementary) e.line(`Recipient: ${order.complimentaryRecipientName || (order.customer ? `${order.customer.firstName} ${order.customer.lastName ?? ''}`.trim() : 'Walk-in')}`)
+  if (order.complimentarySession) e.line(`Host/Event: ${order.complimentarySession.title}`)
+  if (order.creditReason) e.line(`Credit reason: ${order.creditReason}`)
+  if (order.creditExpectedAt) e.line(`Expected pay date: ${new Date(order.creditExpectedAt).toLocaleDateString()}`)
   e.rule()
 
   // -------- items --------
@@ -320,7 +330,8 @@ export function buildReceiptBytes(order: ReceiptOrder, profile: ReceiptProfile, 
 
   // -------- payments --------
   e.line('Payments')
-  if (order.payments.length === 0) e.line('No payment recorded yet.')
+  if (isComplementary) e.line('Complementary order, no payment collected.')
+  else if (order.payments.length === 0) e.line('No payment recorded yet.')
   else for (const p of order.payments) row(p.paymentMethod.name, money(p.amount))
   e.rule()
 

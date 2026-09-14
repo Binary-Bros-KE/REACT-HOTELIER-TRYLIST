@@ -89,9 +89,15 @@ type CartLine = { key: string; item: MenuItem; variant: Variant | null; addons: 
 type CreatedOrder = { id: string; orderNumber: number }
 type HeldSale = { key: string; heldNo: number; label: string; tableId: string; discount: string; notes: string; party: SaleParty; cart: CartLine[] }
 type PaymentMethod = { id: string; name: string; requiresReference: boolean }
-type ComplimentarySession = { id: string; title: string; hostName: string; hostPhone: string | null; eventDate: string; status: 'OPEN' | 'CLOSED'; _count?: { orders: number } }
+type ComplimentarySession = { id: string; title: string; hostName: string; hostPhone: string | null; eventDate: string; startsAt?: string | null; endsAt?: string | null; status: 'OPEN' | 'CLOSED'; _count?: { orders: number } }
 type ActiveOrder = {
   id: string; orderNumber: number; status: string; total: number
+  saleType?: 'SALE' | 'COMPLIMENTARY'
+  paymentStatus?: 'UNPAID' | 'PARTIAL' | 'PAID'
+  complimentarySession?: ComplimentarySession | null
+  complimentaryOrderRole?: 'HOST_COMP' | 'GUEST_SPEND' | null
+  complimentaryRecipientName?: string | null
+  creditExpectedAt?: string | null
   createdBy: string | null
   customer: { firstName: string; lastName: string | null } | null
   table: { label: string } | null
@@ -113,6 +119,11 @@ const FETCH_LIMIT = 100
 
 const formatKes = (price: number) => `KSh ${price.toLocaleString('en-KE', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
 const toNumber = (value: string | number) => (typeof value === 'number' ? value : Number(value))
+const complementaryBadge = (order: ActiveOrder) => {
+  if (order.saleType === 'COMPLIMENTARY') return { label: 'Host comp', cls: 'border-warning/30 bg-warning/15 text-warning' }
+  if (order.complimentarySession) return { label: 'Guest spend', cls: 'border-secondary/30 bg-secondary/10 text-secondary' }
+  return null
+}
 
 function normalizeMenuItem(raw: ApiMenuItem): MenuItem {
   return {
@@ -230,6 +241,7 @@ export default function PointOfSale() {
   const [saleType, setSaleType] = useState<'SALE' | 'COMPLIMENTARY'>('SALE')
   const [complimentarySessionId, setComplimentarySessionId] = useState('')
   const [complimentaryReason, setComplimentaryReason] = useState('')
+  const [complimentaryRecipientName, setComplimentaryRecipientName] = useState('')
   const [sessionModalOpen, setSessionModalOpen] = useState(false)
   const [activeCategory, setActiveCategory] = useState('All items')
   const [categoryOpen, setCategoryOpen] = useState(false)
@@ -454,6 +466,7 @@ export default function PointOfSale() {
     setSaleType('SALE')
     setComplimentarySessionId('')
     setComplimentaryReason('')
+    setComplimentaryRecipientName('')
     setConfirmation(null)
     setParty({ kind: 'WALK_IN' })
   }
@@ -508,6 +521,7 @@ export default function PointOfSale() {
           complimentarySessionId: complimentarySessionId || undefined,
           complimentaryOrderRole: saleType === 'COMPLIMENTARY' ? 'HOST_COMP' : complimentarySessionId ? 'GUEST_SPEND' : undefined,
           complimentaryReason: complimentaryReason.trim() || undefined,
+          complimentaryRecipientName: complimentaryRecipientName.trim() || undefined,
           items: cart.map((line) => ({
             menuItemId: line.item.id,
             variantId: line.variant?.id,
@@ -633,7 +647,13 @@ export default function PointOfSale() {
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {rows.map((order) => {
                   const owed = Math.max(0, order.total - order.paid)
-                  const badge = order.paymentStatus === 'PAID'
+                  const compBadge = complementaryBadge(order)
+                  const overdue = owed > 0.01 && order.creditExpectedAt && new Date(order.creditExpectedAt).getTime() < Date.now()
+                  const badge = order.saleType === 'COMPLIMENTARY'
+                    ? { label: 'Completed', cls: 'bg-success/10 text-success' }
+                    : overdue
+                      ? { label: 'Overdue', cls: 'bg-destructive/10 text-destructive' }
+                      : order.paymentStatus === 'PAID'
                     ? { label: 'Paid', cls: 'bg-success/10 text-success' }
                     : order.paymentStatus === 'PARTIAL'
                       ? { label: 'Part-paid', cls: 'bg-warning/15 text-warning' }
@@ -645,6 +665,7 @@ export default function PointOfSale() {
                         <span className={cn('rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide', badge.cls)}>{badge.label}</span>
                       </div>
                       <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground"><LuUserRound className="size-3.5" /> {order.customer ? `${order.customer.firstName} ${order.customer.lastName ?? ''}` : 'Walk-in'} · {order.table?.label ?? 'Takeaway'}</p>
+                      {compBadge && <p className={cn('mt-2 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', compBadge.cls)}>{compBadge.label}{order.complimentarySession ? ` - ${order.complimentarySession.title}` : ''}</p>}
                       <p className="mt-1 text-[11px] text-muted-foreground">{new Date(order.updatedAt).toLocaleString()}</p>
                       <p className="mt-2 text-lg font-bold">{formatKes(order.total)}</p>
                       {owed > 0.01 && <p className="text-xs font-semibold text-warning">Owing {formatKes(owed)} · paid {formatKes(order.paid)}</p>}
@@ -714,6 +735,7 @@ export default function PointOfSale() {
                     {readyActiveOrders.map((order) => {
                       const count = order.items.reduce((s, i) => s + i.quantity, 0)
                       const waiter = order.createdBy ? staffNames[order.createdBy] : undefined
+                      const compBadge = complementaryBadge(order)
                       return (
                         <div key={order.id} className="flex flex-wrap items-center gap-2 rounded-sm border bg-card p-2.5 shadow-sm sm:flex-nowrap">
                           <div className="min-w-0 flex-1">
@@ -722,6 +744,7 @@ export default function PointOfSale() {
                               {count} item{count === 1 ? '' : 's'} · {order.table?.label ?? 'Takeaway'}{waiter ? ` · rung up by ${waiter}` : ''}
                             </p>
                           </div>
+                          {compBadge && <span className={cn('shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', compBadge.cls)}>{compBadge.label}</span>}
                           <button type="button" onClick={() => setReceiptOrderId(order.id)} title="Preview receipt" className="shrink-0 rounded-sm p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"><LuPrinter className="size-4" /></button>
                           <span className="shrink-0 rounded-full bg-destructive px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-destructive-foreground">Pending</span>
                           <span className="shrink-0 text-sm font-bold tabular-nums text-foreground">{formatKes(order.total)}</span>
@@ -741,13 +764,16 @@ export default function PointOfSale() {
               )}
               {otherActiveOrders.length > 0 && (
                 <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                  {otherActiveOrders.map((order) => (
-                    <article key={order.id} className="rounded-sm border bg-card p-5 shadow-sm">
+                  {otherActiveOrders.map((order) => {
+                    const compBadge = complementaryBadge(order)
+                    return (
+                    <article key={order.id} className={cn('rounded-sm border bg-card p-5 shadow-sm', compBadge && 'border-secondary/30')}>
                       <div className="flex items-start justify-between">
                         <h3 className="font-semibold">Order #{order.orderNumber}</h3>
                         <span className="rounded-full bg-warning/15 px-2.5 py-1 text-xs font-semibold text-warning">{order.status}</span>
                       </div>
                       <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground"><LuUserRound className="size-3.5" /> {order.customer ? `${order.customer.firstName} ${order.customer.lastName ?? ''}` : 'Walk-in'}</p>
+                      {compBadge && <p className={cn('mt-2 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', compBadge.cls)}>{compBadge.label}{order.complimentarySession ? ` - ${order.complimentarySession.title}` : ''}</p>}
                       <p className="mt-1 text-xs text-muted-foreground">{order.table?.label ?? 'Takeaway'}</p>
                       <p className="mt-3 text-lg font-bold">{formatKes(order.total)}</p>
                       <div className="mt-4 flex flex-wrap gap-2">
@@ -758,7 +784,8 @@ export default function PointOfSale() {
                         )}
                       </div>
                     </article>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </>
@@ -961,7 +988,10 @@ export default function PointOfSale() {
                     <button type="button" onClick={() => setSessionModalOpen(true)} className="rounded-sm border px-3 text-xs font-semibold text-secondary hover:bg-secondary/10">New</button>
                   </div>
                   {saleType === 'COMPLIMENTARY' && (
-                    <input value={complimentaryReason} onChange={(e) => setComplimentaryReason(e.target.value)} placeholder="Reason, e.g. host bottle allocation" className="input" />
+                    <>
+                      <input value={complimentaryRecipientName} onChange={(e) => setComplimentaryRecipientName(e.target.value)} placeholder="Recipient, e.g. DJ Lexx, boss guest, walk-in" className="input" />
+                      <input value={complimentaryReason} onChange={(e) => setComplimentaryReason(e.target.value)} placeholder="Reason, e.g. host bottle allocation" className="input" />
+                    </>
                   )}
                   {saleType === 'SALE' && complimentarySessionId && (
                     <p className="text-xs font-medium text-secondary">This paid sale will count as guest spend for the selected host/event.</p>
@@ -1295,6 +1325,8 @@ function ComplimentarySessionModal({ onClose, onCreated }: { onClose: () => void
   const [title, setTitle] = useState('')
   const [hostName, setHostName] = useState('')
   const [hostPhone, setHostPhone] = useState('')
+  const [startsAt, setStartsAt] = useState(() => new Date().toISOString().slice(0, 16))
+  const [endsAt, setEndsAt] = useState('')
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -1306,12 +1338,12 @@ function ComplimentarySessionModal({ onClose, onCreated }: { onClose: () => void
     try {
       const { session } = await api<{ session: ComplimentarySession }>('/pos/complimentary-sessions', {
         method: 'POST',
-        body: JSON.stringify({ title: title.trim(), hostName: hostName.trim(), hostPhone: hostPhone.trim() || undefined, notes: notes.trim() || undefined }),
+        body: JSON.stringify({ title: title.trim(), hostName: hostName.trim(), hostPhone: hostPhone.trim() || undefined, startsAt: startsAt || undefined, endsAt: endsAt || undefined, notes: notes.trim() || undefined }),
       })
       onCreated(session)
-      toast.success('Complimentary session created.')
+      toast.success('Complementary session created.')
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : 'Could not create complimentary session'
+      const message = cause instanceof Error ? cause.message : 'Could not create complementary session'
       setError(message)
       toast.error(message)
     } finally {
@@ -1324,7 +1356,7 @@ function ComplimentarySessionModal({ onClose, onCreated }: { onClose: () => void
       <div className="w-full max-w-md rounded-sm border bg-card p-6 shadow-2xl">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-sm font-semibold text-secondary">Complimentary session</p>
+            <p className="text-sm font-semibold text-secondary">Complementary session</p>
             <h2 className="mt-1 font-display text-xl font-semibold">New host/event</h2>
           </div>
           <button type="button" onClick={onClose} className="rounded-sm p-1 text-muted-foreground hover:bg-muted"><LuX className="size-4" /></button>
@@ -1333,6 +1365,10 @@ function ComplimentarySessionModal({ onClose, onCreated }: { onClose: () => void
           <label className="text-sm font-medium">Title <span className="text-destructive">*</span><input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. DJ Lexx Saturday" className="input mt-1.5" /></label>
           <label className="text-sm font-medium">Host name <span className="text-destructive">*</span><input value={hostName} onChange={(e) => setHostName(e.target.value)} placeholder="e.g. DJ Lexx" className="input mt-1.5" /></label>
           <label className="text-sm font-medium">Phone<input value={hostPhone} onChange={(e) => setHostPhone(e.target.value)} className="input mt-1.5" /></label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="text-sm font-medium">Starts<input type="datetime-local" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} className="input mt-1.5" /></label>
+            <label className="text-sm font-medium">Ends<input type="datetime-local" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} className="input mt-1.5" /></label>
+          </div>
           <label className="text-sm font-medium">Notes<input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. 2 bottles whiskey allocation" className="input mt-1.5" /></label>
         </div>
         {error && <div className="mt-4 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert />{error}</div>}

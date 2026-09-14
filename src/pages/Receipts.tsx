@@ -28,7 +28,9 @@ const formatKes = (value: number | string) => `KSh ${Number(value).toLocaleStrin
 
 const badgeFor = (row: ReceiptRow) => {
   if (row.status === 'CANCELLED') return { label: 'Cancelled', cls: 'bg-destructive/10 text-destructive' }
+  if (row.saleType === 'COMPLIMENTARY') return { label: 'Complementary', cls: 'bg-warning/15 text-warning' }
   const owed = Math.max(0, row.total - row.paid)
+  if (owed > 0.01 && row.creditExpectedAt && new Date(row.creditExpectedAt).getTime() < Date.now()) return { label: 'Overdue', cls: 'bg-destructive/10 text-destructive' }
   if (row.paymentStatus === 'PAID' || owed <= 0.01) return { label: 'Paid', cls: 'bg-success/10 text-success' }
   if (row.paymentStatus === 'PARTIAL' || row.paid > 0.01) return { label: 'Part-paid', cls: 'bg-warning/15 text-warning' }
   return { label: 'On credit', cls: 'bg-destructive/10 text-destructive' }
@@ -219,7 +221,7 @@ export default function Receipts() {
                       <td className="px-5 py-4 text-muted-foreground">{new Date(order.updatedAt).toLocaleString()}</td>
                       <td className="px-5 py-4">
                         <span className={cn('inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide', badge.cls)}>{badge.label}</span>
-                        <span className="ml-2 text-xs text-muted-foreground">{[...new Set(order.payments.map((p) => p.paymentMethod.name))].join(', ') || '—'}</span>
+                        <span className="ml-2 text-xs text-muted-foreground">{order.saleType === 'COMPLIMENTARY' ? (order.complimentaryRecipientName || order.complimentarySession?.title || 'No payment') : [...new Set(order.payments.map((p) => p.paymentMethod.name))].join(', ') || '—'}</span>
                       </td>
                       <td className="px-5 py-4 text-right tabular-nums text-muted-foreground">{order.status === 'CANCELLED' ? '—' : <>{formatKes(order.paid)}{owed > 0.01 && <span className="block text-[11px] font-semibold text-warning">owing {formatKes(owed)}</span>}</>}</td>
                       <td className="px-5 py-4 text-right font-semibold">{formatKes(order.total)}</td>

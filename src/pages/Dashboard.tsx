@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  LuArrowDownLeft, LuArrowUpRight, LuBanknote, LuBedDouble, LuBellRing, LuBookOpen, LuBoxes, LuChefHat, LuCircleAlert, LuCircleCheck, LuClipboardList, LuClock3, LuGift, LuLoaderCircle, LuLock,
+  LuArrowDownLeft, LuArrowUpRight, LuBanknote, LuBedDouble, LuBellRing, LuBookOpen, LuBoxes, LuChefHat, LuCircleAlert, LuCircleCheck, LuClipboardList, LuClock3, LuLoaderCircle, LuLock,
   LuLogIn, LuLogOut, LuPackage, LuPackageCheck, LuReceiptText, LuSearch, LuShoppingBag, LuSparkles, LuTable2, LuTrendingUp, LuTriangleAlert, LuUndo2, LuUsers, LuUtensils, LuWallet,
 } from 'react-icons/lu'
 import { navigation } from '@/config/navigation'
@@ -44,10 +44,12 @@ type Debtors = {
 }
 type Creditors = { total: number; top: { id: string; name: string; balance: number }[] }
 type TaxLine = { key: string; label: string; net: number; tax: number; gross: number }
+type ComplimentarySessionRow = { id: string; title: string; hostName: string | null; startsAt: string | null; endsAt: string | null; complimentaryValue: number; complimentaryCogs: number; guestRevenue: number; guestProfit: number; coverPercent: number; netImpact: number; orders: number }
 
 type SalesReport = {
   cards: Cards
   revenueBreakdown: { complimentaryValue: number; complimentaryCogs: number }
+  complimentarySessions: ComplimentarySessionRow[]
   topItems: TopItem[]
   expensesByCategory: CountBucket[]
   salesByLocation: LocationBucket[]
@@ -155,12 +157,38 @@ function RevenueDashboard({ variant }: { variant: 'operations' | 'finance' }) {
           <StatCard index={2} label="Total Expenses" value={formatKes(report.cards.totalExpenses)} icon={<LuReceiptText className="size-4" />} />
           <StatCard index={3} label="Net Profit" value={formatKes(report.cards.netProfit)} icon={<LuBanknote className="size-4" />} hint="Net revenue − expenses" />
         </div>
-        {(report.revenueBreakdown.complimentaryValue > 0 || report.revenueBreakdown.complimentaryCogs > 0) && (
-          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <StatCard index={4} label="Complimentary Value" value={formatKes(report.revenueBreakdown.complimentaryValue)} icon={<LuGift className="size-4" />} hint={`${formatKes(report.revenueBreakdown.complimentaryCogs)} stock cost`} />
-          </div>
-        )}
       </section>
+
+      {report.complimentarySessions.length > 0 && (
+        <section className="mt-6 overflow-hidden rounded-sm border bg-card">
+          <header className="border-b p-4">
+            <h2 className="font-semibold">Complementary Host Impact</h2>
+            <p className="text-xs text-muted-foreground">Guest profit compared with the stock cost given to hosts.</p>
+          </header>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
+                <tr><th className="px-4 py-2">Event</th><th className="px-4 py-2 text-right">Comp Cost</th><th className="px-4 py-2 text-right">Guest Revenue</th><th className="px-4 py-2">Covered</th><th className="px-4 py-2 text-right">Net</th></tr>
+              </thead>
+              <tbody>{report.complimentarySessions.slice(0, 6).map((session) => {
+                const pct = Math.max(0, Math.min(100, session.coverPercent))
+                return (
+                  <tr key={session.id} className="border-t">
+                    <td className="px-4 py-3"><span className="font-semibold">{session.title}</span><span className="block text-xs text-muted-foreground">{session.hostName ?? 'Host'}{session.startsAt ? ` - ${new Date(session.startsAt).toLocaleString()}` : ''}</span></td>
+                    <td className="px-4 py-3 text-right tabular-nums">{formatKes(session.complimentaryCogs)}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{formatKes(session.guestRevenue)}</td>
+                    <td className="px-4 py-3">
+                      <div className="h-2 w-32 overflow-hidden rounded-full bg-muted"><div className={cn('h-full', session.coverPercent >= 100 ? 'bg-success' : 'bg-warning')} style={{ width: `${pct}%` }} /></div>
+                      <span className="mt-1 block text-[11px] font-semibold text-muted-foreground">{Math.round(session.coverPercent)}%</span>
+                    </td>
+                    <td className={cn('px-4 py-3 text-right font-semibold tabular-nums', session.netImpact >= 0 ? 'text-success' : 'text-destructive')}>{formatKes(session.netImpact)}</td>
+                  </tr>
+                )
+              })}</tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       {variant === 'operations' ? (
         <section className="mt-6">

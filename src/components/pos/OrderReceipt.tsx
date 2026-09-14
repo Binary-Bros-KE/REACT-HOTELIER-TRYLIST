@@ -32,12 +32,21 @@ export type ReceiptOrder = {
   id: string
   orderNumber: number
   status: string
+  saleType?: 'SALE' | 'COMPLIMENTARY'
+  paymentStatus?: 'UNPAID' | 'PARTIAL' | 'PAID'
   createdAt: string
   servedAt: string | null
   updatedAt: string
   table: { label: string } | null
   location: ReceiptLocation | null
   servedBy: { firstName: string; lastName: string } | null
+  customer?: { firstName: string; lastName: string | null } | null
+  complimentarySession?: { title: string; hostName: string; startsAt?: string | null; endsAt?: string | null } | null
+  complimentaryOrderRole?: 'HOST_COMP' | 'GUEST_SPEND' | null
+  complimentaryReason?: string | null
+  complimentaryRecipientName?: string | null
+  creditReason?: string | null
+  creditExpectedAt?: string | null
   items: ReceiptOrderItem[]
   payments: ReceiptPayment[]
   financials: ReceiptFinancials
@@ -53,6 +62,11 @@ export default function OrderReceipt({ order, profile }: { order: ReceiptOrder; 
   const header = receiptHeaderText(order)
   const served = servedByName(order)
   const taxAddedOn = showsTaxAsAddedOn(order)
+  const isComplementary = order.saleType === 'COMPLIMENTARY'
+  const paid = order.payments.reduce((sum, p) => sum + Number(p.amount), 0)
+  const owed = Math.max(0, order.financials.total - paid)
+  const creditOverdue = !isComplementary && owed > 0.01 && order.creditExpectedAt ? new Date(order.creditExpectedAt).getTime() < Date.now() : false
+  const statusText = isComplementary ? 'Complementary' : creditOverdue ? 'Overdue credit' : owed > 0.01 ? 'On credit' : order.status
 
   return (
     <div className="receipt-print-area mx-auto max-w-xs bg-white p-6 text-[13px] text-black">
@@ -70,7 +84,11 @@ export default function OrderReceipt({ order, profile }: { order: ReceiptOrder; 
         <div className="flex justify-between"><span>Receipt</span><span>#{order.orderNumber}</span></div>
         <div className="flex justify-between"><span>Date</span><span>{new Date(order.updatedAt).toLocaleString()}</span></div>
         {served && <div className="flex justify-between"><span>Served by</span><span>{served}</span></div>}
-        <div className="flex justify-between text-gray-600"><span>{order.table ? `Table: ${order.table.label}` : 'Takeaway'}</span><span>{order.status}</span></div>
+        <div className="flex justify-between text-gray-600"><span>{order.table ? `Table: ${order.table.label}` : 'Takeaway'}</span><span>Status: {statusText}</span></div>
+        {isComplementary && <div className="flex justify-between text-gray-600"><span>Recipient</span><span>{order.complimentaryRecipientName || (order.customer ? `${order.customer.firstName} ${order.customer.lastName ?? ''}`.trim() : 'Walk-in')}</span></div>}
+        {order.complimentarySession && <div className="flex justify-between text-gray-600"><span>Host/Event</span><span>{order.complimentarySession.title}</span></div>}
+        {order.creditReason && <div className="flex justify-between gap-3 text-gray-600"><span>Credit reason</span><span className="text-right">{order.creditReason}</span></div>}
+        {order.creditExpectedAt && <div className="flex justify-between text-gray-600"><span>Expected pay date</span><span>{new Date(order.creditExpectedAt).toLocaleDateString()}</span></div>}
       </div>
 
       <div className="my-3 border-t border-dashed border-gray-400" />
@@ -105,7 +123,9 @@ export default function OrderReceipt({ order, profile }: { order: ReceiptOrder; 
 
       <div className="space-y-1">
         <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Payments</p>
-        {order.payments.length === 0 ? (
+        {isComplementary ? (
+          <p className="text-xs text-gray-500">Complementary order, no payment collected.</p>
+        ) : order.payments.length === 0 ? (
           <p className="text-xs text-gray-500">No payment recorded yet.</p>
         ) : order.payments.map((p) => (
           <div key={p.id} className="flex justify-between text-xs">
