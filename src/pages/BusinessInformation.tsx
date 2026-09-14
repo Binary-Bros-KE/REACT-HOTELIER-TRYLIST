@@ -11,7 +11,7 @@ import { writeCachedTheme } from '@/lib/themeCache'
 const MAX_LOGO_BYTES = 5 * 1024 * 1024
 const ACCEPTED_LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
 
-const businessTypes = ['RESTAURANT', 'CAFE', 'HOTEL', 'MOTEL'] as const
+const businessTypes = ['RESTAURANT', 'CAFE', 'HOTEL', 'MOTEL', 'CLUB'] as const
 const currencies = ['KES', 'UGX', 'TZS', 'USD'] as const
 const taxModes = ['INCLUSIVE', 'EXCLUSIVE'] as const
 const taxTreatments = ['STANDARD', 'ZERO_RATED', 'EXEMPT'] as const

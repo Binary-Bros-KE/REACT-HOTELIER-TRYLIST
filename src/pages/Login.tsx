@@ -14,6 +14,7 @@ const businessTypeLabel: Record<string, string> = {
   HOTEL: 'Hotel',
   MOTEL: 'Motel',
   CAFE: 'Cafe',
+  CLUB: 'Club',
   RESTAURANT: 'Restaurant',
 }
 
