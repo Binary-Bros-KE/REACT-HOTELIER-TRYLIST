@@ -633,6 +633,158 @@ function WaiterDashboard() {
 // total was — it's operational supply-chain data, not the tenant's
 // aggregate financial picture. ----
 
+type BarmanOrderItem = { id: string; quantity: number; menuItem: { name: string } | null; variant: { name: string } | null }
+type BarmanOrder = {
+  id: string
+  orderNumber: number
+  status: string
+  total: number
+  createdAt: string
+  table: { label: string } | null
+  location: { name: string } | null
+  items: BarmanOrderItem[]
+}
+
+function BarmanDashboard() {
+  const [activeOrders, setActiveOrders] = useState<BarmanOrder[]>([])
+  const [completedToday, setCompletedToday] = useState<BarmanOrder[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [servingId, setServingId] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const today = localIsoDay(new Date())
+      const [activeResponse, completedResponse] = await Promise.all([
+        api<{ orders: BarmanOrder[] }>('/pos/orders?channel=FOOD&limit=200'),
+        api<{ orders: BarmanOrder[] }>(`/pos/orders?channel=FOOD&status=COMPLETED&from=${today}&to=${today}&limit=200`),
+      ])
+      setActiveOrders(activeResponse.orders.filter((order) => [...WAITER_NON_FINAL, 'PENDING_CANCELLATION'].includes(order.status)))
+      setCompletedToday(completedResponse.orders)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not load the bar overview')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { void load() }, [load])
+
+  async function serveNow(orderId: string) {
+    setServingId(orderId)
+    try {
+      await api(`/pos/orders/${orderId}/serve`, { method: 'PATCH' })
+      void load()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not approve the order')
+    } finally {
+      setServingId(null)
+    }
+  }
+
+  if (loading) {
+    return <div className="mt-7 flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><LuLoaderCircle className="animate-spin" /> Loading bar counter...</div>
+  }
+
+  const readyOrders = activeOrders.filter((order) => order.status === 'READY')
+  const pendingCancellations = activeOrders.filter((order) => order.status === 'PENDING_CANCELLATION')
+  const inProgress = activeOrders.filter((order) => order.status === 'OPEN' || order.status === 'PREPARING')
+  const servedUnsettled = activeOrders.filter((order) => order.status === 'SERVED')
+  const salesToday = completedToday.reduce((sum, order) => sum + order.total, 0)
+  const itemCount = (order: BarmanOrder) => order.items.reduce((sum, item) => sum + item.quantity, 0)
+
+  return (
+    <>
+      {error && <div className="mt-5 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert />{error}</div>}
+
+      <section className="mt-7">
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Bar counter</p>
+        <div className="mt-2.5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard index={0} label="Active Bar Orders" value={String(activeOrders.length)} icon={<LuClipboardList className="size-4" />} />
+          <StatCard tone="warn" label="Ready for Handoff" value={String(readyOrders.length)} icon={<LuBellRing className="size-4" />} hint={readyOrders.length ? 'Approve counter pickup' : undefined} />
+          <StatCard index={1} label="Served, Not Settled" value={String(servedUnsettled.length)} icon={<LuReceiptText className="size-4" />} />
+          <StatCard tone={pendingCancellations.length ? 'warn' : 'info'} label="Pending Cancellations" value={String(pendingCancellations.length)} icon={<LuUndo2 className="size-4" />} />
+        </div>
+      </section>
+
+      {readyOrders.length > 0 && (
+        <section className="mt-6 rounded-lg border-2 border-warning/40 bg-warning/5 p-2.5">
+          <p className="mb-2 flex items-center gap-1.5 px-0.5 text-[11px] font-bold uppercase tracking-wider text-warning">
+            <LuBellRing className="size-3.5" /> Ready for handoff - {readyOrders.length}
+          </p>
+          <div className="space-y-2">
+            {readyOrders.map((order) => (
+              <div key={order.id} className="flex items-center gap-2 rounded-sm border bg-card p-2.5 shadow-sm">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-bold">Order #{order.orderNumber}</p>
+                  <p className="mt-0.5 truncate text-xs text-muted-foreground">{itemCount(order)} item{itemCount(order) === 1 ? '' : 's'} - {order.table?.label ?? 'Takeaway'}{order.location ? ` - ${order.location.name}` : ''}</p>
+                </div>
+                <button
+                  disabled={servingId === order.id}
+                  onClick={() => void serveNow(order.id)}
+                  className="shrink-0 rounded-sm bg-accent px-3 py-1.5 text-xs font-bold text-accent-foreground disabled:opacity-60"
+                >
+                  {servingId === order.id ? <LuLoaderCircle className="size-3.5 animate-spin" /> : 'Approve'}
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <section className="mt-6 grid gap-4 lg:grid-cols-2">
+        <div className="overflow-hidden rounded-sm border bg-card">
+          <header className="flex items-center justify-between border-b p-4">
+            <h2 className="flex items-center gap-2 font-semibold"><LuClipboardList className="size-4 text-secondary" /> Bar Orders In Progress</h2>
+            <Link to="/pos" className="text-xs font-semibold text-secondary hover:underline">Open POS</Link>
+          </header>
+          {inProgress.length === 0 ? (
+            <p className="p-6 text-center text-sm text-muted-foreground">No drinks in progress right now.</p>
+          ) : (
+            <div className="divide-y">
+              {inProgress.slice(0, 8).map((order) => (
+                <div key={order.id} className="flex items-center gap-3 p-3.5 text-sm">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium">Order #{order.orderNumber} - {order.table?.label ?? 'Takeaway'}</p>
+                    <p className="truncate text-xs text-muted-foreground">{order.items.map((item) => `${item.quantity}x ${item.menuItem?.name ?? 'item'}${item.variant ? ` (${item.variant.name})` : ''}`).join(' - ')}</p>
+                  </div>
+                  <span className="shrink-0 rounded-full bg-secondary/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-secondary">{titleCase(order.status)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="overflow-hidden rounded-sm border bg-card">
+          <header className="flex items-center justify-between border-b p-4">
+            <h2 className="flex items-center gap-2 font-semibold"><LuCircleCheck className="size-4 text-success" /> Completed Today</h2>
+            <Link to="/sales/receipts" className="text-xs font-semibold text-secondary hover:underline">Receipts</Link>
+          </header>
+          <div className="grid grid-cols-2 gap-3 p-4">
+            <div className="rounded-sm border bg-background p-3">
+              <p className="text-2xl font-semibold tabular-nums">{completedToday.length}</p>
+              <p className="text-xs text-muted-foreground">Completed orders</p>
+            </div>
+            <div className="rounded-sm border bg-background p-3">
+              <p className="text-2xl font-semibold tabular-nums">{formatKes(salesToday)}</p>
+              <p className="text-xs text-muted-foreground">Visible sales</p>
+            </div>
+          </div>
+          {pendingCancellations.length > 0 && (
+            <div className="border-t p-4">
+              <Link to="/sales/approvals" className="inline-flex items-center gap-2 rounded-sm border border-warning/40 px-3 py-2 text-xs font-bold text-warning hover:bg-warning/10">
+                <LuUndo2 className="size-4" /> Review {pendingCancellations.length} cancellation{pendingCancellations.length === 1 ? '' : 's'}
+              </Link>
+            </div>
+          )}
+        </div>
+      </section>
+    </>
+  )
+}
+
 type LowStockProduct = { id: string; name: string; unit: string; totalQuantity: string; reorderLevel: string | number }
 type StockMovement = { id: string; type: string; quantity: string | number; occurredAt: string; product: { name: string; unit: string } | null; location: { name: string } | null }
 type RequisitionStatus2 = 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'CONVERTED' | 'CANCELLED'
@@ -1108,6 +1260,7 @@ export default function Dashboard() {
   const isStorekeeper = roleName === 'Storekeeper'
   const isChef = roleName === 'Chef'
   const isHousekeeping = roleName === 'Housekeeping'
+  const isBarman = roleName === 'Barman'
 
   return (
     <div className="mx-auto max-w-7xl px-6 py-8 sm:px-8 lg:px-10">
@@ -1129,6 +1282,7 @@ export default function Dashboard() {
       {isStorekeeper && <StorekeeperDashboard />}
       {isChef && <ChefDashboard />}
       {isHousekeeping && <HousekeepingDashboard />}
+      {isBarman && <BarmanDashboard />}
 
       <section className="mt-8 rounded-sm border border-border bg-card p-6 shadow-sm">
         <div className="mb-5 flex items-center justify-between">
