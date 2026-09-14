@@ -8,6 +8,7 @@ import { useAppSelector } from '@/store/hooks'
 import { useWorkingLocation } from '@/lib/useWorkingLocation'
 import { cn } from '@/lib/utils'
 import RetailCheckoutModal, { type CreatedOrder, type PaymentMethod } from '@/components/pos/RetailCheckoutModal'
+import { resolveTax, taxLabel, type TaxMode, type TaxTreatment } from '@/lib/tax'
 
 type ApiService = {
   id: string
@@ -17,7 +18,7 @@ type ApiService = {
   category: { id: string; name: string }
 }
 type RestaurantLocation = { id: string; name: string; type: string | null; isActive: boolean }
-type BusinessProfile = { businessName: string; taxRate: string | null; taxMode: 'INCLUSIVE' | 'EXCLUSIVE' }
+type BusinessProfile = { businessName: string; taxRate: string | null; taxMode: TaxMode; taxTreatment: TaxTreatment }
 type PosService = Omit<ApiService, 'price'> & { price: number }
 type CartItem = PosService & { quantity: number }
 
@@ -27,15 +28,14 @@ function computeFinancials(cart: CartItem[], discountInput: string, profile: Bus
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0)
   const discount = Math.min(Number(discountInput) || 0, subtotal)
   const taxable = subtotal - discount
-  const rate = profile?.taxRate ? Number(profile.taxRate) : 0
-  const taxMode = profile?.taxMode ?? 'INCLUSIVE'
+  const tax = resolveTax({}, profile)
   let taxAmount = 0
   let total = taxable
-  if (rate > 0) {
-    if (taxMode === 'EXCLUSIVE') { taxAmount = taxable * (rate / 100); total = taxable + taxAmount }
-    else { taxAmount = taxable - taxable / (1 + rate / 100); total = taxable }
+  if (tax.treatment === 'STANDARD' && tax.rate > 0) {
+    if (tax.mode === 'EXCLUSIVE') { taxAmount = taxable * (tax.rate / 100); total = taxable + taxAmount }
+    else { taxAmount = taxable - taxable / (1 + tax.rate / 100); total = taxable }
   }
-  return { subtotal, discount, taxable, rate, taxMode, taxAmount, total }
+  return { subtotal, discount, taxable, tax, taxAmount, total }
 }
 
 export default function ServicesPointOfSale() {
@@ -265,7 +265,7 @@ export default function ServicesPointOfSale() {
           <div className="space-y-1.5 border-t bg-muted/30 p-4 text-sm">
             <div className="flex justify-between text-muted-foreground"><span>Subtotal</span><span>{formatKes(financials.subtotal)}</span></div>
             {financials.discount > 0 && <div className="flex justify-between text-destructive"><span>Discount</span><span>-{formatKes(financials.discount)}</span></div>}
-            {financials.rate > 0 && <div className="flex justify-between text-muted-foreground"><span>Tax ({financials.rate}% {financials.taxMode === 'EXCLUSIVE' ? 'excl.' : 'incl.'})</span><span>{formatKes(financials.taxAmount)}</span></div>}
+            <div className="flex justify-between text-muted-foreground"><span>{taxLabel(financials.tax)}</span><span>{formatKes(financials.taxAmount)}</span></div>
             <div className="flex justify-between border-t pt-1.5 text-base font-bold text-foreground"><span>Total</span><span>{formatKes(financials.total)}</span></div>
           </div>
 

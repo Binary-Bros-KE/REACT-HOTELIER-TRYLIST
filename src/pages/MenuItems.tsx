@@ -22,6 +22,7 @@ import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
 import StatCard from '@/components/ui/StatCard'
 import SearchableSelect from '@/components/ui/SearchableSelect'
+import { taxCategoryText, type TaxMode, type TaxTreatment } from '@/lib/tax'
 
 const TEMPERATURES = ['OTHER', 'HOT', 'COLD'] as const
 type Temperature = (typeof TEMPERATURES)[number]
@@ -49,8 +50,8 @@ type MenuItem = {
   sku: string | null
   price: string
   taxRate: string | null
-  taxMode: 'INCLUSIVE' | 'EXCLUSIVE' | null
-  taxTreatment: 'STANDARD' | 'ZERO_RATED' | 'EXEMPT' | null
+  taxMode: TaxMode | null
+  taxTreatment: TaxTreatment | null
   photoUrl: string | null
   temperature: Temperature
   isVegetarian: boolean
@@ -95,7 +96,7 @@ const TAX_CHOICES = [
   { key: 'EXEMPT', label: 'Exempt' },
 ] as const
 type TaxChoice = (typeof TAX_CHOICES)[number]['key']
-type BizTax = { taxRate: string | null; taxMode: 'INCLUSIVE' | 'EXCLUSIVE'; taxTreatment: 'STANDARD' | 'ZERO_RATED' | 'EXEMPT' }
+type BizTax = { taxRate: string | null; taxMode: TaxMode; taxTreatment: TaxTreatment }
 
 function taxChoiceOf(item: Pick<MenuItem, 'taxTreatment' | 'taxMode'>): TaxChoice {
   if (!item.taxTreatment) return 'INHERIT'
@@ -114,9 +115,11 @@ function taxPayload(choice: TaxChoice, rate: string) {
 }
 function describeBizTax(biz: BizTax | null): string {
   if (!biz) return 'the property setting'
-  if (biz.taxTreatment === 'ZERO_RATED') return 'Zero-rated (0%)'
-  if (biz.taxTreatment === 'EXEMPT') return 'Exempt'
-  return `${Number(biz.taxRate ?? 16)}% ${biz.taxMode === 'EXCLUSIVE' ? 'added on top' : 'included'}`
+  return taxCategoryText(biz)
+}
+
+function describeItemTax(item: MenuItem, biz: BizTax | null): string {
+  return taxCategoryText(item.taxTreatment ? item : {}, biz)
 }
 
 // How selling this item affects stock: nothing tracked, one direct product
@@ -481,11 +484,7 @@ export default function MenuItems() {
                     <td className="px-4 py-3 text-right tabular-nums font-medium">
                       {item._count.variants > 0 ? <span className="text-xs font-normal text-muted-foreground">from </span> : null}
                       {money(item.price)}
-                      {item.taxTreatment === 'ZERO_RATED' && <span className="ml-1 text-xs text-muted-foreground">0-rated</span>}
-                      {item.taxTreatment === 'EXEMPT' && <span className="ml-1 text-xs text-muted-foreground">exempt</span>}
-                      {item.taxTreatment === 'STANDARD' && item.taxRate != null && (
-                        <span className="ml-1 text-xs text-muted-foreground">{Number(item.taxRate)}%{item.taxMode === 'EXCLUSIVE' ? ' +tax' : ' incl'}</span>
-                      )}
+                      <span className="ml-1 text-xs text-muted-foreground">{describeItemTax(item, bizTax)}</span>
                     </td>
                     <td className="px-4 py-3">
                       <button

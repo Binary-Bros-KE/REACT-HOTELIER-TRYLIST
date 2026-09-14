@@ -13,6 +13,7 @@ import OrderSettlementPanel from '@/components/pos/OrderSettlementPanel'
 import ReceiptPreviewModal from '@/components/pos/ReceiptPreviewModal'
 import { type ReceiptOrder, type ReceiptProfile } from '@/components/pos/OrderReceipt'
 import { getThermalSettings, printReceipt } from '@/lib/thermalPrinter'
+import { taxLabel, type TaxMode, type TaxTreatment } from '@/lib/tax'
 
 type StockProduct = { id: string; name: string; unit: string; packUnit: { id: string; name: string } | null }
 type ApiVariant = {
@@ -34,8 +35,6 @@ type ApiCatalogAddon = {
   menuCategoryId: string | null
   menuCategory: { id: string; name: string } | null
 }
-type TaxMode = 'INCLUSIVE' | 'EXCLUSIVE'
-type TaxTreatment = 'STANDARD' | 'ZERO_RATED' | 'EXEMPT'
 type ApiMenuItem = {
   id: string
   name: string
@@ -143,11 +142,6 @@ function normalizeMenuItem(raw: ApiMenuItem): MenuItem {
     availabilityUnitLabel: raw.availabilityUnitLabel ?? null,
   }
 }
-
-const taxLabel = (t: LineTax) =>
-  t.treatment === 'EXEMPT' ? 'Exempt'
-    : t.treatment === 'ZERO_RATED' || t.rate <= 0 ? 'Zero-rated (0%)'
-    : `VAT ${t.rate}%${t.mode === 'INCLUSIVE' ? ' (incl)' : ''}`
 
 /** Whether tapping the item opens the options step: it has sizes to pick, or
  * it's flagged as taking add-ons and the catalog has some. Otherwise it drops

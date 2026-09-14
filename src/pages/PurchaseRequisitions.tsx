@@ -123,7 +123,7 @@ export default function PurchaseRequisitions() {
   const [printing, setPrinting] = useState<Requisition | null>(null)
 
   const [converting, setConverting] = useState<Requisition | null>(null)
-  const [convertForm, setConvertForm] = useState({ supplierId: '', taxRate: '0', expectedDate: '', reference: '', notes: '' })
+  const [convertForm, setConvertForm] = useState({ supplierId: '', expectedDate: '', reference: '', notes: '' })
 
   // Cost entry for a reviewer: keyed by item id, populated when opening a
   // SUBMITTED requisition for review. The raiser never set these — this is
@@ -309,7 +309,7 @@ export default function PurchaseRequisitions() {
 
   function openConvert(r: Requisition) {
     setConverting(r)
-    setConvertForm({ supplierId: r.suggestedSupplier?.id ?? '', taxRate: '0', expectedDate: '', reference: '', notes: '' })
+    setConvertForm({ supplierId: r.suggestedSupplier?.id ?? '', expectedDate: '', reference: '', notes: '' })
   }
   async function submitConvert(event: FormEvent) {
     event.preventDefault()
@@ -320,7 +320,6 @@ export default function PurchaseRequisitions() {
         method: 'POST',
         body: JSON.stringify({
           supplierId: convertForm.supplierId,
-          taxRate: Number(convertForm.taxRate) || 0,
           expectedDate: convertForm.expectedDate || undefined,
           reference: convertForm.reference.trim() || undefined,
           notes: convertForm.notes.trim() || undefined,
@@ -688,8 +687,7 @@ export default function PurchaseRequisitions() {
                   <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-secondary">{convertSupplier ? 'Change' : 'Select'}</span>
                 </button>
               </Field>
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="Tax Rate (%)"><input type="number" min="0" max="100" step="0.01" value={convertForm.taxRate} onChange={(e) => setConvertForm({ ...convertForm, taxRate: e.target.value })} className="input" /></Field>
+              <div className="grid gap-4">
                 <Field label="Expected Date"><input type="date" value={convertForm.expectedDate} onChange={(e) => setConvertForm({ ...convertForm, expectedDate: e.target.value })} className="input" /></Field>
               </div>
               <Field label="Reference"><input value={convertForm.reference} onChange={(e) => setConvertForm({ ...convertForm, reference: e.target.value })} className="input" /></Field>

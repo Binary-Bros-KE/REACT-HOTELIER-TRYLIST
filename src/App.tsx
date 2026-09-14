@@ -48,6 +48,7 @@ import Purchases from "@/pages/Purchases";
 import PurchaseRequisitions from "@/pages/PurchaseRequisitions";
 import InventoryOverview from "@/pages/InventoryOverview";
 import ProductsReport from "@/pages/ProductsReport";
+import TaxReport from "@/pages/TaxReport";
 import ServiceAppointments from "@/pages/ServiceAppointments";
 import ServiceMembershipPayments from "@/pages/ServiceMembershipPayments";
 import ServiceMembershipPlans from "@/pages/ServiceMembershipPlans";
@@ -218,6 +219,7 @@ function App() {
         <Route path="/reports" element={<Reports />} />
         <Route path="/reports/inventory-report" element={<InventoryOverview />} />
         <Route path="/reports/products-report" element={<ProductsReport />} />
+        <Route path="/reports/tax-report" element={<TaxReport />} />
         <Route path="/business-information" element={<BusinessInformation />} />
         <Route path="/locations" element={<Locations />} />
         <Route path="/appearance" element={<ThemeCustomizer />} />
