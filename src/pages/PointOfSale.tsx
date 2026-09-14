@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  LuBan, LuBedDouble, LuBellRing, LuBuilding2, LuCheck, LuChevronDown, LuCircleAlert, LuCircleCheck, LuClipboardList, LuCoffee, LuLoaderCircle, LuMapPin, LuMinus,
+  LuBan, LuBedDouble, LuBellRing, LuBuilding2, LuCheck, LuChevronDown, LuCircleAlert, LuCircleCheck, LuClipboardList, LuCoffee, LuGift, LuLoaderCircle, LuMapPin, LuMinus,
   LuPause, LuPencil, LuPlus, LuPrinter, LuReceiptText, LuSearch, LuSlidersHorizontal, LuTrash2, LuUserRound, LuX,
 } from 'react-icons/lu'
 import { api } from '@/lib/api'
@@ -89,6 +89,7 @@ type CartLine = { key: string; item: MenuItem; variant: Variant | null; addons: 
 type CreatedOrder = { id: string; orderNumber: number }
 type HeldSale = { key: string; heldNo: number; label: string; tableId: string; discount: string; notes: string; party: SaleParty; cart: CartLine[] }
 type PaymentMethod = { id: string; name: string; requiresReference: boolean }
+type ComplimentarySession = { id: string; title: string; hostName: string; hostPhone: string | null; eventDate: string; status: 'OPEN' | 'CLOSED'; _count?: { orders: number } }
 type ActiveOrder = {
   id: string; orderNumber: number; status: string; total: number
   createdBy: string | null
@@ -176,7 +177,7 @@ type TaxBucket = { key: string; label: string; net: number; tax: number; gross: 
  * property default, already resolved by the API), the order discount is
  * apportioned by line value, and lines are bucketed for the receipt-style
  * breakdown. Kept deliberately in step with lib/orderTotals.ts on the server. */
-function computeFinancials(cart: CartLine[], discountInput: string) {
+function computeFinancials(cart: CartLine[], discountInput: string, complimentary = false) {
   const rows = cart.map((line) => ({ sub: lineTotal(line), tax: line.item.tax }))
   const subtotal = rows.reduce((s, r) => s + r.sub, 0)
   const discount = Math.min(Number(discountInput) || 0, subtotal)
@@ -207,7 +208,8 @@ function computeFinancials(cart: CartLine[], discountInput: string) {
   }
 
   const taxLines = [...buckets.values()].map((b) => ({ ...b, net: round2(b.net), tax: round2(b.tax), gross: round2(b.gross) }))
-  return { subtotal: round2(subtotal), discount: round2(discount), net: round2(net), taxAmount: round2(taxAmount), total: round2(total), taxLines }
+  if (complimentary) return { subtotal: round2(subtotal), discount: round2(subtotal), net: 0, taxAmount: 0, total: 0, complimentaryValue: round2(subtotal), taxLines: [] }
+  return { subtotal: round2(subtotal), discount: round2(discount), net: round2(net), taxAmount: round2(taxAmount), total: round2(total), complimentaryValue: 0, taxLines }
 }
 
 export default function PointOfSale() {
@@ -224,6 +226,11 @@ export default function PointOfSale() {
   const [locations, setLocations] = useState<Location[]>([])
   const [profile, setProfile] = useState<BusinessProfile | null>(null)
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
+  const [complimentarySessions, setComplimentarySessions] = useState<ComplimentarySession[]>([])
+  const [saleType, setSaleType] = useState<'SALE' | 'COMPLIMENTARY'>('SALE')
+  const [complimentarySessionId, setComplimentarySessionId] = useState('')
+  const [complimentaryReason, setComplimentaryReason] = useState('')
+  const [sessionModalOpen, setSessionModalOpen] = useState(false)
   const [activeCategory, setActiveCategory] = useState('All items')
   const [categoryOpen, setCategoryOpen] = useState(false)
   const [categoryQuery, setCategoryQuery] = useState('')
@@ -339,11 +346,12 @@ export default function PointOfSale() {
     setLoading(true)
     setError('')
     try {
-      const [profileResponse, locationResponse, methodsResponse, addonResponse] = await Promise.all([
+      const [profileResponse, locationResponse, methodsResponse, addonResponse, compResponse] = await Promise.all([
         api<{ profile: BusinessProfile | null }>('/business-profile'),
         api<{ locations: Location[] }>('/locations'),
         api<{ methods: (PaymentMethod & { code: string })[] }>('/payment-methods?activeOnly=true'),
         api<{ addons: ApiCatalogAddon[] }>('/pos/addons'),
+        api<{ sessions: ComplimentarySession[] }>('/pos/complimentary-sessions?activeOnly=true'),
       ])
       setProfile(profileResponse.profile)
       setLocations(locationResponse.locations ?? [])
@@ -354,6 +362,7 @@ export default function PointOfSale() {
         id: a.id, name: a.name, price: toNumber(a.price),
         categoryId: a.menuCategoryId ?? null, categoryName: a.menuCategory?.name ?? null,
       })))
+      setComplimentarySessions(compResponse.sessions ?? [])
       await Promise.all([loadMenuItems(), loadTables(), loadActiveOrders()])
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not load the POS menu')
@@ -389,7 +398,7 @@ export default function PointOfSale() {
   const categories = useMemo(() => ['All items', ...Array.from(new Set(menuItems.map((item) => item.category.name)))], [menuItems])
   const filteredCategories = categories.filter((c) => c.toLowerCase().includes(categoryQuery.trim().toLowerCase()))
   const visibleItems = menuItems.filter((item) => (activeCategory === 'All items' || item.category.name === activeCategory) && (!search.trim() || `${item.name} ${item.description ?? ''}`.toLowerCase().includes(search.trim().toLowerCase())))
-  const financials = useMemo(() => computeFinancials(cart, discount), [cart, discount])
+  const financials = useMemo(() => computeFinancials(cart, discount, saleType === 'COMPLIMENTARY'), [cart, discount, saleType])
   const itemCount = cart.reduce((sum, line) => sum + line.quantity, 0)
   const serveMode = locations.find((l) => l.id === effectiveLocationId)?.serveMode ?? 'KITCHEN'
   // Orders waiting to be handed over — Kitchen tickets picked up at the pass,
@@ -442,6 +451,9 @@ export default function PointOfSale() {
     setCart([])
     setTableId('')
     setDiscount('0')
+    setSaleType('SALE')
+    setComplimentarySessionId('')
+    setComplimentaryReason('')
     setConfirmation(null)
     setParty({ kind: 'WALK_IN' })
   }
@@ -491,7 +503,11 @@ export default function PointOfSale() {
           locationId: effectiveLocationId || undefined,
           customerId: party.kind === 'WALK_IN' ? undefined : party.customer.id,
           reservationId: party.kind === 'ROOM' ? party.reservationId : undefined,
-          discount: financials.discount,
+          discount: saleType === 'COMPLIMENTARY' ? 0 : financials.discount,
+          saleType,
+          complimentarySessionId: complimentarySessionId || undefined,
+          complimentaryOrderRole: saleType === 'COMPLIMENTARY' ? 'HOST_COMP' : complimentarySessionId ? 'GUEST_SPEND' : undefined,
+          complimentaryReason: complimentaryReason.trim() || undefined,
           items: cart.map((line) => ({
             menuItemId: line.item.id,
             variantId: line.variant?.id,
@@ -503,7 +519,7 @@ export default function PointOfSale() {
       resetSale()
       setConfirmation(response.order)
       const msg = instantServe ? `Order #${response.order.orderNumber} served` : sendsToCounter ? `Order #${response.order.orderNumber} sent to the counter` : `Order #${response.order.orderNumber} sent to the kitchen`
-      toast.success(msg)
+      toast.success(saleType === 'COMPLIMENTARY' ? `${msg} as complimentary` : msg)
       setSentPulse(true)
       window.clearTimeout(sentTimer.current)
       sentTimer.current = window.setTimeout(() => setSentPulse(false), 2000)
@@ -931,6 +947,28 @@ export default function PointOfSale() {
                 </select>
               </div>
 
+              <div className="border-b px-4 py-3">
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => setSaleType('SALE')} className={cn('rounded-sm border px-3 py-2 text-sm font-semibold', saleType === 'SALE' ? 'border-secondary bg-secondary text-secondary-foreground' : 'hover:bg-muted')}>Sale</button>
+                  <button type="button" onClick={() => { setSaleType('COMPLIMENTARY'); setDiscount('0') }} className={cn('inline-flex items-center justify-center gap-1.5 rounded-sm border px-3 py-2 text-sm font-semibold', saleType === 'COMPLIMENTARY' ? 'border-warning bg-warning text-warning-foreground' : 'hover:bg-muted')}><LuGift className="size-4" /> Complimentary</button>
+                </div>
+                <div className="mt-2 grid gap-2">
+                  <div className="flex gap-2">
+                    <select value={complimentarySessionId} onChange={(e) => setComplimentarySessionId(e.target.value)} className="input flex-1">
+                      <option value="">No host/event session</option>
+                      {complimentarySessions.map((session) => <option key={session.id} value={session.id}>{session.title} - {session.hostName}</option>)}
+                    </select>
+                    <button type="button" onClick={() => setSessionModalOpen(true)} className="rounded-sm border px-3 text-xs font-semibold text-secondary hover:bg-secondary/10">New</button>
+                  </div>
+                  {saleType === 'COMPLIMENTARY' && (
+                    <input value={complimentaryReason} onChange={(e) => setComplimentaryReason(e.target.value)} placeholder="Reason, e.g. host bottle allocation" className="input" />
+                  )}
+                  {saleType === 'SALE' && complimentarySessionId && (
+                    <p className="text-xs font-medium text-secondary">This paid sale will count as guest spend for the selected host/event.</p>
+                  )}
+                </div>
+              </div>
+
               <div className="max-h-96 overflow-y-auto p-4">
                 {cart.length === 0 ? (
                   <div className="flex h-40 flex-col items-center justify-center text-center">
@@ -979,13 +1017,14 @@ export default function PointOfSale() {
               <div className="border-t p-4">
                 <label className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Discount (KES)
-                  <input type="number" min="0" step="1" value={discount} onChange={(e) => setDiscount(e.target.value)} className="w-24 rounded-sm border bg-background px-2 py-1 text-right text-xs font-semibold text-foreground outline-none focus:ring-2 focus:ring-ring" />
+                  <input type="number" min="0" step="1" value={discount} onChange={(e) => setDiscount(e.target.value)} disabled={saleType === 'COMPLIMENTARY'} className="w-24 rounded-sm border bg-background px-2 py-1 text-right text-xs font-semibold text-foreground outline-none focus:ring-2 focus:ring-ring disabled:opacity-50" />
                 </label>
               </div>
 
               <div className="space-y-1.5 border-t bg-muted/30 p-4 text-sm">
                 <div className="flex justify-between text-muted-foreground"><span>Subtotal</span><span>{formatKes(financials.subtotal)}</span></div>
                 {financials.discount > 0 && <div className="flex justify-between text-destructive"><span>Discount</span><span>-{formatKes(financials.discount)}</span></div>}
+                {saleType === 'COMPLIMENTARY' && <div className="flex justify-between text-warning"><span>Complimentary value</span><span>{formatKes(financials.complimentaryValue)}</span></div>}
                 <div className="flex justify-between text-muted-foreground"><span>Net</span><span>{formatKes(financials.net)}</span></div>
                 {financials.taxLines.map((t) => (
                   <div key={t.key} className="flex justify-between text-muted-foreground"><span>{t.label}</span><span>{formatKes(t.tax)}</span></div>
@@ -1013,6 +1052,7 @@ export default function PointOfSale() {
                 >
                   {sentPulse ? <><LuCircleCheck className="size-4" /> {instantServe ? 'Served!' : 'Order sent!'}</>
                     : submitting ? <><LuLoaderCircle className="animate-spin" /> Sending…</>
+                    : saleType === 'COMPLIMENTARY' ? (instantServe ? 'Serve complimentary' : 'Post complimentary')
                     : instantServe ? `Serve now · ${formatKes(financials.total)}`
                     : sendsToCounter ? `Post to Counter · ${formatKes(financials.total)}`
                     : `Post to Kitchen · ${formatKes(financials.total)}`}
@@ -1075,6 +1115,17 @@ export default function PointOfSale() {
           orderId={receiptOrderId}
           profile={profile as ReceiptProfile}
           onClose={() => setReceiptOrderId(null)}
+        />
+      )}
+
+      {sessionModalOpen && (
+        <ComplimentarySessionModal
+          onClose={() => setSessionModalOpen(false)}
+          onCreated={(session) => {
+            setComplimentarySessions((current) => [session, ...current.filter((row) => row.id !== session.id)])
+            setComplimentarySessionId(session.id)
+            setSessionModalOpen(false)
+          }}
         />
       )}
     </div>
@@ -1232,6 +1283,63 @@ function CustomizeModal({ item, allAddons, initial, onClose, onSubmit }: {
             className="inline-flex flex-1 items-center justify-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {editing ? <LuCheck className="size-4" /> : <LuPlus className="size-4" />} {editing ? 'Update' : 'Add'} · {formatKes(unitPrice * quantity)}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ComplimentarySessionModal({ onClose, onCreated }: { onClose: () => void; onCreated: (session: ComplimentarySession) => void }) {
+  const toast = useToast()
+  const [title, setTitle] = useState('')
+  const [hostName, setHostName] = useState('')
+  const [hostPhone, setHostPhone] = useState('')
+  const [notes, setNotes] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  async function submit() {
+    if (!title.trim() || !hostName.trim()) { setError('Enter a session title and host name'); return }
+    setSaving(true)
+    setError('')
+    try {
+      const { session } = await api<{ session: ComplimentarySession }>('/pos/complimentary-sessions', {
+        method: 'POST',
+        body: JSON.stringify({ title: title.trim(), hostName: hostName.trim(), hostPhone: hostPhone.trim() || undefined, notes: notes.trim() || undefined }),
+      })
+      onCreated(session)
+      toast.success('Complimentary session created.')
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'Could not create complimentary session'
+      setError(message)
+      toast.error(message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-sm border bg-card p-6 shadow-2xl">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-secondary">Complimentary session</p>
+            <h2 className="mt-1 font-display text-xl font-semibold">New host/event</h2>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-sm p-1 text-muted-foreground hover:bg-muted"><LuX className="size-4" /></button>
+        </div>
+        <div className="mt-5 grid gap-3">
+          <label className="text-sm font-medium">Title <span className="text-destructive">*</span><input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. DJ Lexx Saturday" className="input mt-1.5" /></label>
+          <label className="text-sm font-medium">Host name <span className="text-destructive">*</span><input value={hostName} onChange={(e) => setHostName(e.target.value)} placeholder="e.g. DJ Lexx" className="input mt-1.5" /></label>
+          <label className="text-sm font-medium">Phone<input value={hostPhone} onChange={(e) => setHostPhone(e.target.value)} className="input mt-1.5" /></label>
+          <label className="text-sm font-medium">Notes<input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. 2 bottles whiskey allocation" className="input mt-1.5" /></label>
+        </div>
+        {error && <div className="mt-4 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert />{error}</div>}
+        <div className="mt-6 flex justify-end gap-2 border-t pt-5">
+          <button type="button" onClick={onClose} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Cancel</button>
+          <button type="button" disabled={saving} onClick={() => void submit()} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+            {saving && <LuLoaderCircle className="animate-spin" />} Create
           </button>
         </div>
       </div>

@@ -44,6 +44,8 @@ type RevenueBreakdown = {
   totalRevenue: number
   taxCollected: number
   discountsGiven: number
+  complimentaryValue: number
+  complimentaryCogs: number
   completedSalesValue: number
   cogs: number
   unresolvedCostLines: number
@@ -73,6 +75,7 @@ type Debtors = {
 }
 type Creditors = { total: number; top: { id: string; name: string; balance: number }[] }
 type TaxLine = { key: string; label: string; treatment: string; rate: number; mode: string; net: number; tax: number; gross: number }
+type ComplimentarySessionRow = { id: string; title: string; hostName: string | null; complimentaryValue: number; complimentaryCogs: number; guestRevenue: number; guestCogs: number; guestProfit: number; netImpact: number; orders: number }
 
 type SalesReport = {
   range: { period: Period; start: string; end: string }
@@ -85,6 +88,7 @@ type SalesReport = {
   salesByLocation: LocationBucket[]
   byPaymentMethod: MethodBucket[]
   byEmployee: EmployeeBucket[]
+  complimentarySessions: ComplimentarySessionRow[]
   voided: { count: number; value: number }
   returns: { supported: boolean; count: number; value: number; note: string }
   cancelledPurchases: { count: number; value: number }
@@ -242,8 +246,36 @@ export default function Reports() {
                     <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Discounts Given</p>
                     <p className="mt-0.5 font-semibold">{formatKes(report.revenueBreakdown.discountsGiven)}</p>
                   </div>
+                  <div className="rounded-sm border bg-card p-2.5">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Complimentary Value</p>
+                    <p className="mt-0.5 font-semibold">{formatKes(report.revenueBreakdown.complimentaryValue)}</p>
+                  </div>
+                  <div className="rounded-sm border bg-card p-2.5">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Complimentary Cost</p>
+                    <p className="mt-0.5 font-semibold">{formatKes(report.revenueBreakdown.complimentaryCogs)}</p>
+                  </div>
                 </div>
               </div>
+
+              {report.complimentarySessions.length > 0 && (
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Complimentary host/event impact</p>
+                  <div className="overflow-hidden rounded-sm border">
+                    <table className="w-full text-left text-sm">
+                      <thead className="bg-primary text-xs uppercase text-primary-foreground"><tr><th className="px-4 py-2">Session</th><th className="px-4 py-2 text-right">Comp Value</th><th className="px-4 py-2 text-right">Comp Cost</th><th className="px-4 py-2 text-right">Guest Revenue</th><th className="px-4 py-2 text-right">Net Impact</th></tr></thead>
+                      <tbody>{report.complimentarySessions.map((session) => (
+                        <tr key={session.id} className="border-t">
+                          <td className="px-4 py-2"><span className="font-semibold">{session.title}</span><span className="block text-xs text-muted-foreground">{session.hostName ?? 'Host'} · {session.orders} order{session.orders === 1 ? '' : 's'}</span></td>
+                          <td className="px-4 py-2 text-right tabular-nums">{formatKes(session.complimentaryValue)}</td>
+                          <td className="px-4 py-2 text-right tabular-nums">{formatKes(session.complimentaryCogs)}</td>
+                          <td className="px-4 py-2 text-right tabular-nums">{formatKes(session.guestRevenue)}</td>
+                          <td className={cn('px-4 py-2 text-right font-semibold tabular-nums', session.netImpact >= 0 ? 'text-success' : 'text-destructive')}>{formatKes(session.netImpact)}</td>
+                        </tr>
+                      ))}</tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
 
               {report.topItems.length > 0 && (
                 <div>

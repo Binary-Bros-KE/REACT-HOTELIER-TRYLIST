@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  LuArrowDownLeft, LuArrowUpRight, LuBanknote, LuBedDouble, LuBellRing, LuBookOpen, LuBoxes, LuChefHat, LuCircleAlert, LuCircleCheck, LuClipboardList, LuClock3, LuLoaderCircle, LuLock,
+  LuArrowDownLeft, LuArrowUpRight, LuBanknote, LuBedDouble, LuBellRing, LuBookOpen, LuBoxes, LuChefHat, LuCircleAlert, LuCircleCheck, LuClipboardList, LuClock3, LuGift, LuLoaderCircle, LuLock,
   LuLogIn, LuLogOut, LuPackage, LuPackageCheck, LuReceiptText, LuSearch, LuShoppingBag, LuSparkles, LuTable2, LuTrendingUp, LuTriangleAlert, LuUndo2, LuUsers, LuUtensils, LuWallet,
 } from 'react-icons/lu'
 import { navigation } from '@/config/navigation'
@@ -47,6 +47,7 @@ type TaxLine = { key: string; label: string; net: number; tax: number; gross: nu
 
 type SalesReport = {
   cards: Cards
+  revenueBreakdown: { complimentaryValue: number; complimentaryCogs: number }
   topItems: TopItem[]
   expensesByCategory: CountBucket[]
   salesByLocation: LocationBucket[]
@@ -154,6 +155,11 @@ function RevenueDashboard({ variant }: { variant: 'operations' | 'finance' }) {
           <StatCard index={2} label="Total Expenses" value={formatKes(report.cards.totalExpenses)} icon={<LuReceiptText className="size-4" />} />
           <StatCard index={3} label="Net Profit" value={formatKes(report.cards.netProfit)} icon={<LuBanknote className="size-4" />} hint="Net revenue − expenses" />
         </div>
+        {(report.revenueBreakdown.complimentaryValue > 0 || report.revenueBreakdown.complimentaryCogs > 0) && (
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <StatCard index={4} label="Complimentary Value" value={formatKes(report.revenueBreakdown.complimentaryValue)} icon={<LuGift className="size-4" />} hint={`${formatKes(report.revenueBreakdown.complimentaryCogs)} stock cost`} />
+          </div>
+        )}
       </section>
 
       {variant === 'operations' ? (
