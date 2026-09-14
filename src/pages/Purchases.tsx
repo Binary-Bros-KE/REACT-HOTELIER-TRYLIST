@@ -126,6 +126,7 @@ const emptyForm: PurchaseForm = { supplierId: '', locationId: '', orderDate: '',
 
 const formatKes = (value: number) => `KSh ${value.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const toDateInput = (iso: string | null) => (iso ? iso.slice(0, 10) : '')
+const costUnits = (quantity: number, packSize: number) => (packSize > 0 ? quantity / packSize : quantity)
 const taxOptions: { label: string; rate: string; treatment: TaxTreatment }[] = [
   { label: 'VAT (16%)', rate: '16', treatment: 'STANDARD' },
   { label: 'Zero-rated', rate: '0', treatment: 'ZERO_RATED' },
@@ -214,10 +215,12 @@ export default function Purchases() {
 
   const liveTotals = useMemo(() => {
     const rows = form.items.map((r) => {
+      const product = products.find((p) => p.id === r.productId)
       const qty = Number(r.quantity) || 0
+      const packSize = Number(product?.packSize) || 0
       const unitCost = Number(r.unitCost) || 0
       const discount = Number(r.discountPerUnit) || 0
-      const lineTotal = qty * Math.max(0, unitCost - discount)
+      const lineTotal = costUnits(qty, packSize) * Math.max(0, unitCost - discount)
       const rate = Number(r.taxRate) || 0
       const taxAmount = r.taxTreatment === 'STANDARD' && rate > 0 ? lineTotal - lineTotal / (1 + rate / 100) : 0
       return { lineTotal, taxAmount }
@@ -225,7 +228,7 @@ export default function Purchases() {
     const total = rows.reduce((sum, r) => sum + r.lineTotal, 0)
     const taxAmount = rows.reduce((sum, r) => sum + r.taxAmount, 0)
     return { subtotal: total - taxAmount, taxAmount, total }
-  }, [form.items])
+  }, [form.items, products])
 
   const productMatches = useMemo(() => {
     const q = productQuery.trim().toLowerCase()
@@ -513,7 +516,7 @@ export default function Purchases() {
                     ) : productMatches.map((p) => (
                       <button key={p.id} type="button" onClick={() => addProduct(p)} className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-muted">
                         <span className="truncate">{p.name}</span>
-                        <span className="shrink-0 text-xs text-muted-foreground">per {p.unit}</span>
+                        <span className="shrink-0 text-xs text-muted-foreground">{p.packSize ? p.packLabel ?? p.unit : p.unit}</span>
                       </button>
                     ))}
                   </div>
@@ -531,12 +534,16 @@ export default function Purchases() {
                     const product = productLabel(row.productId)
                     const packSize = Number(product?.packSize) || 0
                     const unitLabel = product?.packUnit?.name ?? product?.unit ?? ''
-                    const lineTotal = (Number(row.quantity) || 0) * Math.max(0, (Number(row.unitCost) || 0) - (Number(row.discountPerUnit) || 0))
+                    const lineTotal = costUnits(Number(row.quantity) || 0, packSize) * Math.max(0, (Number(row.unitCost) || 0) - (Number(row.discountPerUnit) || 0))
                     return (
                       <div key={row.productId} className="grid grid-cols-[1fr_8rem_6.5rem_6.5rem_6.5rem_8rem_6.5rem_2rem] items-start gap-2 rounded-sm border p-2">
                         <div className="min-w-0 pt-2">
                           <p className="truncate text-sm font-medium">{product?.name ?? 'Unknown product'}</p>
-                          {unitLabel && <p className="text-xs text-muted-foreground">per {unitLabel}</p>}
+                          {unitLabel && (
+                            <p className="text-xs text-muted-foreground">
+                              {packSize > 0 ? `priced per ${product?.packLabel || 'pack'}; stock in ${unitLabel}` : `per ${unitLabel}`}
+                            </p>
+                          )}
                         </div>
                         <PackQtyInput value={row.quantity} onChange={(v) => setRow(index, { quantity: v })} packSize={packSize} packLabel={product?.packLabel ?? ''} unitName={unitLabel} />
                         <input type="number" min="0" step="0.01" placeholder="Buying" value={row.unitCost} onChange={(e) => setRow(index, { unitCost: e.target.value })} className="input" />

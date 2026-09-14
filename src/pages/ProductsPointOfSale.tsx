@@ -8,7 +8,7 @@ import { useAppSelector } from '@/store/hooks'
 import { useWorkingLocation } from '@/lib/useWorkingLocation'
 import { cn } from '@/lib/utils'
 import RetailCheckoutModal, { type CreatedOrder, type PaymentMethod } from '@/components/pos/RetailCheckoutModal'
-import { packAndUnit } from '@/components/ui/PackQtyInput'
+import { pluralizePackLabel } from '@/components/ui/PackQtyInput'
 
 type ApiProduct = {
   id: string
@@ -31,6 +31,10 @@ type PosProduct = Omit<ApiProduct, 'sellingPrice' | 'availableQuantity'> & { pri
 type CartItem = PosProduct & { quantity: number }
 
 const formatKes = (price: number) => `KSh ${price.toLocaleString('en-KE', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
+const sellableQtyLabel = (quantity: number, item: PosProduct) => {
+  if (Number(item.packSize) > 0) return `${quantity.toLocaleString('en-KE')} ${pluralizePackLabel(item.packLabel ?? item.unit, quantity)}`
+  return `${quantity.toLocaleString('en-KE')} ${item.unit}`
+}
 
 function computeFinancials(cart: CartItem[], discountInput: string, profile: BusinessProfile | null) {
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0)
@@ -232,7 +236,7 @@ export default function ProductsPointOfSale() {
                 const inCart = cart.find((c) => c.id === item.id)?.quantity ?? 0
                 const remaining = item.availableQuantity - inCart
                 const soldOut = remaining <= 0
-                const stockLabel = packAndUnit(Math.max(0, remaining), Number(item.packSize) || 0, item.packLabel ?? '', item.packUnit?.name ?? item.unit)
+                const stockLabel = sellableQtyLabel(Math.max(0, remaining), item)
                 return (
                   <button key={item.id} onClick={() => addItem(item)} disabled={soldOut} className={cn('group relative flex flex-col overflow-hidden rounded-sm border bg-card p-3.5 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-accent/50 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-sm sm:p-5', justAdded === item.id ? 'border-[#f2921a] ring-2 ring-[#f2921a]/40' : soldOut ? 'border-destructive/20 bg-destructive/5' : 'border-border')}>
                     <div className="flex items-start justify-between gap-2">

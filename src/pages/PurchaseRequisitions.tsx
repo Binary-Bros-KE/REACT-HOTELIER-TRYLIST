@@ -22,6 +22,7 @@ import { useAppSelector } from '@/store/hooks'
 import { cn } from '@/lib/utils'
 import type { DocProfile } from '@/components/documents/pdf'
 import SupplierPickerModal, { type SupplierOption } from '@/components/SupplierPickerModal'
+import PackQtyInput, { packAndUnit } from '@/components/ui/PackQtyInput'
 
 const DocumentViewer = lazy(() => import('@/components/documents/DocumentViewer'))
 
@@ -36,7 +37,7 @@ const STATUS_META: Record<Status, { label: string; className: string }> = {
 }
 
 type Supplier = SupplierOption
-type Product = { id: string; name: string; unit: string }
+type Product = { id: string; name: string; unit: string; packSize: string | null; packLabel: string | null; packUnit: { id: string; name: string } | null }
 type Employee = { id: string; firstName: string; lastName: string }
 // Cost fields come back null from the API for anyone without
 // REQUISITION_APPROVE — the server redacts them, not just the UI.
@@ -47,7 +48,7 @@ type ReqItem = {
   estimatedUnitCost: string | null
   lineTotal: string | null
   note: string | null
-  product: { id: string; name: string; unit: string }
+  product: Product
 }
 type Requisition = {
   id: string
@@ -80,6 +81,8 @@ const emptyForm: ReqForm = { requisitionDate: '', neededBy: '', purpose: '', sug
 const formatKes = (v: number) => `KSh ${v.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 // Cost values come back null (redacted) for anyone without REQUISITION_APPROVE.
 const formatCost = (v: string | null) => (v == null ? '—' : formatKes(Number(v)))
+const costUnits = (quantity: number, packSize: number) => (packSize > 0 ? quantity / packSize : quantity)
+const stockQty = (quantity: number, product: Product) => packAndUnit(quantity, Number(product.packSize) || 0, product.packLabel ?? '', product.packUnit?.name ?? product.unit)
 const toDateInput = (iso: string | null) => (iso ? iso.slice(0, 10) : '')
 const todayInput = () => {
   const d = new Date()
@@ -127,7 +130,7 @@ export default function PurchaseRequisitions() {
   // where a reviewer with REQUISITION_APPROVE fills them in before deciding.
   const [reviewCosts, setReviewCosts] = useState<Record<string, string>>({})
   const reviewTotal = useMemo(
-    () => (detail?.items ?? []).reduce((sum, i) => sum + Number(i.quantity) * (Number(reviewCosts[i.id]) || 0), 0),
+    () => (detail?.items ?? []).reduce((sum, i) => sum + costUnits(Number(i.quantity), Number(i.product.packSize) || 0) * (Number(reviewCosts[i.id]) || 0), 0),
     [detail, reviewCosts],
   )
 
@@ -499,7 +502,7 @@ export default function PurchaseRequisitions() {
                     ) : productMatches.map((p) => (
                       <button key={p.id} type="button" onClick={() => addProduct(p)} className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-muted">
                         <span className="truncate">{p.name}</span>
-                        <span className="shrink-0 text-xs text-muted-foreground">per {p.unit}</span>
+                        <span className="shrink-0 text-xs text-muted-foreground">{p.packSize ? p.packLabel ?? p.unit : p.unit}</span>
                       </button>
                     ))}
                   </div>
@@ -510,18 +513,29 @@ export default function PurchaseRequisitions() {
                 <p className="mt-3 rounded-sm border border-dashed p-4 text-center text-sm text-muted-foreground">No items yet — search above to add products.</p>
               ) : (
                 <div className="mt-3 space-y-2">
-                  <div className="grid grid-cols-[1fr_6rem_2rem] gap-2 px-1 text-xs font-medium text-muted-foreground">
+                  <div className="grid grid-cols-[1fr_16rem_2rem] gap-2 px-1 text-xs font-medium text-muted-foreground">
                     <span>Product</span><span>Qty</span><span />
                   </div>
                   {form.items.map((row, index) => {
                     const product = productById(row.productId)
                     return (
-                      <div key={row.productId} className="grid grid-cols-[1fr_6rem_2rem] items-center gap-2">
+                      <div key={row.productId} className="grid grid-cols-[1fr_16rem_2rem] items-start gap-2">
                         <div className="min-w-0">
                           <p className="truncate text-sm font-medium">{product?.name ?? 'Unknown product'}</p>
-                          {product?.unit && <p className="text-xs text-muted-foreground">per {product.unit}</p>}
+                          {product?.unit && (
+                            <p className="text-xs text-muted-foreground">
+                              {product.packSize ? `request by ${product.packLabel || 'pack'}; stock in ${product.packUnit?.name ?? product.unit}` : `per ${product.unit}`}
+                            </p>
+                          )}
                         </div>
-                        <input type="number" min="0" step="0.001" placeholder="Qty" value={row.quantity} onChange={(e) => setRow(index, { quantity: e.target.value })} className="input" />
+                        <PackQtyInput
+                          value={row.quantity}
+                          onChange={(value) => setRow(index, { quantity: value })}
+                          packSize={Number(product?.packSize) || 0}
+                          packLabel={product?.packLabel ?? ''}
+                          unitName={product?.packUnit?.name ?? product?.unit ?? ''}
+                          className="input"
+                        />
                         <button type="button" onClick={() => removeRow(index)} title="Remove" className="rounded-sm p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><LuX className="size-4" /></button>
                       </div>
                     )
@@ -584,7 +598,7 @@ export default function PurchaseRequisitions() {
                         {detail.items.map((i) => (
                           <tr key={i.id} className="border-t">
                             <td className="px-4 py-2">{i.product.name}</td>
-                            <td className="px-4 py-2 text-right tabular-nums">{Number(i.quantity)} {i.product.unit}</td>
+                            <td className="px-4 py-2 text-right tabular-nums">{stockQty(Number(i.quantity), i.product)}</td>
                             {reviewing ? (
                               <td className="px-4 py-2 text-right">
                                 <input
@@ -598,7 +612,7 @@ export default function PurchaseRequisitions() {
                               <td className="px-4 py-2 text-right tabular-nums">{formatCost(i.estimatedUnitCost)}</td>
                             )}
                             <td className="px-4 py-2 text-right tabular-nums">
-                              {reviewing ? formatKes(Number(i.quantity) * (Number(reviewCosts[i.id]) || 0)) : formatCost(i.lineTotal)}
+                              {reviewing ? formatKes(costUnits(Number(i.quantity), Number(i.product.packSize) || 0) * (Number(reviewCosts[i.id]) || 0)) : formatCost(i.lineTotal)}
                             </td>
                           </tr>
                         ))}

@@ -4,15 +4,31 @@ import { api, hasApiTenant } from '@/lib/api'
 import { useToast } from '@/components/ui/Toast'
 import StatCard from '@/components/ui/StatCard'
 import { cn } from '@/lib/utils'
+import { packAndUnit } from '@/components/ui/PackQtyInput'
 
 type Location = { id: string; name: string }
 type CategoryBucket = { category: string; units: number; value: number; percent: number }
-type StockProduct = { productId: string; name: string; sku: string | null; category: string | null; quantity: number; unitCost: number; value: number; low: boolean; out: boolean }
+type StockProduct = {
+  productId: string
+  name: string
+  sku: string | null
+  category: string | null
+  quantity: number
+  unit: string
+  unitCost: number
+  packSize: number | null
+  packLabel: string | null
+  packUnit: { id: string; name: string } | null
+  value: number
+  low: boolean
+  out: boolean
+}
 type Summary = { totalProducts: number; totalUnits: number; lowStockCount: number; outOfStockCount: number; stockValue: number; byCategory: CategoryBucket[] }
 type LocationOverview = Summary & { locationId: string; name: string; products: StockProduct[] }
 type Overview = { mode: 'live' | 'asOf'; asOfDate: string; overall: Summary; locations: LocationOverview[] }
 
 const formatKes = (value: number) => `KSh ${value.toLocaleString('en-KE', { maximumFractionDigits: 0 })}`
+const stockQty = (product: StockProduct) => packAndUnit(product.quantity, Number(product.packSize) || 0, product.packLabel ?? '', product.packUnit?.name ?? product.unit)
 const toLocalIso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
 const CHART_COLORS = ['#2563eb', '#16a34a', '#db2777', '#d97706', '#0891b2', '#7c3aed', '#dc2626', '#65a30d']
@@ -178,7 +194,7 @@ export default function InventoryOverview() {
                               <td className="px-4 py-3 text-muted-foreground">{p.sku ?? '—'}</td>
                               <td className="px-4 py-3 text-muted-foreground">{p.category ?? '—'}</td>
                               <td className="px-4 py-3 text-right tabular-nums">
-                                <span className={cn(p.out && 'font-semibold text-destructive')}>{p.quantity.toLocaleString()}</span>
+                                <span className={cn(p.out && 'font-semibold text-destructive')}>{stockQty(p)}</span>
                                 {p.out && <span className="ml-1.5 rounded-full bg-destructive/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-destructive">Out of stock</span>}
                                 {!p.out && p.low && <span className="ml-1.5 rounded-full bg-warning/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-warning">Low</span>}
                               </td>

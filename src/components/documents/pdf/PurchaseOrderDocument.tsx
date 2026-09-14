@@ -3,6 +3,7 @@ import { s, palette, money, shortDate } from './theme'
 import type { DocProfile } from './theme'
 import { Letterhead, Party, MetaGrid, ItemsTable, Totals, SignatureBlock, Footer } from './parts'
 import type { DocLine } from './parts'
+import { packAndUnit } from '@/components/ui/PackQtyInput'
 
 type Employee = { firstName: string; lastName: string } | null
 export type PurchaseOrderDocData = {
@@ -19,7 +20,7 @@ export type PurchaseOrderDocData = {
   supplier: { name: string }
   requisition: { requisitionNo: string } | null
   createdByEmployee: Employee
-  items: { product: { name: string; unit: string }; quantity: string; unitCost: string; lineTotal: string; note: string | null }[]
+  items: { product: { name: string; unit: string; packSize: string | null; packLabel: string | null; packUnit: { id: string; name: string } | null }; quantity: string; unitCost: string; lineTotal: string; note: string | null }[]
 }
 
 const fullName = (e: Employee) => (e ? `${e.firstName} ${e.lastName}` : '')
@@ -30,7 +31,7 @@ export default function PurchaseOrderDocument({ data, profile }: { data: Purchas
   const lines: DocLine[] = data.items.map((i) => ({
     name: i.product.name,
     sub: i.note ?? undefined,
-    qty: `${Number(i.quantity)} ${i.product.unit}`,
+    qty: packAndUnit(Number(i.quantity), Number(i.product.packSize) || 0, i.product.packLabel ?? '', i.product.packUnit?.name ?? i.product.unit),
     unit: money(i.unitCost, currency),
     total: money(i.lineTotal, currency),
   }))

@@ -3,6 +3,7 @@ import { LuBookOpen, LuCircleAlert, LuLoaderCircle, LuSearch } from 'react-icons
 import { api, hasApiTenant } from '@/lib/api'
 import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
+import { packAndUnit } from '@/components/ui/PackQtyInput'
 
 type MoveType =
   | 'OPENING_STOCK' | 'PURCHASE' | 'SALE' | 'TRANSFER_IN' | 'TRANSFER_OUT' | 'RETURN'
@@ -39,7 +40,7 @@ type Entry = {
   value: string | null
   note: string | null
   occurredAt: string
-  product: { id: string; name: string; sku: string | null; unit: string }
+  product: { id: string; name: string; sku: string | null; unit: string; packSize: string | null; packLabel: string | null; packUnit: { id: string; name: string } | null }
   location: { id: string; name: string }
   employee: { id: string; firstName: string; lastName: string } | null
 }
@@ -47,7 +48,7 @@ type Pagination = { page: number; pageSize: number; total: number; pages: number
 type Location = { id: string; name: string }
 
 const num = (v: string | null) => (v == null ? null : Number(v))
-const fmtQty = (v: number) => v.toLocaleString('en-KE', { maximumFractionDigits: 3 })
+const stockQty = (value: number, product: Entry['product']) => packAndUnit(value, Number(product.packSize) || 0, product.packLabel ?? '', product.packUnit?.name ?? product.unit)
 const money = (v: number) => `KSh ${v.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const THIS_YEAR = new Date().getFullYear()
 const YEARS = Array.from({ length: 6 }, (_, i) => THIS_YEAR - i)
@@ -212,10 +213,10 @@ export default function StockLedger() {
                         </span>
                       </td>
                       <td className={cn('px-4 py-3 text-right font-semibold tabular-nums', change > 0 ? 'text-success' : change < 0 ? 'text-destructive' : 'text-muted-foreground')}>
-                        {change > 0 ? '+' : ''}{fmtQty(change)}
+                        {change > 0 ? '+' : ''}{stockQty(change, e.product)}
                       </td>
-                      <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">{before == null ? '—' : fmtQty(before)}</td>
-                      <td className="px-4 py-3 text-right font-semibold tabular-nums">{after == null ? '—' : fmtQty(after)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">{before == null ? '—' : stockQty(before, e.product)}</td>
+                      <td className="px-4 py-3 text-right font-semibold tabular-nums">{after == null ? '—' : stockQty(after, e.product)}</td>
                       <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">{e.value == null ? '—' : money(Number(e.value))}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-muted-foreground">{e.employee ? `${e.employee.firstName} ${e.employee.lastName}` : '—'}</td>
                     </tr>
