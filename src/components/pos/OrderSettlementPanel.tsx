@@ -151,6 +151,7 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, profile
 
   async function completeOrder() {
     if (!order || settling) return
+    if (pendingReturnTotal > 0) { const message = 'Approve or reject the pending return first'; setError(message); toast.error(message); return }
     if (remaining > 0.01) {
       if (!order.customer) { setCustModalOpen(true); return }
       if (!creditReason.trim() || !creditExpectedAt) { const message = 'Give a credit reason and expected payment date'; setError(message); toast.error(message); return }
@@ -265,6 +266,7 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, profile
   async function settle(event: FormEvent) {
     event.preventDefault()
     if (!order) return
+    if (pendingReturnTotal > 0) { const message = 'Approve or reject the pending return first'; setError(message); toast.error(message); return }
     if (mode === 'PAY' && !paymentMethodId) { const message = 'Choose a payment method'; setError(message); toast.error(message); return }
     if (mode === 'ROOM' && !reservationId) { const message = 'Choose a checked-in stay to bill this to'; setError(message); toast.error(message); return }
     if (mode === 'PAY' && selectedMethod?.requiresReference && !reference.trim()) { const message = `${selectedMethod.name} requires a reference number`; setError(message); toast.error(message); return }
@@ -367,7 +369,7 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, profile
 
               {pendingReturnTotal > 0 && (
                 <p className="mt-2 rounded-sm border border-warning/40 bg-warning/10 p-3 text-center text-xs font-semibold text-warning">
-                  {pendingReturnTotal} item{pendingReturnTotal === 1 ? '' : 's'} waiting return approval.
+                  {pendingReturnTotal} item{pendingReturnTotal === 1 ? '' : 's'} waiting return approval. Payment is paused until a manager decides it.
                 </p>
               )}
 
@@ -460,7 +462,7 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, profile
                 )
               })()}
 
-              {(order.status === 'SERVED' || order.status === 'COMPLETED') && remaining > 0.01 && (
+              {pendingReturnTotal === 0 && (order.status === 'SERVED' || order.status === 'COMPLETED') && remaining > 0.01 && (
                 <form onSubmit={settle} noValidate className="mt-5 space-y-3 border-t pt-5">
                   <div className="flex gap-1 rounded-sm bg-muted/50 p-1">
                     {(['PAY', 'ROOM'] as const).map((value) => (
@@ -526,7 +528,7 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, profile
                 </form>
               )}
 
-              {order.status === 'SERVED' && (
+              {pendingReturnTotal === 0 && order.status === 'SERVED' && (
                 <div className="mt-3 space-y-2">
                   {remaining > 0.01 && !order.customer && (
                     <button
