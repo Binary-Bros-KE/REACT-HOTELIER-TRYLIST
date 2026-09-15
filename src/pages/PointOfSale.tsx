@@ -1546,29 +1546,6 @@ function AddItemsModal({ order, menuItems, allAddons, onClose, onRefresh, onAdde
     } finally { setBusyId(null) }
   }
 
-  async function requestPartialReturn(line: ExistingLine) {
-    const pending = (line.returnRequests ?? []).filter((request) => request.status === 'PENDING').reduce((sum, request) => sum + request.quantity, 0)
-    const max = line.quantity - pending - 1
-    if (max < 1) { const message = 'This line cannot be partially returned.'; setError(message); toast.error(message); return }
-    const qtyInput = window.prompt(`Return how many ${line.menuItemName}? Max ${max}.`, '1')
-    if (qtyInput === null) return
-    const quantity = Number(qtyInput)
-    if (!Number.isInteger(quantity) || quantity < 1 || quantity > max) { const message = `Enter a whole number between 1 and ${max}.`; setError(message); toast.error(message); return }
-    const reason = window.prompt(`Why is ${quantity} x ${line.menuItemName} being returned?`, '')
-    if (!reason?.trim() || reason.trim().length < 3) { const message = 'Give a reason for the partial return.'; setError(message); toast.error(message); return }
-    setBusyId(line.id); setError('')
-    try {
-      await api(`/pos/orders/${order.id}/items/${line.id}/return-request`, { method: 'POST', body: JSON.stringify({ quantity, reason: reason.trim() }) })
-      toast.success('Partial return requested.')
-      await loadExisting()
-      onRefresh()
-    } catch (cause) {
-      const message = cause instanceof Error ? cause.message : 'Could not request this return'
-      setError(message)
-      toast.error(message)
-    } finally { setBusyId(null) }
-  }
-
   function editExisting(line: ExistingLine) {
     if (!line.menuItemId || !menuById.has(line.menuItemId)) {
       setError('That item is no longer on the menu — remove and re-add it instead.')
@@ -1654,7 +1631,6 @@ function AddItemsModal({ order, menuItems, allAddons, onClose, onRefresh, onAdde
                       {servedLocked ? (
                         <div className="mt-1.5 flex items-center justify-between gap-2">
                           <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Locked after service</p>
-                          {line.quantity > 1 && <button disabled={busyId === line.id} onClick={() => void requestPartialReturn(line)} className="rounded-sm border border-destructive/30 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-destructive hover:bg-destructive/10 disabled:opacity-50">Partial return</button>}
                         </div>
                       ) : (
                         <div className="mt-1.5 flex items-center gap-1.5">

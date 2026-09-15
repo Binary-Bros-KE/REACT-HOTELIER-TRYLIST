@@ -99,6 +99,10 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, profile
   const [cancelOpen, setCancelOpen] = useState(false)
   const [cancelReason, setCancelReason] = useState('')
   const [cancelling, setCancelling] = useState(false)
+  const [partialReturnOpen, setPartialReturnOpen] = useState(false)
+  const [returnReason, setReturnReason] = useState('')
+  const [returnQty, setReturnQty] = useState<Record<string, string>>({})
+  const [returning, setReturning] = useState(false)
   const [settling, setSettling] = useState(false)
   const [custModalOpen, setCustModalOpen] = useState(false)
   const [creditReason, setCreditReason] = useState('')
@@ -109,6 +113,7 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, profile
   const remaining = order ? Math.max(0, order.total - order.paid) : 0
   const isComplementary = order?.saleType === 'COMPLIMENTARY'
   const isCreditOverdue = !!order?.creditExpectedAt && remaining > 0.01 && new Date(order.creditExpectedAt).getTime() < Date.now()
+  const canRequestPartialReturn = !!order?.servedAt && ['SERVED', 'COMPLETED'].includes(order.status) && Date.now() - new Date(order.servedAt).getTime() <= RETURN_WINDOW_MS
 
   async function loadOrder() {
     setLoading(true)
@@ -203,6 +208,49 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, profile
       toast.error(message)
     } finally {
       setCancelling(false)
+    }
+  }
+
+  function pendingReturnQty(item: Order['items'][number]): number {
+    return (item.returnRequests ?? []).filter((request) => request.status === 'PENDING').reduce((sum, request) => sum + request.quantity, 0)
+  }
+
+  async function requestPartialReturn() {
+    if (!order || returning) return
+    const lines = order.items.map((item) => {
+      const quantity = Number(returnQty[item.id] || 0)
+      const max = Math.max(0, item.quantity - pendingReturnQty(item))
+      return { item, quantity, max }
+    }).filter((line) => line.quantity > 0)
+    if (lines.length === 0) { const message = 'Enter at least one return quantity'; setError(message); toast.error(message); return }
+    const invalid = lines.find((line) => !Number.isInteger(line.quantity) || line.quantity < 1 || line.quantity > line.max)
+    if (invalid) { const message = `Check the return quantity for ${invalid.item.menuItem?.name ?? 'one item'}`; setError(message); toast.error(message); return }
+    const availableAfterPending = order.items.reduce((sum, item) => sum + Math.max(0, item.quantity - pendingReturnQty(item)), 0)
+    const requestedTotal = lines.reduce((sum, line) => sum + line.quantity, 0)
+    if (requestedTotal >= availableAfterPending) { const message = 'Partial return must leave at least one item on the order'; setError(message); toast.error(message); return }
+    if (!returnReason.trim() || returnReason.trim().length < 3) { const message = 'Give a reason for the return'; setError(message); toast.error(message); return }
+    setReturning(true)
+    setError('')
+    try {
+      await api(`/pos/orders/${order.id}/return-request`, {
+        method: 'POST',
+        body: JSON.stringify({
+          reason: returnReason.trim(),
+          items: lines.map((line) => ({ orderItemId: line.item.id, quantity: line.quantity })),
+        }),
+      })
+      toast.success('Partial return requested.')
+      setPartialReturnOpen(false)
+      setReturnReason('')
+      setReturnQty({})
+      await loadOrder()
+      onChanged()
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'Could not request this return'
+      setError(message)
+      toast.error(message)
+    } finally {
+      setReturning(false)
     }
   }
 
@@ -308,6 +356,58 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, profile
                   <span className="font-bold">{formatKes(remaining)}</span>
                 </span>
               </div>
+
+              {canRequestPartialReturn && (
+                <div className="mt-2">
+                  {!partialReturnOpen ? (
+                    <button onClick={() => { setPartialReturnOpen(true); setCancelOpen(false) }} className="w-full rounded-sm border border-warning/40 py-2.5 text-sm font-semibold text-warning hover:bg-warning/10">
+                      Partial return
+                    </button>
+                  ) : (
+                    <div className="space-y-3 rounded-sm border border-warning/30 bg-warning/5 p-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-warning">Partial return</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">Enter only the quantities being returned from this order.</p>
+                      </div>
+                      <div className="space-y-2">
+                        {order.items.map((item) => {
+                          const pending = pendingReturnQty(item)
+                          const max = Math.max(0, item.quantity - pending)
+                          return (
+                            <label key={item.id} className="grid grid-cols-[1fr_88px] items-center gap-3 rounded-sm border bg-card p-2.5 text-sm">
+                              <span className="min-w-0">
+                                <span className="block truncate font-medium">{item.menuItem?.name ?? 'Item'}{item.variant ? ` (${item.variant.name})` : ''}</span>
+                                <span className="text-xs text-muted-foreground">{item.quantity} on order{pending ? `, ${pending} already pending` : ''}</span>
+                              </span>
+                              <input
+                                type="number"
+                                min="0"
+                                max={max}
+                                step="1"
+                                disabled={max <= 0}
+                                value={returnQty[item.id] ?? ''}
+                                onChange={(e) => setReturnQty((current) => ({ ...current, [item.id]: e.target.value }))}
+                                placeholder="0"
+                                className="input text-right"
+                              />
+                            </label>
+                          )
+                        })}
+                      </div>
+                      <label className="block text-xs font-semibold text-warning">
+                        Reason
+                        <textarea rows={2} value={returnReason} onChange={(e) => setReturnReason(e.target.value)} placeholder="e.g. customer changed order" className="mt-1.5 w-full rounded-sm border bg-background px-2.5 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring" />
+                      </label>
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => { setPartialReturnOpen(false); setReturnQty({}); setReturnReason('') }} className="flex-1 rounded-sm border py-2 text-xs font-semibold hover:bg-muted">Back</button>
+                        <button type="button" disabled={returning} onClick={() => void requestPartialReturn()} className="inline-flex flex-1 items-center justify-center gap-2 rounded-sm bg-warning py-2 text-xs font-bold text-warning-foreground disabled:opacity-50">
+                          {returning && <LuLoaderCircle className="size-3.5 animate-spin" />} Request partial return
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {order.status === 'PENDING_CANCELLATION' ? (
                 <p className="mt-2 rounded-sm border border-warning/40 bg-warning/10 p-3 text-center text-xs font-semibold text-warning">
