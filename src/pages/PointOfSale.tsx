@@ -1484,6 +1484,7 @@ function AddItemsModal({ order, menuItems, allAddons, onClose, onRefresh, onAdde
 
   const visibleItems = menuItems.filter((item) => !search.trim() || `${item.name} ${item.description ?? ''}`.toLowerCase().includes(search.trim().toLowerCase()))
   const addingTotal = cart.reduce((sum, line) => sum + lineTotal(line), 0)
+  const servedLocked = order.status === 'SERVED'
 
   function addConfiguredLine(item: MenuItem, variant: Variant | null, addons: Addon[], quantity: number) {
     setCart((current) => {
@@ -1565,7 +1566,7 @@ function AddItemsModal({ order, menuItems, allAddons, onClose, onRefresh, onAdde
         <div className="flex items-center justify-between border-b p-4">
           <div>
             <p className="text-sm font-semibold text-secondary">Order #{order.orderNumber}</p>
-            <h2 className="font-display text-xl font-semibold">Manage order</h2>
+            <h2 className="font-display text-xl font-semibold">{servedLocked ? 'Add to served order' : 'Manage order'}</h2>
           </div>
           <button onClick={onClose} className="rounded-sm p-2 text-muted-foreground hover:bg-muted"><LuX /></button>
         </div>
@@ -1594,6 +1595,11 @@ function AddItemsModal({ order, menuItems, allAddons, onClose, onRefresh, onAdde
 
           <div className="flex flex-col overflow-y-auto border-t bg-muted/20 p-4 lg:border-l lg:border-t-0">
             <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">On this order</p>
+            {servedLocked && (
+              <p className="mb-3 rounded-sm border border-warning/40 bg-warning/10 p-2 text-xs font-medium text-warning">
+                Served lines are locked because stock has already been deducted. Add a new round here, or use Request return for served items.
+              </p>
+            )}
             {existing.length === 0 ? (
               <p className="text-center text-xs text-muted-foreground">No lines yet.</p>
             ) : (
@@ -1606,16 +1612,20 @@ function AddItemsModal({ order, menuItems, allAddons, onClose, onRefresh, onAdde
                       <div className="flex justify-between gap-2 text-sm">
                         <span className="min-w-0 truncate font-medium">{line.quantity}&times; {line.menuItemName}{line.variantName ? ` · ${line.variantName}` : ''}</span>
                         <div className="flex shrink-0 items-center gap-1.5">
-                          {canEdit && <button disabled={busyId === line.id} onClick={() => editExisting(line)} title="Change size / add-ons" className="text-muted-foreground hover:text-secondary"><LuPencil className="size-3.5" /></button>}
-                          <button disabled={busyId === line.id} onClick={() => void removeExisting(line)} title="Remove line" className="text-muted-foreground hover:text-destructive"><LuTrash2 className="size-3.5" /></button>
+                          {!servedLocked && canEdit && <button disabled={busyId === line.id} onClick={() => editExisting(line)} title="Change size / add-ons" className="text-muted-foreground hover:text-secondary"><LuPencil className="size-3.5" /></button>}
+                          {!servedLocked && <button disabled={busyId === line.id} onClick={() => void removeExisting(line)} title="Remove line" className="text-muted-foreground hover:text-destructive"><LuTrash2 className="size-3.5" /></button>}
                         </div>
                       </div>
                       {line.addons.length > 0 && <p className="mt-1 text-[10px] text-muted-foreground">{line.addons.map((a) => a.name).join(', ')}</p>}
-                      <div className="mt-1.5 flex items-center gap-1.5">
-                        <button disabled={busyId === line.id || line.quantity <= 1} onClick={() => void patchExisting(line, { quantity: line.quantity - 1 })} className="rounded-sm border bg-background p-1 disabled:opacity-30"><LuMinus className="size-3" /></button>
-                        <span className="w-5 text-center text-xs font-medium">{line.quantity}</span>
-                        <button disabled={busyId === line.id} onClick={() => void patchExisting(line, { quantity: line.quantity + 1 })} className="rounded-sm border bg-background p-1"><LuPlus className="size-3" /></button>
-                      </div>
+                      {servedLocked ? (
+                        <p className="mt-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Locked after service</p>
+                      ) : (
+                        <div className="mt-1.5 flex items-center gap-1.5">
+                          <button disabled={busyId === line.id || line.quantity <= 1} onClick={() => void patchExisting(line, { quantity: line.quantity - 1 })} className="rounded-sm border bg-background p-1 disabled:opacity-30"><LuMinus className="size-3" /></button>
+                          <span className="w-5 text-center text-xs font-medium">{line.quantity}</span>
+                          <button disabled={busyId === line.id} onClick={() => void patchExisting(line, { quantity: line.quantity + 1 })} className="rounded-sm border bg-background p-1"><LuPlus className="size-3" /></button>
+                        </div>
+                      )}
                     </div>
                   )
                 })}
@@ -1653,7 +1663,7 @@ function AddItemsModal({ order, menuItems, allAddons, onClose, onRefresh, onAdde
         </div>
 
         <div className="flex items-center justify-between gap-3 border-t p-4">
-          <span className="text-sm font-semibold">{cart.length > 0 ? `Adding: ${formatKes(addingTotal)}` : 'Line changes save as you make them'}</span>
+          <span className="text-sm font-semibold">{cart.length > 0 ? `Adding: ${formatKes(addingTotal)}` : servedLocked ? 'Served lines are locked' : 'Line changes save as you make them'}</span>
           <div className="flex gap-2">
             <button onClick={onClose} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Done</button>
             <button disabled={!cart.length || submitting} onClick={() => void submitAdds()} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
