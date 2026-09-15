@@ -47,6 +47,7 @@ type Product = {
   reorderLevel: string
   maxStockLevel: string | null
   unitCost: string | null
+  sellsDirectly: boolean
   sellingPrice: string | null
   preferredSupplier: string | null
   isActive: boolean
@@ -213,7 +214,7 @@ export default function Products() {
       reorderLevel: product.reorderLevel,
       maxStockLevel: product.maxStockLevel ?? '',
       unitCost: product.unitCost ?? '',
-      sellsDirectly: product.sellingPrice != null,
+      sellsDirectly: product.sellsDirectly,
       sellingPrice: product.sellingPrice ?? '',
       preferredSupplier: product.preferredSupplier ?? '',
       isActive: product.isActive,
@@ -230,8 +231,7 @@ export default function Products() {
     setError('')
     setNotice('')
     try {
-      const { sellsDirectly: _sellsDirectly, ...rest } = form
-      const payload = { ...rest, ...(editing ? { openingStock: undefined, locationId: undefined } : {}) }
+      const payload = { ...form, ...(editing ? { openingStock: undefined, locationId: undefined } : {}) }
       await api(editing ? `/products/${editing.id}` : '/products', { method: editing ? 'PATCH' : 'POST', body: JSON.stringify(payload) })
       setNotice(editing ? 'Product updated.' : 'Product added.')
       toast.success(editing ? 'Product updated.' : 'Product added.')
@@ -409,7 +409,64 @@ export default function Products() {
         ) : products.length === 0 ? (
           <div className="min-h-64 p-16 text-center text-sm text-muted-foreground">No products match your search.</div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="space-y-3 p-4">
+            {products.map((product) => {
+              const low = Number(product.totalQuantity) <= Number(product.reorderLevel)
+              const productPackSize = Number(product.packSize) || 0
+              const unitLabel = product.packUnit?.name ?? product.unit
+              const fmt = (qty: string | number) => packAndUnit(Number(qty), productPackSize, product.packLabel ?? '', unitLabel)
+              const locationRows = product.stockByLocation.length > 0 ? product.stockByLocation : [{ locationId: 'none', locationName: 'No location stock yet', quantity: '0' }]
+              return (
+                <article key={product.id} className={cn('overflow-hidden rounded-sm border bg-background shadow-sm', low && 'border-warning/60')}>
+                  <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div className="flex size-11 shrink-0 items-center justify-center rounded-sm border bg-muted/50 text-muted-foreground"><LuPackage /></div>
+                      <div className="min-w-0">
+                        <p className="font-semibold">{product.name}</p>
+                        <p className="text-xs text-muted-foreground">{[product.sku, product.category?.name, product.brand].filter(Boolean).join(' · ') || '—'}</p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-3 sm:justify-end">
+                      <div className="text-right">
+                        <p className={cn('text-lg font-semibold tabular-nums', low ? 'text-warning' : 'text-success')}>{fmt(product.totalQuantity)}</p>
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Total stock</p>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {low && <span className="rounded-full bg-warning/10 px-2 py-0.5 text-xs font-semibold text-warning">Low</span>}
+                        {!product.isActive && <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">Inactive</span>}
+                        <button onClick={() => openAdjust(product)} title="Add or remove stock" className="rounded-sm border p-2 text-muted-foreground hover:bg-success/10 hover:text-success"><LuPackagePlus /></button>
+                        <button onClick={() => openTransfer(product)} title="Transfer stock" className="rounded-sm border p-2 text-muted-foreground hover:bg-accent/10 hover:text-accent"><LuArrowLeftRight /></button>
+                        <button onClick={() => openEdit(product)} title="Edit product" className="rounded-sm border p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuPencil /></button>
+                        <button onClick={() => void deleteProduct(product)} title="Delete product" className="rounded-sm border p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><LuTrash2 /></button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="overflow-x-auto border-t">
+                    <table className="w-full min-w-[620px] text-left text-sm">
+                      <thead className="bg-primary text-xs uppercase tracking-wide text-primary-foreground">
+                        <tr>
+                          <th className="px-4 py-2.5">Location</th>
+                          <th className="px-4 py-2.5 text-right">On hand</th>
+                          <th className="px-4 py-2.5 text-right">Reorder level</th>
+                          <th className="px-4 py-2.5 text-right">Unit cost</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {locationRows.map((s) => (
+                          <tr key={s.locationId} className="border-t first:border-t-0">
+                            <td className="px-4 py-2.5 font-medium">{s.locationName}</td>
+                            <td className="px-4 py-2.5 text-right tabular-nums">{s.locationId === 'none' ? '—' : fmt(s.quantity)}</td>
+                            <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{fmt(product.reorderLevel)}</td>
+                            <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">{product.unitCost ? `KSh ${Number(product.unitCost).toLocaleString()}` : '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </article>
+              )
+            })}
+            {false && (
             <table className="w-full text-left text-sm">
               <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
@@ -461,6 +518,7 @@ export default function Products() {
                 })}
               </tbody>
             </table>
+            )}
           </div>
         )}
       </section>
