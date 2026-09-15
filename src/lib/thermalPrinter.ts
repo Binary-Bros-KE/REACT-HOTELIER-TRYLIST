@@ -134,24 +134,50 @@ const BT_SERVICE = 0x18f0
 const BT_CHARACTERISTIC = 0x2af1
 let btChar: BluetoothRemoteGATTCharacteristic | null = null
 
+async function connectBluetoothDevice(device: BluetoothDevice): Promise<BluetoothRemoteGATTCharacteristic> {
+  const server = await device.gatt!.connect()
+  const service = await server.getPrimaryService(BT_SERVICE)
+  return service.getCharacteristic(BT_CHARACTERISTIC)
+}
+
 export async function pairBluetoothPrinter(): Promise<string> {
   if (!webBluetoothAvailable()) throw new Error('This browser has no Bluetooth access.')
   const device = await navigator.bluetooth.requestDevice({
     filters: [{ services: [BT_SERVICE] }],
     optionalServices: [BT_SERVICE],
   })
-  const server = await device.gatt!.connect()
-  const service = await server.getPrimaryService(BT_SERVICE)
-  btChar = await service.getCharacteristic(BT_CHARACTERISTIC)
+  btChar = await connectBluetoothDevice(device)
   return device.name || 'Bluetooth printer'
 }
 
+async function reconnectBluetoothPrinter(): Promise<void> {
+  if (!webBluetoothAvailable()) throw new Error('This browser has no Bluetooth access.')
+  const bluetooth = navigator.bluetooth as Bluetooth & { getDevices?: () => Promise<BluetoothDevice[]> }
+  const devices = await bluetooth.getDevices?.()
+  const preferred = devices?.find((device) => device.name === getThermalSettings().address) ?? devices?.[0]
+  if (preferred) {
+    btChar = await connectBluetoothDevice(preferred)
+    return
+  }
+  await pairBluetoothPrinter()
+}
+
 async function sendBluetooth(bytes: Uint8Array): Promise<void> {
-  if (!btChar || !btChar.service.device.gatt?.connected) await pairBluetoothPrinter()
+  if (!btChar || !btChar.service.device.gatt?.connected) await reconnectBluetoothPrinter()
   if (!btChar) throw new Error('No Bluetooth printer connected.')
-  for (let i = 0; i < bytes.length; i += 180) {
-    await btChar.writeValueWithoutResponse(bytes.slice(i, i + 180) as unknown as BufferSource)
-    await new Promise((r) => setTimeout(r, 20))
+  const writeChunks = async (char: BluetoothRemoteGATTCharacteristic) => {
+    for (let i = 0; i < bytes.length; i += 180) {
+      await char.writeValueWithoutResponse(bytes.slice(i, i + 180) as unknown as BufferSource)
+      await new Promise((r) => setTimeout(r, 20))
+    }
+  }
+  try {
+    await writeChunks(btChar)
+  } catch (error) {
+    btChar = null
+    await reconnectBluetoothPrinter()
+    if (!btChar) throw error
+    await writeChunks(btChar)
   }
 }
 
@@ -256,6 +282,7 @@ function wrapWords(text: string, width: number): string[] {
 
 export function buildReceiptBytes(order: ReceiptOrder, profile: ReceiptProfile, s: ThermalSettings): Uint8Array {
   const cols = Math.max(24, Math.min(64, Math.round(s.columns) || 48))
+  const compact = cols <= 35
   const isComplementary = order.saleType === 'COMPLIMENTARY'
   const paid = order.payments.reduce((sum, p) => sum + Number(p.amount), 0)
   const owed = Math.max(0, order.financials.total - paid)
@@ -264,12 +291,12 @@ export function buildReceiptBytes(order: ReceiptOrder, profile: ReceiptProfile, 
   const e = new ReceiptPrinterEncoder({
     language: 'esc-pos',
     columns: cols,
-    feedBeforeCut: 4,
+    feedBeforeCut: compact ? 2 : 4,
     ...(s.model && s.model !== 'generic' ? { printerModel: s.model } : {}),
   })
   e.initialize().codepage('cp437')
 
-  const priceW = 12
+  const priceW = compact ? 10 : 12
   const nameW = cols - priceW - 1
   const row = (l: string, r: string) => e.table([{ width: nameW, align: 'left' }, { width: priceW, align: 'right' }], [[l, r]])
 
@@ -282,13 +309,19 @@ export function buildReceiptBytes(order: ReceiptOrder, profile: ReceiptProfile, 
     // font's proportions intact and prints correctly everywhere. Wrapping
     // (rather than the old slice-to-width) means a long name gets a second
     // centered line instead of getting cut off.
-    const nameWidth = Math.max(8, Math.floor(cols / 2))
-    e.size(2, 2).bold(true)
-    for (const line of wrapWords(profile.businessName.toUpperCase(), nameWidth)) e.line(center(line, nameWidth))
-    e.bold(false).size(1, 1)
+    if (compact) {
+      e.bold(true)
+      for (const line of wrapWords(profile.businessName.toUpperCase(), cols)) e.line(center(line, cols))
+      e.bold(false)
+    } else {
+      const nameWidth = Math.max(8, Math.floor(cols / 2))
+      e.size(2, 2).bold(true)
+      for (const line of wrapWords(profile.businessName.toUpperCase(), nameWidth)) e.line(center(line, nameWidth))
+      e.bold(false).size(1, 1)
+    }
   }
   const place = [profile?.address, profile?.city].filter(Boolean).join(', ')
-  if (place) e.line(center(place, cols))
+  if (place && !compact) e.line(center(place, cols))
   if (order.location?.name) e.line(center(order.location.name, cols))
   const phone = receiptPhone(order, profile)
   if (phone) e.line(center(phone, cols))
@@ -298,7 +331,7 @@ export function buildReceiptBytes(order: ReceiptOrder, profile: ReceiptProfile, 
 
   // -------- receipt / date / served by (left-aligned) --------
   e.line(`Receipt: ${order.orderNumber}`)
-  e.line(`Date: ${new Date(order.updatedAt).toLocaleString()}`)
+  e.line(`Date: ${new Date(order.updatedAt).toLocaleString('en-KE', compact ? { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' } : undefined)}`)
   const served = servedByName(order)
   if (served) e.line(`Served by: ${served}`)
   e.line(`Status: ${statusText}`)
@@ -311,7 +344,14 @@ export function buildReceiptBytes(order: ReceiptOrder, profile: ReceiptProfile, 
 
   // -------- items --------
   for (const item of order.items) {
-    row(`${item.quantity} x ${item.menuItem.name}${item.variant ? ` (${item.variant.name})` : ''}`, money(Number(item.unitPrice) * item.quantity))
+    const label = `${item.quantity} x ${item.menuItem.name}${item.variant ? ` (${item.variant.name})` : ''}`
+    if (compact && label.length > nameW) {
+      const price = money(Number(item.unitPrice) * item.quantity)
+      e.line(label)
+      e.line(`${' '.repeat(Math.max(0, cols - price.length))}${price}`)
+    } else {
+      row(label, money(Number(item.unitPrice) * item.quantity))
+    }
     for (const a of item.addons) row(`  + ${a.addon.name}`, money(Number(a.unitPrice) * a.quantity))
   }
   e.rule()
@@ -335,22 +375,34 @@ export function buildReceiptBytes(order: ReceiptOrder, profile: ReceiptProfile, 
   else for (const p of order.payments) row(p.paymentMethod.name, money(p.amount))
   e.rule()
 
-  // -------- tax breakdown (Kenyan law: must be itemised, not just a total) --------
-  const netW = Math.max(8, Math.floor(cols * 0.2))
-  const taxW = Math.max(7, Math.floor(cols * 0.16))
-  const grossW = Math.max(8, Math.floor(cols * 0.2))
-  const labelW = cols - netW - taxW - grossW
-  const taxRow = (label: string, net: string, tax: string, gross: string) =>
-    e.table(
-      [{ width: labelW, align: 'left' }, { width: netW, align: 'right' }, { width: taxW, align: 'right' }, { width: grossW, align: 'right' }],
-      [[label, net, tax, gross]],
-    )
   e.line('Tax breakdown')
-  taxRow('Rate', 'Net', 'Tax', 'Gross')
-  for (const t of f.taxLines ?? []) taxRow(t.label, money(t.net), money(t.tax), money(t.gross))
-  e.bold(true)
-  taxRow('Total', money(f.net), money(f.taxAmount), money(f.total))
-  e.bold(false)
+  if (compact) {
+    for (const t of f.taxLines ?? []) {
+      e.line(t.label)
+      row('  Net', money(t.net))
+      row('  Tax', money(t.tax))
+      row('  Gross', money(t.gross))
+    }
+    e.bold(true)
+    row('Tax total', money(f.taxAmount))
+    row('Gross total', money(f.total))
+    e.bold(false)
+  } else {
+    const netW = Math.max(8, Math.floor(cols * 0.2))
+    const taxW = Math.max(7, Math.floor(cols * 0.16))
+    const grossW = Math.max(8, Math.floor(cols * 0.2))
+    const labelW = cols - netW - taxW - grossW
+    const taxRow = (label: string, net: string, tax: string, gross: string) =>
+      e.table(
+        [{ width: labelW, align: 'left' }, { width: netW, align: 'right' }, { width: taxW, align: 'right' }, { width: grossW, align: 'right' }],
+        [[label, net, tax, gross]],
+      )
+    taxRow('Rate', 'Net', 'Tax', 'Gross')
+    for (const t of f.taxLines ?? []) taxRow(t.label, money(t.net), money(t.tax), money(t.gross))
+    e.bold(true)
+    taxRow('Total', money(f.net), money(f.taxAmount), money(f.total))
+    e.bold(false)
+  }
   if ((f.zeroRatedAmount ?? 0) > 0) e.line(`Includes zero-rated: ${money(f.zeroRatedAmount!)}`)
   if ((f.exemptAmount ?? 0) > 0) e.line(`Includes exempt: ${money(f.exemptAmount!)}`)
   e.rule()

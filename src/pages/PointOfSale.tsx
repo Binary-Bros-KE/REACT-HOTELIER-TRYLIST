@@ -284,6 +284,8 @@ export default function PointOfSale() {
   const [addItemsOrder, setAddItemsOrder] = useState<ActiveOrder | null>(null)
   const [receiptOrderId, setReceiptOrderId] = useState<string | null>(null)
   const [servingId, setServingId] = useState<string | null>(null)
+  const [revertOrder, setRevertOrder] = useState<ActiveOrder | null>(null)
+  const [revertingId, setRevertingId] = useState<string | null>(null)
 
   const { fixed: fixedLocation, options: pickableLocations, selectedId: selectedLocationId, setLocation, effectiveId: effectiveLocationId, needsChoice: needsLocationChoice } = useWorkingLocation(locations)
 
@@ -558,6 +560,22 @@ export default function PointOfSale() {
     }
   }
 
+  async function confirmRevertOrder() {
+    if (!revertOrder || revertingId) return
+    setRevertingId(revertOrder.id)
+    try {
+      await api(`/pos/orders/${revertOrder.id}/revert`, { method: 'DELETE' })
+      toast.success(`Order #${revertOrder.orderNumber} reverted.`)
+      setRevertOrder(null)
+      await loadActiveOrders(true)
+      await loadPos()
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : 'Could not revert this order')
+    } finally {
+      setRevertingId(null)
+    }
+  }
+
   return (
     <div className="mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
       <div className="relative">
@@ -746,6 +764,7 @@ export default function PointOfSale() {
                           </div>
                           {compBadge && <span className={cn('shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', compBadge.cls)}>{compBadge.label}</span>}
                           <button type="button" onClick={() => setReceiptOrderId(order.id)} title="Preview receipt" className="shrink-0 rounded-sm p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"><LuPrinter className="size-4" /></button>
+                          <button type="button" onClick={() => setRevertOrder(order)} title="Revert undeducted order" className="shrink-0 rounded-sm p-1.5 text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive"><LuTrash2 className="size-4" /></button>
                           <span className="shrink-0 rounded-full bg-destructive px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-destructive-foreground">Pending</span>
                           <span className="shrink-0 text-sm font-bold tabular-nums text-foreground">{formatKes(order.total)}</span>
                           <button
@@ -779,6 +798,7 @@ export default function PointOfSale() {
                       <div className="mt-4 flex flex-wrap gap-2">
                         <button onClick={() => setReceiptOrderId(order.id)} title="Receipt" className="inline-flex items-center justify-center rounded-sm border p-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"><LuPrinter className="size-3.5" /></button>
                         <button onClick={() => setAddItemsOrder(order)} className="inline-flex items-center gap-1.5 rounded-sm border px-3 py-1.5 text-xs font-semibold hover:bg-muted"><LuPencil className="size-3.5" /> Manage</button>
+                        {order.status !== 'SERVED' && <button onClick={() => setRevertOrder(order)} className="inline-flex items-center gap-1.5 rounded-sm border border-destructive/30 px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/10"><LuTrash2 className="size-3.5" /> Revert</button>}
                         {order.status === 'SERVED' && (
                           <button onClick={() => setSettlementOrderId(order.id)} className="inline-flex items-center gap-1.5 rounded-sm bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"><LuReceiptText className="size-3.5" /> Complete & Pay</button>
                         )}
@@ -1148,6 +1168,29 @@ export default function PointOfSale() {
         />
       )}
 
+      {revertOrder && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-sm border bg-card p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-destructive">Revert order</p>
+                <h2 className="mt-1 font-display text-xl font-semibold">Delete Order #{revertOrder.orderNumber}?</h2>
+              </div>
+              <button type="button" onClick={() => setRevertOrder(null)} className="rounded-sm p-1 text-muted-foreground hover:bg-muted"><LuX className="size-4" /></button>
+            </div>
+            <p className="mt-4 text-sm text-muted-foreground">
+              This removes the undeducted order from the counter/kitchen queue. It is only allowed before the order is served, so stock will not be changed.
+            </p>
+            <div className="mt-6 flex justify-end gap-2 border-t pt-5">
+              <button type="button" onClick={() => setRevertOrder(null)} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Keep order</button>
+              <button type="button" disabled={revertingId === revertOrder.id} onClick={() => void confirmRevertOrder()} className="inline-flex items-center gap-2 rounded-sm bg-destructive px-4 py-2.5 text-sm font-semibold text-destructive-foreground disabled:opacity-60">
+                {revertingId === revertOrder.id && <LuLoaderCircle className="animate-spin" />} Revert order
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {sessionModalOpen && (
         <ComplimentarySessionModal
           onClose={() => setSessionModalOpen(false)}
@@ -1174,7 +1217,7 @@ function CustomizeModal({ item, allAddons, initial, onClose, onSubmit }: {
   onClose: () => void
   onSubmit: (variant: Variant | null, addons: Addon[], quantity: number) => void
 }) {
-  const [variantId, setVariantId] = useState(initial?.variantId ?? item.variants[0]?.id ?? '')
+  const [variantId, setVariantId] = useState(initial?.variantId ?? item.variants.find((v) => v.availableQuantity == null || v.availableQuantity > 0)?.id ?? item.variants[0]?.id ?? '')
   const [selectedIds, setSelectedIds] = useState<string[]>(initial?.addonIds ?? [])
   const [quantity, setQuantity] = useState(initial?.quantity ?? 1)
   const editing = !!initial
@@ -1196,7 +1239,8 @@ function CustomizeModal({ item, allAddons, initial, onClose, onSubmit }: {
   const toggle = (id: string) =>
     setSelectedIds((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]))
 
-  const canAdd = item.variants.length === 0 || !!variant
+  const variantInStock = !variant || variant.availableQuantity == null || variant.availableQuantity > 0
+  const canAdd = (item.variants.length === 0 || !!variant) && variantInStock
   const chosenAddons: Addon[] = selected.map((a) => ({ id: a.id, name: a.name, price: a.price }))
   const unitPrice = (variant?.price ?? item.price) + chosenAddons.reduce((sum, a) => sum + a.price, 0)
 
@@ -1220,10 +1264,11 @@ function CustomizeModal({ item, allAddons, initial, onClose, onSubmit }: {
               <div className="space-y-1.5">
                 {item.variants.map((v) => {
                   const consumption = variantConsumptionLabel(v)
+                  const out = v.availableQuantity != null && v.availableQuantity <= 0
                   return (
-                    <label key={v.id} className={cn('flex cursor-pointer items-start justify-between gap-3 rounded-sm border px-3 py-2.5 text-sm', variantId === v.id ? 'border-secondary bg-secondary/10 font-semibold' : 'hover:bg-muted')}>
+                    <label key={v.id} className={cn('flex cursor-pointer items-start justify-between gap-3 rounded-sm border px-3 py-2.5 text-sm', variantId === v.id ? 'border-secondary bg-secondary/10 font-semibold' : 'hover:bg-muted', out && 'cursor-not-allowed opacity-50')}>
                       <span className="flex min-w-0 items-start gap-2.5">
-                        <input type="radio" name="variant" checked={variantId === v.id} onChange={() => setVariantId(v.id)} className="mt-0.5 accent-secondary" />
+                        <input type="radio" name="variant" checked={variantId === v.id} disabled={out} onChange={() => setVariantId(v.id)} className="mt-0.5 accent-secondary" />
                         <span className="min-w-0">
                           <span className="block truncate">{v.name}</span>
                           {consumption && (
@@ -1231,6 +1276,7 @@ function CustomizeModal({ item, allAddons, initial, onClose, onSubmit }: {
                               Consumes {consumption}
                             </span>
                           )}
+                          {out && <span className="mt-0.5 block text-xs font-semibold text-destructive">Out of stock</span>}
                         </span>
                       </span>
                       <span className="shrink-0">{formatKes(v.price)}</span>
