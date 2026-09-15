@@ -349,6 +349,7 @@ export default function Employees() {
                   <th className="px-5 py-3">Employee</th>
                   <th className="px-5 py-3">Department / Role</th>
                   <th className="px-5 py-3">Contact</th>
+                  <th className="px-5 py-3">Supervisor</th>
                   <th className="px-5 py-3">Status</th>
                   <th className="px-5 py-3">Salary</th>
                   <th className="px-5 py-3 text-right">Actions</th>
@@ -373,6 +374,13 @@ export default function Employees() {
                       <p className="mt-1 text-xs text-muted-foreground">{employee.jobTitle}</p>
                     </td>
                     <td className="px-5 py-4 text-muted-foreground">{employee.phone}</td>
+                    <td className="px-5 py-4">
+                      {employee.isSupervisor ? (
+                        <span className="rounded-full border border-secondary/30 bg-secondary/10 px-2.5 py-1 text-xs font-semibold text-secondary">Yes</span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">No</span>
+                      )}
+                    </td>
                     <td className="px-5 py-4">
                       <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusStyles[employee.status]}`}>{titleCase(employee.status)}</span>
                     </td>
@@ -452,10 +460,12 @@ export default function Employees() {
                   {supervisorOptions.map((s) => <option key={s.id} value={s.id}>{s.firstName} {s.lastName}</option>)}
                 </select>
               </Field>
-              <label className="flex items-center gap-2 rounded-sm border bg-muted/40 px-3 py-2 text-sm font-medium">
-                <input type="checkbox" checked={form.isSupervisor} onChange={(e) => setForm({ ...form, isSupervisor: e.target.checked })} className="size-4 accent-secondary" />
-                Can approve shift starts and handovers
-              </label>
+              <Field label="Is supervisor">
+                <label className="flex items-center gap-2 rounded-sm border bg-muted/40 px-3 py-2 text-sm font-medium">
+                  <input type="checkbox" checked={form.isSupervisor} onChange={(e) => setForm({ ...form, isSupervisor: e.target.checked })} className="size-4 accent-secondary" />
+                  Can approve shift starts and handovers
+                </label>
+              </Field>
               <Field label="Role" required>
                 <select required value={form.roleId} onChange={(e) => setForm({ ...form, roleId: e.target.value })} className="input">
                   <option value="" disabled>Select a role</option>
