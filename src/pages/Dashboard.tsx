@@ -1541,7 +1541,17 @@ function ShiftSummaryModal({ title, session, summary, approval, busyKey, onClose
             {summary.byPaymentMethod.map((m) => <tr key={m.name} className="border-t"><td className="px-3 py-2">{m.name}</td><td className="px-3 py-2 text-right">{m.count}</td><td className="px-3 py-2 text-right font-semibold">{formatKes(m.total)}</td></tr>)}
           </ShiftSummaryTable>
           <ShiftSummaryTable title="Transactions" empty="No transactions recorded.">
-            {summary.transactions.map((t) => <tr key={t.id} className="border-t"><td className="px-3 py-2">{t.transactionNo}</td><td className="px-3 py-2">{t.paymentMethod ?? t.source}</td><td className="px-3 py-2">{new Date(t.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td><td className={cn('px-3 py-2 text-right font-semibold', t.direction === 'IN' ? 'text-success' : 'text-destructive')}>{t.direction === 'IN' ? '+' : '-'}{formatKes(t.amount)}</td></tr>)}
+            {summary.transactions.map((t) => (
+              <tr key={t.id} className="border-t">
+                <td className="px-3 py-2">
+                  <p className="font-semibold">{t.reference || t.transactionNo}</p>
+                  {t.reference && <p className="text-[11px] text-muted-foreground">Txn {t.transactionNo}</p>}
+                </td>
+                <td className="px-3 py-2">{t.paymentMethod ?? t.source}</td>
+                <td className="px-3 py-2">{new Date(t.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                <td className={cn('px-3 py-2 text-right font-semibold', t.direction === 'IN' ? 'text-success' : 'text-destructive')}>{t.direction === 'IN' ? '+' : '-'}{formatKes(t.amount)}</td>
+              </tr>
+            ))}
           </ShiftSummaryTable>
           <ShiftSummaryTable title="Sales" empty="No sales recorded.">
             {summary.sales.map((s) => <tr key={s.id} className="border-t"><td className="px-3 py-2">#{s.orderNumber}</td><td className="px-3 py-2">{s.saleType === 'COMPLIMENTARY' ? `Complementary${s.complimentaryRecipientName ? ` - ${s.complimentaryRecipientName}` : ''}` : s.paymentStatus}</td><td className="px-3 py-2">{new Date(s.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td><td className="px-3 py-2 text-right font-semibold">{formatKes(s.total)}</td></tr>)}

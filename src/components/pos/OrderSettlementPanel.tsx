@@ -209,7 +209,7 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, profile
   async function settle(event: FormEvent) {
     event.preventDefault()
     if (!order) return
-    if (mode === 'PAY' && !paymentMethodId) return
+    if (mode === 'PAY' && !paymentMethodId) { const message = 'Choose a payment method'; setError(message); toast.error(message); return }
     if (mode === 'ROOM' && !reservationId) { const message = 'Choose a checked-in stay to bill this to'; setError(message); toast.error(message); return }
     if (mode === 'PAY' && selectedMethod?.requiresReference && !reference.trim()) { const message = `${selectedMethod.name} requires a reference number`; setError(message); toast.error(message); return }
     setPaying(true)
@@ -346,7 +346,7 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, profile
               })()}
 
               {(order.status === 'SERVED' || order.status === 'COMPLETED') && remaining > 0.01 && (
-                <form onSubmit={settle} className="mt-5 space-y-3 border-t pt-5">
+                <form onSubmit={settle} noValidate className="mt-5 space-y-3 border-t pt-5">
                   <div className="flex gap-1 rounded-sm bg-muted/50 p-1">
                     {(['PAY', 'ROOM'] as const).map((value) => (
                       <button key={value} type="button" onClick={() => setMode(value)} className={cn('flex-1 rounded-sm py-1.5 text-sm font-semibold', mode === value ? 'bg-card text-secondary shadow-sm' : 'text-muted-foreground')}>
@@ -362,7 +362,7 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, profile
                           Method
                           <select className="input mt-1.5" value={paymentMethodId} onChange={(e) => setPaymentMethodId(e.target.value)}>
                             <option value="">Select method</option>
-                            {paymentMethods.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                            {paymentMethods.map((m) => <option key={m.id} value={m.id}>{m.name}{m.requiresReference ? ' (reference required)' : ''}</option>)}
                           </select>
                         </label>
                         <label className="block text-sm font-medium">
@@ -371,8 +371,9 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, profile
                         </label>
                       </div>
                       <label className="block text-sm font-medium">
-                        {selectedMethod?.requiresReference ? 'Reference' : 'Reference (optional)'}
-                        <input placeholder="e.g. M-Pesa code" required={selectedMethod?.requiresReference} className="input mt-1.5" value={reference} onChange={(e) => setReference(e.target.value)} />
+                        {selectedMethod?.requiresReference ? 'Reference code required' : 'Reference (optional)'}
+                        <input placeholder="e.g. M-Pesa code" className={cn('input mt-1.5', selectedMethod?.requiresReference && !reference.trim() && 'border-warning focus:ring-warning')} value={reference} onChange={(e) => setReference(e.target.value)} />
+                        {selectedMethod?.requiresReference && <p className="mt-1 text-xs font-semibold text-warning">{selectedMethod.name} needs a transaction/reference code.</p>}
                       </label>
                     </>
                   ) : (
