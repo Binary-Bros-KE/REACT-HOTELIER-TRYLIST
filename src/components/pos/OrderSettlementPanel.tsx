@@ -113,7 +113,7 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, profile
   const remaining = order ? Math.max(0, order.total - order.paid) : 0
   const isComplementary = order?.saleType === 'COMPLIMENTARY'
   const isCreditOverdue = !!order?.creditExpectedAt && remaining > 0.01 && new Date(order.creditExpectedAt).getTime() < Date.now()
-  const canRequestPartialReturn = !!order?.servedAt && ['SERVED', 'COMPLETED'].includes(order.status) && Date.now() - new Date(order.servedAt).getTime() <= RETURN_WINDOW_MS
+  const canRequestReturn = !!order?.servedAt && ['SERVED', 'COMPLETED'].includes(order.status) && Date.now() - new Date(order.servedAt).getTime() <= RETURN_WINDOW_MS
 
   async function loadOrder() {
     setLoading(true)
@@ -227,19 +227,26 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, profile
     if (invalid) { const message = `Check the return quantity for ${invalid.item.menuItem?.name ?? 'one item'}`; setError(message); toast.error(message); return }
     const availableAfterPending = order.items.reduce((sum, item) => sum + Math.max(0, item.quantity - pendingReturnQty(item)), 0)
     const requestedTotal = lines.reduce((sum, line) => sum + line.quantity, 0)
-    if (requestedTotal >= availableAfterPending) { const message = 'Partial return must leave at least one item on the order'; setError(message); toast.error(message); return }
     if (!returnReason.trim() || returnReason.trim().length < 3) { const message = 'Give a reason for the return'; setError(message); toast.error(message); return }
     setReturning(true)
     setError('')
     try {
-      await api(`/pos/orders/${order.id}/return-request`, {
-        method: 'POST',
-        body: JSON.stringify({
-          reason: returnReason.trim(),
-          items: lines.map((line) => ({ orderItemId: line.item.id, quantity: line.quantity })),
-        }),
-      })
-      toast.success('Partial return requested.')
+      if (requestedTotal >= availableAfterPending) {
+        await api(`/pos/orders/${order.id}/cancel`, { method: 'PATCH', body: JSON.stringify({ reason: returnReason.trim() }) })
+        toast.success('Return requested.')
+        onChanged()
+        onClose()
+        return
+      } else {
+        await api(`/pos/orders/${order.id}/return-request`, {
+          method: 'POST',
+          body: JSON.stringify({
+            reason: returnReason.trim(),
+            items: lines.map((line) => ({ orderItemId: line.item.id, quantity: line.quantity })),
+          }),
+        })
+        toast.success('Return requested.')
+      }
       setPartialReturnOpen(false)
       setReturnReason('')
       setReturnQty({})
@@ -357,17 +364,17 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, profile
                 </span>
               </div>
 
-              {canRequestPartialReturn && (
+              {canRequestReturn && (
                 <div className="mt-2">
                   {!partialReturnOpen ? (
                     <button onClick={() => { setPartialReturnOpen(true); setCancelOpen(false) }} className="w-full rounded-sm border border-warning/40 py-2.5 text-sm font-semibold text-warning hover:bg-warning/10">
-                      Partial return
+                      Request return
                     </button>
                   ) : (
                     <div className="space-y-3 rounded-sm border border-warning/30 bg-warning/5 p-3">
                       <div>
-                        <p className="text-xs font-semibold uppercase tracking-wide text-warning">Partial return</p>
-                        <p className="mt-0.5 text-xs text-muted-foreground">Enter only the quantities being returned from this order.</p>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-warning">Request return</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">Enter the quantities being returned. Use full quantities when everything is coming back.</p>
                       </div>
                       <div className="space-y-2">
                         {order.items.map((item) => {
@@ -401,7 +408,7 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, profile
                       <div className="flex gap-2">
                         <button type="button" onClick={() => { setPartialReturnOpen(false); setReturnQty({}); setReturnReason('') }} className="flex-1 rounded-sm border py-2 text-xs font-semibold hover:bg-muted">Back</button>
                         <button type="button" disabled={returning} onClick={() => void requestPartialReturn()} className="inline-flex flex-1 items-center justify-center gap-2 rounded-sm bg-warning py-2 text-xs font-bold text-warning-foreground disabled:opacity-50">
-                          {returning && <LuLoaderCircle className="size-3.5 animate-spin" />} Request partial return
+                          {returning && <LuLoaderCircle className="size-3.5 animate-spin" />} Request return
                         </button>
                       </div>
                     </div>
@@ -423,6 +430,7 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, profile
                     </p>
                   )
                 }
+                if (isReturn) return null
                 return cancelOpen ? (
                   <div className="mt-2 space-y-2 rounded-sm border border-destructive/30 p-3">
                     <label className="block text-xs font-semibold text-destructive">Reason for {isReturn ? 'the return' : 'cancelling'}</label>
