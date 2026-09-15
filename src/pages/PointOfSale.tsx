@@ -124,6 +124,8 @@ const complementaryBadge = (order: ActiveOrder) => {
   if (order.complimentarySession) return { label: 'Guest spend', cls: 'border-secondary/30 bg-secondary/10 text-secondary' }
   return null
 }
+const pendingReturnQuantity = (order: ActiveOrder) =>
+  order.items.reduce((sum, item) => sum + (item.returnRequests ?? []).filter((request) => request.status === 'PENDING').reduce((lineSum, request) => lineSum + request.quantity, 0), 0)
 
 function normalizeMenuItem(raw: ApiMenuItem): MenuItem {
   return {
@@ -669,6 +671,7 @@ export default function PointOfSale() {
                 {rows.map((order) => {
                   const owed = Math.max(0, order.total - order.paid)
                   const compBadge = complementaryBadge(order)
+                  const pendingReturns = pendingReturnQuantity(order)
                   const overdue = owed > 0.01 && order.creditExpectedAt && new Date(order.creditExpectedAt).getTime() < Date.now()
                   const badge = order.saleType === 'COMPLIMENTARY'
                     ? { label: 'Completed', cls: 'bg-success/10 text-success' }
@@ -683,12 +686,16 @@ export default function PointOfSale() {
                     <article key={order.id} className="rounded-sm border bg-card p-5 shadow-sm">
                       <div className="flex items-start justify-between gap-2">
                         <h3 className="font-semibold">Order #{order.orderNumber}</h3>
-                        <span className={cn('rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide', badge.cls)}>{badge.label}</span>
+                        <div className="flex flex-wrap justify-end gap-1.5">
+                          {pendingReturns > 0 && <span className="rounded-full bg-warning/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-warning">Return pending</span>}
+                          <span className={cn('rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide', badge.cls)}>{badge.label}</span>
+                        </div>
                       </div>
                       <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground"><LuUserRound className="size-3.5" /> {order.customer ? `${order.customer.firstName} ${order.customer.lastName ?? ''}` : 'Walk-in'} · {order.table?.label ?? 'Takeaway'}</p>
                       {compBadge && <p className={cn('mt-2 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', compBadge.cls)}>{compBadge.label}{order.complimentarySession ? ` - ${order.complimentarySession.title}` : ''}</p>}
                       <p className="mt-1 text-[11px] text-muted-foreground">{new Date(order.updatedAt).toLocaleString()}</p>
                       <p className="mt-2 text-lg font-bold">{formatKes(order.total)}</p>
+                      {pendingReturns > 0 && <p className="mt-1 text-xs font-semibold text-warning">{pendingReturns} item{pendingReturns === 1 ? '' : 's'} waiting return approval</p>}
                       {owed > 0.01 && <p className="text-xs font-semibold text-warning">Owing {formatKes(owed)} · paid {formatKes(order.paid)}</p>}
                       <div className="mt-3 flex flex-wrap gap-2">
                         <button onClick={() => setSettlementOrderId(order.id)} className={cn('inline-flex items-center gap-1.5 rounded-sm px-3 py-1.5 text-xs font-semibold', owed > 0.01 ? 'bg-primary text-primary-foreground' : 'border hover:bg-muted')}>
@@ -757,6 +764,7 @@ export default function PointOfSale() {
                       const count = order.items.reduce((s, i) => s + i.quantity, 0)
                       const waiter = order.createdBy ? staffNames[order.createdBy] : undefined
                       const compBadge = complementaryBadge(order)
+                      const pendingReturns = pendingReturnQuantity(order)
                       return (
                         <div key={order.id} className="flex flex-wrap items-center gap-2 rounded-sm border bg-card p-2.5 shadow-sm sm:flex-nowrap">
                           <div className="min-w-0 flex-1">
@@ -766,6 +774,7 @@ export default function PointOfSale() {
                             </p>
                           </div>
                           {compBadge && <span className={cn('shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', compBadge.cls)}>{compBadge.label}</span>}
+                          {pendingReturns > 0 && <span className="shrink-0 rounded-full border border-warning/40 bg-warning/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-warning">Return pending</span>}
                           <button type="button" onClick={() => setReceiptOrderId(order.id)} title="Preview receipt" className="shrink-0 rounded-sm p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"><LuPrinter className="size-4" /></button>
                           <button type="button" onClick={() => setRevertOrder(order)} title="Revert undeducted order" className="shrink-0 rounded-sm p-1.5 text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive"><LuTrash2 className="size-4" /></button>
                           <span className="shrink-0 rounded-full bg-destructive px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-destructive-foreground">Pending</span>
@@ -788,16 +797,21 @@ export default function PointOfSale() {
                 <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                   {otherActiveOrders.map((order) => {
                     const compBadge = complementaryBadge(order)
+                    const pendingReturns = pendingReturnQuantity(order)
                     return (
                     <article key={order.id} className={cn('rounded-sm border bg-card p-5 shadow-sm', compBadge && 'border-secondary/30')}>
-                      <div className="flex items-start justify-between">
+                      <div className="flex items-start justify-between gap-2">
                         <h3 className="font-semibold">Order #{order.orderNumber}</h3>
-                        <span className="rounded-full bg-warning/15 px-2.5 py-1 text-xs font-semibold text-warning">{order.status}</span>
+                        <div className="flex flex-wrap justify-end gap-1.5">
+                          {pendingReturns > 0 && <span className="rounded-full bg-warning/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-warning">Return pending</span>}
+                          <span className="rounded-full bg-warning/15 px-2.5 py-1 text-xs font-semibold text-warning">{order.status}</span>
+                        </div>
                       </div>
                       <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground"><LuUserRound className="size-3.5" /> {order.customer ? `${order.customer.firstName} ${order.customer.lastName ?? ''}` : 'Walk-in'}</p>
                       {compBadge && <p className={cn('mt-2 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', compBadge.cls)}>{compBadge.label}{order.complimentarySession ? ` - ${order.complimentarySession.title}` : ''}</p>}
                       <p className="mt-1 text-xs text-muted-foreground">{order.table?.label ?? 'Takeaway'}</p>
                       <p className="mt-3 text-lg font-bold">{formatKes(order.total)}</p>
+                      {pendingReturns > 0 && <p className="mt-1 text-xs font-semibold text-warning">{pendingReturns} item{pendingReturns === 1 ? '' : 's'} waiting return approval</p>}
                       <div className="mt-4 flex flex-wrap gap-2">
                         <button onClick={() => setReceiptOrderId(order.id)} title="Receipt" className="inline-flex items-center justify-center rounded-sm border p-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"><LuPrinter className="size-3.5" /></button>
                         <button onClick={() => setAddItemsOrder(order)} className="inline-flex items-center gap-1.5 rounded-sm border px-3 py-1.5 text-xs font-semibold hover:bg-muted"><LuPencil className="size-3.5" /> Manage</button>

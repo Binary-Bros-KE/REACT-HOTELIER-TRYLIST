@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { LuBadgeCheck, LuCircleAlert, LuClock3, LuLoaderCircle, LuLock, LuReceiptText, LuUserRound, LuX } from 'react-icons/lu'
 import { api } from '@/lib/api'
+import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/Toast'
 import { useAppSelector } from '@/store/hooks'
 import ReceiptPreviewModal from '@/components/pos/ReceiptPreviewModal'
@@ -40,8 +41,9 @@ type ReturnRequest = {
   decidedAt: string | null
   decisionNote: string | null
   order: PendingOrder
-  orderItem: { menuItem: { name: string } | null; variant: { name: string } | null }
+  orderItem: { id: string; quantity: number; menuItem: { name: string } | null; variant: { name: string } | null }
 }
+type ReturnRequestGroup = { order: PendingOrder; requests: ReturnRequest[] }
 
 const money = (v: number) => `KSh ${Number(v).toLocaleString('en-KE', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
 const ago = (iso: string | null) => {
@@ -126,19 +128,22 @@ export default function Approvals() {
     }
   }
 
-  async function decideReturn(request: ReturnRequest, action: 'approve' | 'reject') {
+  async function decideReturnGroup(group: ReturnRequestGroup, action: 'approve' | 'reject') {
+    const summary = group.requests.map((request) => `${request.quantity} x ${request.orderItem.menuItem?.name ?? 'item'}${request.orderItem.variant ? ` (${request.orderItem.variant.name})` : ''}`).join(', ')
     let note: string | undefined
     if (action === 'reject') {
-      const input = window.prompt(`Reject partial return for order #${request.order.orderNumber}? Optional note for the waiter:`, '')
+      const input = window.prompt(`Reject return request for order #${group.order.orderNumber}? Optional note for the waiter:`, '')
       if (input === null) return
       note = input.trim() || undefined
-    } else if (!window.confirm(`Approve returning ${request.quantity} x ${request.orderItem.menuItem?.name ?? 'item'} from order #${request.order.orderNumber}? Stock will be returned and the order total reduced.`)) {
+    } else if (!window.confirm(`Approve returning ${summary} from order #${group.order.orderNumber}? Stock will be returned and the order total reduced.`)) {
       return
     }
-    setBusyId(request.id)
+    setBusyId(group.order.id)
     try {
-      await api(`/pos/return-requests/${request.id}/${action}`, { method: 'POST', body: JSON.stringify(action === 'reject' ? { note } : {}) })
-      toast.success(action === 'approve' ? `Partial return approved for #${request.order.orderNumber}.` : `Partial return rejected for #${request.order.orderNumber}.`)
+      for (const request of group.requests) {
+        await api(`/pos/return-requests/${request.id}/${action}`, { method: 'POST', body: JSON.stringify(action === 'reject' ? { note } : {}) })
+      }
+      toast.success(action === 'approve' ? `Return approved for #${group.order.orderNumber}.` : `Return rejected for #${group.order.orderNumber}.`)
       await load()
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : 'Could not record the decision')
@@ -147,7 +152,16 @@ export default function Approvals() {
     }
   }
 
-  const heading = useMemo(() => `${orders.length + returns.length} awaiting decision`, [orders.length, returns.length])
+  const returnGroups = useMemo(() => {
+    const byOrder = new Map<string, ReturnRequestGroup>()
+    for (const request of returns) {
+      const group = byOrder.get(request.order.id) ?? { order: request.order, requests: [] }
+      group.requests.push(request)
+      byOrder.set(request.order.id, group)
+    }
+    return [...byOrder.values()]
+  }, [returns])
+  const heading = useMemo(() => `${orders.length + returnGroups.length} awaiting decision`, [orders.length, returnGroups.length])
 
   if (!canApprove) {
     return (
@@ -244,42 +258,73 @@ export default function Approvals() {
       )}
 
       <p className="mt-8 text-xs font-semibold uppercase tracking-widest text-muted-foreground">Partial return requests</p>
-      {!loading && returns.length === 0 ? (
+      {!loading && returnGroups.length === 0 ? (
         <div className="mt-4 rounded-sm border border-dashed p-8 text-center text-sm text-muted-foreground">No partial returns waiting for approval.</div>
       ) : (
         <div className="mt-4 space-y-4">
-          {returns.map((request) => (
-            <article key={request.id} className="rounded-sm border bg-card p-5 shadow-sm">
+          {returnGroups.map((group) => {
+            const first = group.requests[0]
+            const requestedByItem = new Map<string, number>()
+            for (const request of group.requests) requestedByItem.set(request.orderItem.id, (requestedByItem.get(request.orderItem.id) ?? 0) + request.quantity)
+            const reason = [...new Set(group.requests.map((request) => request.reason).filter(Boolean))].join(' | ')
+            const requestedQty = group.requests.reduce((sum, request) => sum + request.quantity, 0)
+            return (
+            <article key={group.order.id} className="rounded-sm border bg-card p-5 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-2">
-                    <h2 className="font-display text-xl font-bold">Order #{request.order.orderNumber}</h2>
-                    <span className="rounded-full bg-warning/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-warning">Partial return</span>
+                    <h2 className="font-display text-xl font-bold">Order #{group.order.orderNumber}</h2>
+                    <span className="rounded-full bg-warning/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-warning">Return requested</span>
                   </div>
                   <p className="mt-1.5 text-xs text-muted-foreground">
-                    {request.quantity}x {request.orderItem.menuItem?.name ?? 'item'}{request.orderItem.variant ? ` (${request.orderItem.variant.name})` : ''} requested {ago(request.requestedAt)}
-                    {request.requestedBy && staff[request.requestedBy] ? ` by ${staff[request.requestedBy]}` : ''}
+                    {requestedQty} item{requestedQty === 1 ? '' : 's'} requested {ago(first.requestedAt)}
+                    {first.requestedBy && staff[first.requestedBy] ? ` by ${staff[first.requestedBy]}` : ''}
                   </p>
                 </div>
-                <p className="text-lg font-bold">{money(request.order.total)}</p>
+                <p className="text-lg font-bold">{money(group.order.total)}</p>
+              </div>
+              <div className="mt-3 overflow-hidden rounded-sm border bg-muted/20">
+                <div className="flex items-center justify-between border-b bg-primary px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-primary-foreground">
+                  <span>Receipt lines</span>
+                  <span>Returning</span>
+                </div>
+                <div className="divide-y">
+                  {group.order.items.map((item) => {
+                    const returning = requestedByItem.get(item.id) ?? 0
+                    return (
+                      <div key={item.id} className={cn('grid grid-cols-[1fr_auto] gap-3 px-3 py-2 text-sm', returning > 0 && 'bg-warning/10')}>
+                        <div className="min-w-0">
+                          <p className="truncate font-semibold">{item.quantity} x {item.menuItem?.name ?? 'item'}{item.variant ? ` (${item.variant.name})` : ''}</p>
+                          <p className="text-[11px] text-muted-foreground">Original order quantity</p>
+                        </div>
+                        {returning > 0 ? (
+                          <span className="self-center rounded-full bg-warning px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-warning-foreground">{returning} back</span>
+                        ) : (
+                          <span className="self-center text-xs text-muted-foreground">-</span>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
               <div className="mt-3 rounded-sm bg-muted/40 p-3">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Reason</p>
-                <p className="mt-0.5 text-sm">{request.reason}</p>
+                <p className="mt-0.5 text-sm">{reason}</p>
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
-                <button disabled={busyId === request.id} onClick={() => void decideReturn(request, 'approve')} className="inline-flex items-center gap-1.5 rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">
-                  {busyId === request.id ? <LuLoaderCircle className="size-4 animate-spin" /> : <LuBadgeCheck className="size-4" />} Approve partial return
+                <button disabled={busyId === group.order.id} onClick={() => void decideReturnGroup(group, 'approve')} className="inline-flex items-center gap-1.5 rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">
+                  {busyId === group.order.id ? <LuLoaderCircle className="size-4 animate-spin" /> : <LuBadgeCheck className="size-4" />} Approve return
                 </button>
-                <button disabled={busyId === request.id} onClick={() => void decideReturn(request, 'reject')} className="inline-flex items-center gap-1.5 rounded-sm border px-4 py-2 text-sm font-semibold hover:bg-muted disabled:opacity-50">
+                <button disabled={busyId === group.order.id} onClick={() => void decideReturnGroup(group, 'reject')} className="inline-flex items-center gap-1.5 rounded-sm border px-4 py-2 text-sm font-semibold hover:bg-muted disabled:opacity-50">
                   <LuX className="size-4" /> Reject
                 </button>
-                <button onClick={() => setReceiptId(request.order.id)} className="inline-flex items-center gap-1.5 rounded-sm border px-4 py-2 text-sm font-semibold hover:bg-muted">
+                <button onClick={() => setReceiptId(group.order.id)} className="inline-flex items-center gap-1.5 rounded-sm border px-4 py-2 text-sm font-semibold hover:bg-muted">
                   <LuReceiptText className="size-4" /> View receipt
                 </button>
               </div>
             </article>
-          ))}
+            )
+          })}
         </div>
       )}
 

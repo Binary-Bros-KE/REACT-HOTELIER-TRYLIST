@@ -114,6 +114,7 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, profile
   const isComplementary = order?.saleType === 'COMPLIMENTARY'
   const isCreditOverdue = !!order?.creditExpectedAt && remaining > 0.01 && new Date(order.creditExpectedAt).getTime() < Date.now()
   const canRequestReturn = !!order?.servedAt && ['SERVED', 'COMPLETED'].includes(order.status) && Date.now() - new Date(order.servedAt).getTime() <= RETURN_WINDOW_MS
+  const pendingReturnTotal = order?.items.reduce((sum, item) => sum + pendingReturnQty(item), 0) ?? 0
 
   async function loadOrder() {
     setLoading(true)
@@ -363,6 +364,12 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, profile
                   <span className="font-bold">{formatKes(remaining)}</span>
                 </span>
               </div>
+
+              {pendingReturnTotal > 0 && (
+                <p className="mt-2 rounded-sm border border-warning/40 bg-warning/10 p-3 text-center text-xs font-semibold text-warning">
+                  {pendingReturnTotal} item{pendingReturnTotal === 1 ? '' : 's'} waiting return approval.
+                </p>
+              )}
 
               {canRequestReturn && (
                 <div className="mt-2">
