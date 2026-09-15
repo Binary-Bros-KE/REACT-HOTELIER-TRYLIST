@@ -5,6 +5,7 @@ export type ReceiptOrderItem = {
   menuItem: { name: string }
   variant: { name: string } | null
   addons: { id: string; quantity: number; unitPrice: string; addon: { name: string } }[]
+  returnRequests?: { id: string; status: 'PENDING' | 'APPROVED' | 'REJECTED'; quantity: number; reason?: string | null }[]
 }
 export type ReceiptPayment = { id: string; paymentMethod: { name: string }; amount: string; reference: string | null; createdAt: string }
 export type ReceiptTaxLine = { key: string; label: string; net: number; tax: number; gross: number }
@@ -48,6 +49,7 @@ export type ReceiptOrder = {
   creditReason?: string | null
   creditExpectedAt?: string | null
   items: ReceiptOrderItem[]
+  returnRequests?: { id: string; status: 'PENDING' | 'APPROVED' | 'REJECTED'; quantity: number; reason: string; orderItem: { menuItem: { name: string } | null; variant: { name: string } | null } }[]
   payments: ReceiptPayment[]
   financials: ReceiptFinancials
 }
@@ -67,6 +69,7 @@ export default function OrderReceipt({ order, profile }: { order: ReceiptOrder; 
   const owed = Math.max(0, order.financials.total - paid)
   const creditOverdue = !isComplementary && owed > 0.01 && order.creditExpectedAt ? new Date(order.creditExpectedAt).getTime() < Date.now() : false
   const statusText = isComplementary ? 'Complementary' : creditOverdue ? 'Overdue credit' : owed > 0.01 ? 'On credit' : order.status
+  const approvedReturns = (order.returnRequests ?? []).filter((request) => request.status === 'APPROVED')
 
   return (
     <div className="receipt-print-area mx-auto max-w-xs bg-white p-6 text-[13px] text-black">
@@ -109,6 +112,21 @@ export default function OrderReceipt({ order, profile }: { order: ReceiptOrder; 
           </div>
         ))}
       </div>
+
+      {approvedReturns.length > 0 && (
+        <>
+          <div className="my-3 border-t border-dashed border-gray-400" />
+          <div className="space-y-1 text-xs">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Returns</p>
+            {approvedReturns.map((request) => (
+              <div key={request.id} className="flex justify-between gap-3 text-gray-600">
+                <span>{request.quantity} x {request.orderItem.menuItem?.name ?? 'item'}{request.orderItem.variant ? ` (${request.orderItem.variant.name})` : ''}</span>
+                <span className="text-right">Approved</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
 
       <div className="my-3 border-t border-dashed border-gray-400" />
 

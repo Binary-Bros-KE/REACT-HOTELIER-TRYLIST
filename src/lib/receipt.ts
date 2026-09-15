@@ -42,6 +42,14 @@ export function receiptToText(order: ReceiptOrder, profile: ReceiptProfile, shar
       lines.push(`  + ${a.addon.name}  ${money(Number(a.unitPrice) * a.quantity)}`)
     }
   }
+  const approvedReturns = (order.returnRequests ?? []).filter((request) => request.status === 'APPROVED')
+  if (approvedReturns.length > 0) {
+    lines.push(RULE)
+    lines.push('Returns:')
+    for (const request of approvedReturns) {
+      lines.push(`  ${request.quantity} x ${request.orderItem.menuItem?.name ?? 'item'}${request.orderItem.variant ? ` (${request.orderItem.variant.name})` : ''} - approved`)
+    }
+  }
   lines.push(RULE)
 
   const f = order.financials

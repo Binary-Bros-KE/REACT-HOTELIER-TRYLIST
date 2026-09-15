@@ -101,7 +101,7 @@ type ActiveOrder = {
   createdBy: string | null
   customer: { firstName: string; lastName: string | null } | null
   table: { label: string } | null
-  items: { id: string; quantity: number; menuItem: { name: string } | null; variant: { name: string } | null }[]
+  items: { id: string; quantity: number; menuItem: { name: string } | null; variant: { name: string } | null; returnRequests?: { id: string; status: 'PENDING' | 'APPROVED' | 'REJECTED'; quantity: number }[] }[]
 }
 type CompletedOrder = ActiveOrder & { paid: number; paymentStatus: 'UNPAID' | 'PARTIAL' | 'PAID'; updatedAt: string }
 type CancelledOrder = ActiveOrder & {
@@ -1443,6 +1443,7 @@ type ExistingLine = {
   variantId: string | null
   variantName: string | null
   addons: { id: string; name: string; price: number }[]
+  returnRequests?: { id: string; status: 'PENDING' | 'APPROVED' | 'REJECTED'; quantity: number }[]
 }
 
 function AddItemsModal({ order, menuItems, allAddons, onClose, onRefresh, onAdded }: {
@@ -1467,7 +1468,7 @@ function AddItemsModal({ order, menuItems, allAddons, onClose, onRefresh, onAdde
 
   async function loadExisting() {
     try {
-      const r = await api<{ order: { items: { id: string; menuItemId: string | null; quantity: number; unitPrice: string | number; menuItem: { name: string } | null; variant: { id: string; name: string } | null; addons: { addon: { id: string; name: string; price: string | number } }[] }[] } }>(`/pos/orders/${order.id}`)
+      const r = await api<{ order: { items: { id: string; menuItemId: string | null; quantity: number; unitPrice: string | number; menuItem: { name: string } | null; variant: { id: string; name: string } | null; addons: { addon: { id: string; name: string; price: string | number } }[]; returnRequests?: { id: string; status: 'PENDING' | 'APPROVED' | 'REJECTED'; quantity: number }[] }[] } }>(`/pos/orders/${order.id}`)
       setExisting(r.order.items.map((i) => ({
         id: i.id,
         menuItemId: i.menuItemId,
@@ -1477,6 +1478,7 @@ function AddItemsModal({ order, menuItems, allAddons, onClose, onRefresh, onAdde
         variantId: i.variant?.id ?? null,
         variantName: i.variant?.name ?? null,
         addons: i.addons.map((a) => ({ id: a.addon.id, name: a.addon.name, price: toNumber(a.addon.price) })),
+        returnRequests: i.returnRequests ?? [],
       })))
     } catch { setExisting([]) }
   }
@@ -1531,6 +1533,26 @@ function AddItemsModal({ order, menuItems, allAddons, onClose, onRefresh, onAdde
       onRefresh()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not remove this line')
+    } finally { setBusyId(null) }
+  }
+
+  async function requestPartialReturn(line: ExistingLine) {
+    const pending = (line.returnRequests ?? []).filter((request) => request.status === 'PENDING').reduce((sum, request) => sum + request.quantity, 0)
+    const max = line.quantity - pending - 1
+    if (max < 1) { setError('This line cannot be partially returned. Use full return instead.'); return }
+    const qtyInput = window.prompt(`Return how many ${line.menuItemName}? Max ${max}.`, '1')
+    if (qtyInput === null) return
+    const quantity = Number(qtyInput)
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > max) { setError(`Enter a whole number between 1 and ${max}.`); return }
+    const reason = window.prompt(`Why is ${quantity} x ${line.menuItemName} being returned?`, '')
+    if (!reason?.trim() || reason.trim().length < 3) { setError('Give a reason for the partial return.'); return }
+    setBusyId(line.id); setError('')
+    try {
+      await api(`/pos/orders/${order.id}/items/${line.id}/return-request`, { method: 'POST', body: JSON.stringify({ quantity, reason: reason.trim() }) })
+      await loadExisting()
+      onRefresh()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not request this return')
     } finally { setBusyId(null) }
   }
 
@@ -1617,8 +1639,12 @@ function AddItemsModal({ order, menuItems, allAddons, onClose, onRefresh, onAdde
                         </div>
                       </div>
                       {line.addons.length > 0 && <p className="mt-1 text-[10px] text-muted-foreground">{line.addons.map((a) => a.name).join(', ')}</p>}
+                      {(line.returnRequests ?? []).some((request) => request.status === 'PENDING') && <p className="mt-1 text-[10px] font-semibold text-warning">Partial return waiting approval</p>}
                       {servedLocked ? (
-                        <p className="mt-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Locked after service</p>
+                        <div className="mt-1.5 flex items-center justify-between gap-2">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Locked after service</p>
+                          {line.quantity > 1 && <button disabled={busyId === line.id} onClick={() => void requestPartialReturn(line)} className="rounded-sm border border-destructive/30 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-destructive hover:bg-destructive/10 disabled:opacity-50">Partial return</button>}
+                        </div>
                       ) : (
                         <div className="mt-1.5 flex items-center gap-1.5">
                           <button disabled={busyId === line.id || line.quantity <= 1} onClick={() => void patchExisting(line, { quantity: line.quantity - 1 })} className="rounded-sm border bg-background p-1 disabled:opacity-30"><LuMinus className="size-3" /></button>

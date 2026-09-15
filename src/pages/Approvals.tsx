@@ -29,6 +29,19 @@ type PendingOrder = {
   items: OrderItem[]
 }
 type Employee = { id: string; firstName: string; lastName: string | null }
+type ReturnRequest = {
+  id: string
+  quantity: number
+  reason: string
+  status: 'PENDING' | 'APPROVED' | 'REJECTED'
+  requestedBy: string | null
+  requestedAt: string
+  decidedBy: string | null
+  decidedAt: string | null
+  decisionNote: string | null
+  order: PendingOrder
+  orderItem: { menuItem: { name: string } | null; variant: { name: string } | null }
+}
 
 const money = (v: number) => `KSh ${Number(v).toLocaleString('en-KE', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
 const ago = (iso: string | null) => {
@@ -51,7 +64,9 @@ export default function Approvals() {
   // reject buttons that would just 403.
   const canApprove = Boolean(user?.role?.permissions.includes('POS_APPROVE_CANCELLATION'))
   const [orders, setOrders] = useState<PendingOrder[]>([])
+  const [returns, setReturns] = useState<ReturnRequest[]>([])
   const [decided, setDecided] = useState<PendingOrder[]>([])
+  const [decidedReturns, setDecidedReturns] = useState<ReturnRequest[]>([])
   const [staff, setStaff] = useState<Record<string, string>>({})
   const [profile, setProfile] = useState<ReceiptProfile>(null)
   const [receiptId, setReceiptId] = useState<string | null>(null)
@@ -63,12 +78,16 @@ export default function Approvals() {
     setLoading(true)
     setError('')
     try {
-      const [pending, history] = await Promise.all([
+      const [pending, pendingReturns, history, returnHistory] = await Promise.all([
         api<{ orders: PendingOrder[] }>('/pos/orders?channel=FOOD&status=PENDING_CANCELLATION'),
+        api<{ requests: ReturnRequest[] }>('/pos/return-requests?status=PENDING'),
         api<{ orders: PendingOrder[] }>(`/pos/orders?channel=FOOD&status=CANCELLED&limit=${HISTORY_LIMIT}`),
+        api<{ requests: ReturnRequest[] }>(`/pos/return-requests?status=APPROVED&limit=${HISTORY_LIMIT}`),
       ])
       setOrders(pending.orders)
+      setReturns(pendingReturns.requests)
       setDecided(history.orders)
+      setDecidedReturns(returnHistory.requests)
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Could not load approvals'
       setError(message)
@@ -107,7 +126,28 @@ export default function Approvals() {
     }
   }
 
-  const heading = useMemo(() => `${orders.length} awaiting decision`, [orders.length])
+  async function decideReturn(request: ReturnRequest, action: 'approve' | 'reject') {
+    let note: string | undefined
+    if (action === 'reject') {
+      const input = window.prompt(`Reject partial return for order #${request.order.orderNumber}? Optional note for the waiter:`, '')
+      if (input === null) return
+      note = input.trim() || undefined
+    } else if (!window.confirm(`Approve returning ${request.quantity} x ${request.orderItem.menuItem?.name ?? 'item'} from order #${request.order.orderNumber}? Stock will be returned and the order total reduced.`)) {
+      return
+    }
+    setBusyId(request.id)
+    try {
+      await api(`/pos/return-requests/${request.id}/${action}`, { method: 'POST', body: JSON.stringify(action === 'reject' ? { note } : {}) })
+      toast.success(action === 'approve' ? `Partial return approved for #${request.order.orderNumber}.` : `Partial return rejected for #${request.order.orderNumber}.`)
+      await load()
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : 'Could not record the decision')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const heading = useMemo(() => `${orders.length + returns.length} awaiting decision`, [orders.length, returns.length])
 
   if (!canApprove) {
     return (
@@ -203,6 +243,46 @@ export default function Approvals() {
         </div>
       )}
 
+      <p className="mt-8 text-xs font-semibold uppercase tracking-widest text-muted-foreground">Partial return requests</p>
+      {!loading && returns.length === 0 ? (
+        <div className="mt-4 rounded-sm border border-dashed p-8 text-center text-sm text-muted-foreground">No partial returns waiting for approval.</div>
+      ) : (
+        <div className="mt-4 space-y-4">
+          {returns.map((request) => (
+            <article key={request.id} className="rounded-sm border bg-card p-5 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="font-display text-xl font-bold">Order #{request.order.orderNumber}</h2>
+                    <span className="rounded-full bg-warning/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-warning">Partial return</span>
+                  </div>
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    {request.quantity}x {request.orderItem.menuItem?.name ?? 'item'}{request.orderItem.variant ? ` (${request.orderItem.variant.name})` : ''} requested {ago(request.requestedAt)}
+                    {request.requestedBy && staff[request.requestedBy] ? ` by ${staff[request.requestedBy]}` : ''}
+                  </p>
+                </div>
+                <p className="text-lg font-bold">{money(request.order.total)}</p>
+              </div>
+              <div className="mt-3 rounded-sm bg-muted/40 p-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Reason</p>
+                <p className="mt-0.5 text-sm">{request.reason}</p>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button disabled={busyId === request.id} onClick={() => void decideReturn(request, 'approve')} className="inline-flex items-center gap-1.5 rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">
+                  {busyId === request.id ? <LuLoaderCircle className="size-4 animate-spin" /> : <LuBadgeCheck className="size-4" />} Approve partial return
+                </button>
+                <button disabled={busyId === request.id} onClick={() => void decideReturn(request, 'reject')} className="inline-flex items-center gap-1.5 rounded-sm border px-4 py-2 text-sm font-semibold hover:bg-muted disabled:opacity-50">
+                  <LuX className="size-4" /> Reject
+                </button>
+                <button onClick={() => setReceiptId(request.order.id)} className="inline-flex items-center gap-1.5 rounded-sm border px-4 py-2 text-sm font-semibold hover:bg-muted">
+                  <LuReceiptText className="size-4" /> View receipt
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+
       <p className="mt-10 text-xs font-semibold uppercase tracking-widest text-muted-foreground">Recently decided · last {decided.length}</p>
       {!loading && decided.length === 0 ? (
         <div className="mt-4 rounded-sm border border-dashed p-8 text-center text-sm text-muted-foreground">No cancellations decided yet.</div>
@@ -225,6 +305,30 @@ export default function Approvals() {
                 <p className="text-sm font-bold">{money(order.total)}</p>
                 <button onClick={() => setReceiptId(order.id)} title="View receipt" className="rounded-sm p-2 text-muted-foreground hover:bg-muted hover:text-foreground"><LuReceiptText className="size-4" /></button>
               </div>
+            </article>
+          ))}
+        </div>
+      )}
+
+      <p className="mt-8 text-xs font-semibold uppercase tracking-widest text-muted-foreground">Recently approved partial returns · last {decidedReturns.length}</p>
+      {!loading && decidedReturns.length === 0 ? (
+        <div className="mt-4 rounded-sm border border-dashed p-8 text-center text-sm text-muted-foreground">No partial returns approved yet.</div>
+      ) : (
+        <div className="mt-4 space-y-2">
+          {decidedReturns.map((request) => (
+            <article key={request.id} className="flex flex-wrap items-center justify-between gap-3 rounded-sm border bg-card p-3.5 shadow-sm">
+              <div className="min-w-0">
+                <p className="flex items-center gap-2 text-sm font-semibold">
+                  #{request.order.orderNumber}
+                  <span className="rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-success">Returned</span>
+                </p>
+                <p className="mt-1 truncate text-xs text-muted-foreground">
+                  {request.quantity}x {request.orderItem.menuItem?.name ?? 'item'}
+                  {request.decidedBy && staff[request.decidedBy] ? ` · decided by ${staff[request.decidedBy]}` : ''}
+                  {request.decidedAt ? ` · ${ago(request.decidedAt)}` : ''}
+                </p>
+              </div>
+              <button onClick={() => setReceiptId(request.order.id)} title="View receipt" className="rounded-sm p-2 text-muted-foreground hover:bg-muted hover:text-foreground"><LuReceiptText className="size-4" /></button>
             </article>
           ))}
         </div>
