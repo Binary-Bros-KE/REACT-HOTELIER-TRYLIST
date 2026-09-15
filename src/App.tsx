@@ -21,6 +21,7 @@ import Departments from "@/pages/Departments";
 import RolesAndPermissions from "@/pages/RolesAndPermissions";
 import Shifts from "@/pages/Shifts";
 import Attendance from "@/pages/Attendance";
+import EmployeeSalaries from "@/pages/EmployeeSalaries";
 import Categories from "@/pages/Categories";
 import Recipes from "@/pages/Recipes";
 import MenuCategories from "@/pages/MenuCategories";
@@ -274,6 +275,7 @@ function App() {
         />
         <Route path="/team/shifts" element={<Shifts />} />
         <Route path="/team/attendance" element={<Attendance />} />
+        <Route path="/finance/salaries" element={<EmployeeSalaries />} />
         {moduleRoutes.map((item) => (
           <Route
             key={item.href}
