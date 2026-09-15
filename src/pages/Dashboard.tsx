@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { type ReactNode, useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   LuArrowDownLeft, LuArrowUpRight, LuBanknote, LuBedDouble, LuBellRing, LuBookOpen, LuBoxes, LuChefHat, LuCircleAlert, LuCircleCheck, LuClipboardList, LuClock3, LuLoaderCircle, LuLock,
@@ -9,6 +9,7 @@ import { api } from '@/lib/api'
 import { useAppSelector } from '@/store/hooks'
 import { useWorkingLocation } from '@/lib/useWorkingLocation'
 import StatCard from '@/components/ui/StatCard'
+import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
 
 function getGreeting() {
@@ -83,15 +84,43 @@ type ShiftSession = {
   requestedStartAt: string
   approvedStartAt: string | null
   requestedEndAt: string | null
+  approvedEndAt: string | null
   employee: { id: string; firstName: string; lastName: string; jobTitle: string; supervisorId: string | null; isSupervisor: boolean }
 }
 type ShiftSummary = {
+  from: string
+  to: string
   hours: number
   totalSales: number
   totalPaid: number
+  complimentaryTotal: number
+  complimentaryCount: number
   creditSales: number
   pendingOrders: number
   byPaymentMethod: { name: string; total: number; count: number }[]
+  transactions: {
+    id: string
+    transactionNo: string
+    direction: 'IN' | 'OUT'
+    source: string
+    amount: number
+    paymentMethod: string | null
+    reference: string | null
+    description: string | null
+    createdAt: string
+  }[]
+  sales: {
+    id: string
+    orderNumber: number
+    status: string
+    paymentStatus: string
+    saleType: 'SALE' | 'COMPLIMENTARY'
+    complimentaryOrderRole: string | null
+    complimentaryRecipientName: string | null
+    createdAt: string
+    total: number
+    paid: number
+  }[]
 }
 type ShiftPayload = { serverNow: string; user: { isSupervisor: boolean; role: { name: string } | null }; session: ShiftSession | null; summary: ShiftSummary | null }
 
@@ -1297,10 +1326,14 @@ function HousekeepingDashboard() {
 
 function ShiftControl({ onReady }: { onReady: (ready: boolean) => void }) {
   const user = useAppSelector((s) => s.auth.user)
+  const toast = useToast()
   const [state, setState] = useState<ShiftPayload | null>(null)
   const [approvals, setApprovals] = useState<(ShiftSession & { summary: ShiftSummary | null })[]>([])
+  const [activeStaff, setActiveStaff] = useState<(ShiftSession & { summary: ShiftSummary | null })[]>([])
+  const [history, setHistory] = useState<(ShiftSession & { summary: ShiftSummary | null })[]>([])
+  const [selectedSummary, setSelectedSummary] = useState<{ title: string; session: ShiftSession; summary: ShiftSummary; approval?: boolean } | null>(null)
   const [now, setNow] = useState(new Date())
-  const [busy, setBusy] = useState(false)
+  const [busyKey, setBusyKey] = useState('')
   const [error, setError] = useState('')
   const isSuperAdmin = user?.role?.name === 'Super Admin'
   const isSupervisor = Boolean(user?.isSupervisor || isSuperAdmin)
@@ -1311,9 +1344,15 @@ function ShiftControl({ onReady }: { onReady: (ready: boolean) => void }) {
       const current = await api<ShiftPayload>('/shifts/current')
       setState(current)
       onReady(current.session?.status === 'ACTIVE')
+      const historyResponse = await api<{ sessions: (ShiftSession & { summary: ShiftSummary | null })[] }>('/shifts/history')
+      setHistory(historyResponse.sessions)
       if (isSupervisor) {
-        const pending = await api<{ sessions: (ShiftSession & { summary: ShiftSummary | null })[] }>('/shifts/approvals')
+        const [pending, active] = await Promise.all([
+          api<{ sessions: (ShiftSession & { summary: ShiftSummary | null })[] }>('/shifts/approvals'),
+          current.session?.status === 'ACTIVE' ? api<{ sessions: (ShiftSession & { summary: ShiftSummary | null })[] }>('/shifts/active-supervised') : Promise.resolve({ sessions: [] }),
+        ])
         setApprovals(pending.sessions)
+        setActiveStaff(active.sessions)
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not load shift status')
@@ -1324,16 +1363,21 @@ function ShiftControl({ onReady }: { onReady: (ready: boolean) => void }) {
   useEffect(() => { void load() }, [load])
   useEffect(() => { const id = window.setInterval(() => setNow(new Date()), 1000); return () => window.clearInterval(id) }, [])
 
-  async function post(path: string, body: object = {}) {
-    setBusy(true)
+  async function post(path: string, body: object = {}, key = path) {
+    setBusyKey(key)
     setError('')
     try {
       await api(path, { method: 'POST', body: JSON.stringify(body) })
+      toast.success('Shift updated.')
       await load()
+      return true
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not update shift')
+      const message = cause instanceof Error ? cause.message : 'Could not update shift'
+      setError(message)
+      toast.error(message)
+      return false
     } finally {
-      setBusy(false)
+      setBusyKey('')
     }
   }
 
@@ -1345,9 +1389,12 @@ function ShiftControl({ onReady }: { onReady: (ready: boolean) => void }) {
   const minutes = Math.floor((elapsed % 36e5) / 6e4)
   const seconds = Math.floor((elapsed % 6e4) / 1000)
   const timeText = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+  const startText = isSupervisor ? 'Start shift' : 'Request start shift'
+  const endText = isSupervisor ? 'End shift' : 'Request end shift'
 
   return (
-    <section className="mt-6 rounded-sm border bg-card p-5 shadow-sm">
+    <section className="mt-6 space-y-5">
+      <div className="rounded-sm border bg-card p-5 shadow-sm">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wider text-secondary">Shift</p>
@@ -1361,10 +1408,11 @@ function ShiftControl({ onReady }: { onReady: (ready: boolean) => void }) {
         </div>
       </div>
       {state?.summary && (
-        <div className="mt-4 grid gap-3 sm:grid-cols-4">
+        <div className="mt-4 grid gap-3 sm:grid-cols-5">
           <div className="rounded-sm border bg-muted/30 p-3"><p className="text-xs text-muted-foreground">Sales</p><p className="font-semibold">{formatKes(state.summary.totalSales)}</p></div>
           <div className="rounded-sm border bg-muted/30 p-3"><p className="text-xs text-muted-foreground">Collected</p><p className="font-semibold">{formatKes(state.summary.totalPaid)}</p></div>
           <div className="rounded-sm border bg-muted/30 p-3"><p className="text-xs text-muted-foreground">Credit</p><p className="font-semibold">{formatKes(state.summary.creditSales)}</p></div>
+          <div className="rounded-sm border bg-muted/30 p-3"><p className="text-xs text-muted-foreground">Complimentary</p><p className="font-semibold">{formatKes(state.summary.complimentaryTotal)}</p></div>
           <div className="rounded-sm border bg-muted/30 p-3"><p className="text-xs text-muted-foreground">Pending</p><p className="font-semibold">{state.summary.pendingOrders}</p></div>
         </div>
       )}
@@ -1379,13 +1427,14 @@ function ShiftControl({ onReady }: { onReady: (ready: boolean) => void }) {
         </div>
       ) : null}
       <div className="mt-4 flex flex-wrap gap-2">
-        {!session && <button disabled={busy} onClick={() => void post('/shifts/start-request')} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60"><LuLogIn /> Request start shift</button>}
-        {session?.status === 'ACTIVE' && <button disabled={busy} onClick={() => void post('/shifts/end-request')} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60"><LuLogOut /> Request end shift</button>}
+        {!session && <ShiftButton loading={busyKey === 'start'} onClick={() => void post('/shifts/start-request', {}, 'start')} icon={<LuLogIn />}>{startText}</ShiftButton>}
+        {session?.status === 'ACTIVE' && <ShiftButton loading={busyKey === 'end'} onClick={() => void post('/shifts/end-request', {}, 'end')} icon={<LuLogOut />}>{endText}</ShiftButton>}
         {session?.status === 'REQUESTED_START' && <span className="rounded-sm border border-warning/40 bg-warning/10 px-3 py-2 text-sm font-semibold text-warning">Waiting for supervisor</span>}
         {session?.status === 'REQUESTED_END' && <span className="rounded-sm border border-warning/40 bg-warning/10 px-3 py-2 text-sm font-semibold text-warning">Waiting for handover approval</span>}
       </div>
+      </div>
       {approvals.length > 0 && (
-        <div className="mt-5 overflow-hidden rounded-sm border">
+        <div className="overflow-hidden rounded-sm border bg-card">
           <div className="bg-muted/40 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Supervisor approvals</div>
           {approvals.map((a) => (
             <div key={a.id} className="flex flex-col gap-2 border-t p-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1394,14 +1443,131 @@ function ShiftControl({ onReady }: { onReady: (ready: boolean) => void }) {
                 <p className="text-xs text-muted-foreground">{a.status === 'REQUESTED_END' ? `End shift · ${formatKes(a.summary?.totalPaid ?? 0)} collected` : 'Start shift'}</p>
               </div>
               <div className="flex gap-2">
-                <button disabled={busy} onClick={() => void post(`/shifts/${a.id}/${a.status === 'REQUESTED_START' ? 'start' : 'end'}-approval`, { action: 'APPROVE' })} className="rounded-sm bg-success px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60">Approve</button>
-                <button disabled={busy} onClick={() => void post(`/shifts/${a.id}/${a.status === 'REQUESTED_START' ? 'start' : 'end'}-approval`, { action: 'REJECT' })} className="rounded-sm border px-3 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-60">Reject</button>
+                {a.status === 'REQUESTED_END' && a.summary && <button onClick={() => setSelectedSummary({ title: `${a.employee.firstName}'s handover`, session: a, summary: a.summary!, approval: true })} className="rounded-sm border px-3 py-1.5 text-xs font-semibold hover:bg-muted">Review</button>}
+                {a.status === 'REQUESTED_START' && <button disabled={busyKey === `${a.id}:approve`} onClick={() => void post(`/shifts/${a.id}/start-approval`, { action: 'APPROVE' }, `${a.id}:approve`)} className="inline-flex items-center gap-1.5 rounded-sm bg-success px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60">{busyKey === `${a.id}:approve` && <LuLoaderCircle className="size-3 animate-spin" />}Approve</button>}
+                {a.status === 'REQUESTED_START' && <button disabled={busyKey === `${a.id}:reject`} onClick={() => void post(`/shifts/${a.id}/start-approval`, { action: 'REJECT' }, `${a.id}:reject`)} className="inline-flex items-center gap-1.5 rounded-sm border px-3 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-60">{busyKey === `${a.id}:reject` && <LuLoaderCircle className="size-3 animate-spin" />}Reject</button>}
               </div>
             </div>
           ))}
         </div>
       )}
+      {isSupervisor && activeStaff.length > 0 && (
+        <div className="overflow-hidden rounded-sm border bg-card">
+          <div className="bg-muted/40 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Currently on shift</div>
+          <div className="grid gap-0 sm:grid-cols-2 xl:grid-cols-3">
+            {activeStaff.map((s) => {
+              const started = s.approvedStartAt ? new Date(s.approvedStartAt) : null
+              const liveHours = started ? Math.max(0, (now.getTime() - started.getTime()) / 36e5) : 0
+              return (
+                <div key={s.id} className="border-t p-3 text-sm sm:border-r">
+                  <p className="font-semibold">{s.employee.firstName} {s.employee.lastName}</p>
+                  <p className="text-xs text-muted-foreground">{s.employee.jobTitle || 'Employee'} - {liveHours.toFixed(1)} hrs</p>
+                  <div className="mt-2 flex items-center justify-between text-xs"><span>Sales</span><span className="font-semibold">{formatKes(s.summary?.totalSales ?? 0)}</span></div>
+                  <div className="mt-1 flex items-center justify-between text-xs"><span>Credit</span><span className="font-semibold">{formatKes(s.summary?.creditSales ?? 0)}</span></div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+      {history.length > 0 && (
+        <div className="overflow-hidden rounded-sm border bg-card">
+          <div className="bg-muted/40 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">My shift history</div>
+          <div className="max-h-80 overflow-y-auto">
+            {history.map((s) => (
+              <div key={s.id} className="flex flex-col gap-2 border-t p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="font-semibold">{s.approvedStartAt ? new Date(s.approvedStartAt).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) : 'Shift'}</p>
+                  <p className="text-xs text-muted-foreground">{s.approvedStartAt ? new Date(s.approvedStartAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--'} - {s.approvedEndAt ? new Date(s.approvedEndAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--'} - {(s.summary?.hours ?? 0).toFixed(1)} hrs</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="text-right text-xs">
+                    <p className="font-semibold">{formatKes(s.summary?.totalSales ?? 0)}</p>
+                    <p className="text-muted-foreground">{formatKes(s.summary?.totalPaid ?? 0)} collected</p>
+                  </div>
+                  {s.summary && <button onClick={() => setSelectedSummary({ title: 'Shift summary', session: s, summary: s.summary! })} className="rounded-sm border px-3 py-1.5 text-xs font-semibold hover:bg-muted">View</button>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {selectedSummary && (
+        <ShiftSummaryModal
+          title={selectedSummary.title}
+          session={selectedSummary.session}
+          summary={selectedSummary.summary}
+          approval={selectedSummary.approval}
+          busyKey={busyKey}
+          onClose={() => setSelectedSummary(null)}
+          onApprove={() => void post(`/shifts/${selectedSummary.session.id}/end-approval`, { action: 'APPROVE' }, `${selectedSummary.session.id}:approve-end`).then((ok) => { if (ok) setSelectedSummary(null) })}
+          onReject={() => void post(`/shifts/${selectedSummary.session.id}/end-approval`, { action: 'REJECT' }, `${selectedSummary.session.id}:reject-end`).then((ok) => { if (ok) setSelectedSummary(null) })}
+        />
+      )}
     </section>
+  )
+}
+
+function ShiftButton({ loading, onClick, icon, children }: { loading: boolean; onClick: () => void; icon: ReactNode; children: string }) {
+  return (
+    <button disabled={loading} onClick={onClick} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+      {loading ? <LuLoaderCircle className="size-4 animate-spin" /> : icon}
+      {children}
+    </button>
+  )
+}
+
+function ShiftSummaryModal({ title, session, summary, approval, busyKey, onClose, onApprove, onReject }: { title: string; session: ShiftSession; summary: ShiftSummary; approval?: boolean; busyKey: string; onClose: () => void; onApprove: () => void; onReject: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/45 px-4 py-8">
+      <div className="w-full max-w-4xl rounded-sm border bg-card shadow-xl">
+        <div className="flex items-start justify-between gap-4 border-b p-5">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-secondary">Shift handover</p>
+            <h2 className="mt-1 font-display text-2xl font-semibold">{title}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{session.employee.firstName} {session.employee.lastName} - {summary.from ? new Date(summary.from).toLocaleString() : ''}</p>
+          </div>
+          <button onClick={onClose} className="rounded-sm border px-3 py-1.5 text-sm font-semibold hover:bg-muted">Close</button>
+        </div>
+        <div className="space-y-5 p-5">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <ShiftMiniStat label="Hours" value={`${summary.hours.toFixed(2)}h`} />
+            <ShiftMiniStat label="Sales" value={formatKes(summary.totalSales)} />
+            <ShiftMiniStat label="Collected" value={formatKes(summary.totalPaid)} />
+            <ShiftMiniStat label="Credit" value={formatKes(summary.creditSales)} />
+            <ShiftMiniStat label="Complimentary" value={formatKes(summary.complimentaryTotal)} />
+          </div>
+          <ShiftSummaryTable title="Sales by payment method" empty="No payments collected.">
+            {summary.byPaymentMethod.map((m) => <tr key={m.name} className="border-t"><td className="px-3 py-2">{m.name}</td><td className="px-3 py-2 text-right">{m.count}</td><td className="px-3 py-2 text-right font-semibold">{formatKes(m.total)}</td></tr>)}
+          </ShiftSummaryTable>
+          <ShiftSummaryTable title="Transactions" empty="No transactions recorded.">
+            {summary.transactions.map((t) => <tr key={t.id} className="border-t"><td className="px-3 py-2">{t.transactionNo}</td><td className="px-3 py-2">{t.paymentMethod ?? t.source}</td><td className="px-3 py-2">{new Date(t.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td><td className={cn('px-3 py-2 text-right font-semibold', t.direction === 'IN' ? 'text-success' : 'text-destructive')}>{t.direction === 'IN' ? '+' : '-'}{formatKes(t.amount)}</td></tr>)}
+          </ShiftSummaryTable>
+          <ShiftSummaryTable title="Sales" empty="No sales recorded.">
+            {summary.sales.map((s) => <tr key={s.id} className="border-t"><td className="px-3 py-2">#{s.orderNumber}</td><td className="px-3 py-2">{s.saleType === 'COMPLIMENTARY' ? `Complementary${s.complimentaryRecipientName ? ` - ${s.complimentaryRecipientName}` : ''}` : s.paymentStatus}</td><td className="px-3 py-2">{new Date(s.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td><td className="px-3 py-2 text-right font-semibold">{formatKes(s.total)}</td></tr>)}
+          </ShiftSummaryTable>
+        </div>
+        {approval && (
+          <div className="flex flex-wrap justify-end gap-2 border-t p-5">
+            <button disabled={busyKey === `${session.id}:reject-end`} onClick={onReject} className="inline-flex items-center gap-2 rounded-sm border px-4 py-2 text-sm font-semibold hover:bg-muted disabled:opacity-60">{busyKey === `${session.id}:reject-end` && <LuLoaderCircle className="size-4 animate-spin" />}Reject</button>
+            <button disabled={busyKey === `${session.id}:approve-end`} onClick={onApprove} className="inline-flex items-center gap-2 rounded-sm bg-success px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">{busyKey === `${session.id}:approve-end` && <LuLoaderCircle className="size-4 animate-spin" />}Mark cleared and end shift</button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ShiftMiniStat({ label, value }: { label: string; value: string }) {
+  return <div className="rounded-sm border bg-muted/30 p-3"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 font-semibold tabular-nums">{value}</p></div>
+}
+
+function ShiftSummaryTable({ title, empty, children }: { title: string; empty: string; children: ReactNode[] }) {
+  return (
+    <div className="overflow-hidden rounded-sm border">
+      <div className="bg-muted/40 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</div>
+      {children.length === 0 ? <p className="p-3 text-sm text-muted-foreground">{empty}</p> : <div className="max-h-56 overflow-y-auto"><table className="w-full text-left text-sm"><tbody>{children}</tbody></table></div>}
+    </div>
   )
 }
 
