@@ -10,6 +10,7 @@ export type AuthUser = {
   lastName: string
   employeeCode: string
   jobTitle: string
+  isSupervisor: boolean
   department: string | null
   role: AuthRole | null
   locations: AuthLocation[]

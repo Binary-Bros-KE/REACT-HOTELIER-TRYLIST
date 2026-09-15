@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { LuChevronLeft, LuChevronRight, LuCircleAlert, LuLoaderCircle, LuX } from 'react-icons/lu'
+import { LuChevronLeft, LuChevronRight, LuCircleAlert, LuFileText, LuLoaderCircle, LuX } from 'react-icons/lu'
 import { api } from '@/lib/api'
 import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
@@ -7,6 +7,12 @@ import { cn } from '@/lib/utils'
 type Employee = { id: string; firstName: string; lastName: string; jobTitle: string; status: string }
 type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'LATE' | 'ON_LEAVE'
 type AttendanceRecord = { employeeId: string; date: string; status: AttendanceStatus; notes: string | null }
+type ShiftSession = { id: string; employeeId: string; status: string; requestedStartAt: string; approvedStartAt: string | null; approvedEndAt: string | null }
+type EmployeeReport = {
+  employee: Employee
+  totals: { shifts: number; hours: number; sales: number; paid: number; creditSales: number }
+  sessions: { id: string; approvedStartAt: string | null; approvedEndAt: string | null; summary: { byPaymentMethod: { name: string; total: number }[] } }[]
+}
 
 const STATUS_ORDER: AttendanceStatus[] = ['PRESENT', 'ABSENT', 'LATE', 'ON_LEAVE']
 const STATUS_STYLE: Record<AttendanceStatus, string> = {
@@ -23,6 +29,7 @@ const STATUS_DOT: Record<AttendanceStatus, string> = {
 }
 const STATUS_LETTER: Record<AttendanceStatus, string> = { PRESENT: 'P', ABSENT: 'A', LATE: 'L', ON_LEAVE: 'O' }
 const STATUS_LABEL: Record<AttendanceStatus, string> = { PRESENT: 'Present', ABSENT: 'Absent', LATE: 'Late', ON_LEAVE: 'On leave' }
+const titleCase = (value: string) => value.toLowerCase().split('_').map((part) => part[0].toUpperCase() + part.slice(1)).join(' ')
 
 // "YYYY-MM-DD" -> day-of-month, cheaply, without a Date/timezone round trip.
 function monthKey(date: string): string {
@@ -51,6 +58,8 @@ export default function Attendance() {
   const [month, setMonth] = useState(now.getMonth() + 1) // 1-based
   const [employees, setEmployees] = useState<Employee[]>([])
   const [records, setRecords] = useState<Map<string, AttendanceRecord>>(new Map())
+  const [shiftSessions, setShiftSessions] = useState<ShiftSession[]>([])
+  const [report, setReport] = useState<EmployeeReport | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [savingKey, setSavingKey] = useState<string | null>(null)
@@ -63,12 +72,14 @@ export default function Attendance() {
     setLoading(true)
     setError('')
     try {
-      const [e, r] = await Promise.all([
+      const [e, r, shifts] = await Promise.all([
         api<{ employees: Employee[] }>('/employees'),
         api<{ records: AttendanceRecord[] }>(`/attendance?year=${year}&month=${month}`),
+        api<{ sessions: ShiftSession[] }>(`/shifts/sessions?year=${year}&month=${month}`),
       ])
       setEmployees(e.employees.filter((emp) => emp.status === 'ACTIVE'))
       setRecords(new Map(r.records.map((rec) => [`${rec.employeeId}|${monthKey(rec.date)}`, rec])))
+      setShiftSessions(shifts.sessions)
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Could not load attendance'
       setError(message)
@@ -79,6 +90,17 @@ export default function Attendance() {
   }, [year, month, toast])
 
   useEffect(() => { void load() }, [load])
+
+  async function openReport(employee: Employee) {
+    const from = `${year}-${String(month).padStart(2, '0')}-01`
+    const next = new Date(year, month, 1)
+    const to = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-01`
+    try {
+      setReport(await api<EmployeeReport>(`/shifts/employees/${employee.id}/report?from=${from}&to=${to}`))
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : 'Could not load employee report')
+    }
+  }
 
   function shiftMonth(delta: number) {
     const next = new Date(year, month - 1 + delta, 1)
@@ -164,36 +186,70 @@ export default function Attendance() {
               employee={emp}
               weeks={weeks}
               records={records}
+              shifts={shiftSessions.filter((s) => s.employeeId === emp.id)}
               summary={summaryFor.get(emp.id)}
               savingKey={savingKey}
               openKey={openKey}
               setOpenKey={setOpenKey}
               onSetStatus={setStatus}
+              onReport={openReport}
             />
           ))}
+        </div>
+      )}
+      {report && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-2xl rounded-sm border bg-card p-6 shadow-2xl">
+            <p className="text-sm font-semibold text-secondary">Employee report</p>
+            <h2 className="mt-1 font-display text-2xl font-semibold">{report.employee.firstName} {report.employee.lastName}</h2>
+            <div className="mt-4 grid gap-3 sm:grid-cols-4">
+              <Mini label="Shifts" value={String(report.totals.shifts)} />
+              <Mini label="Hours" value={report.totals.hours.toFixed(1)} />
+              <Mini label="Sales" value={`KSh ${Math.round(report.totals.sales).toLocaleString()}`} />
+              <Mini label="Credit" value={`KSh ${Math.round(report.totals.creditSales).toLocaleString()}`} />
+            </div>
+            <div className="mt-4 max-h-72 overflow-y-auto rounded-sm border">
+              {report.sessions.length === 0 ? <p className="p-6 text-center text-sm text-muted-foreground">No ended shifts in this period.</p> : report.sessions.map((s) => (
+                <div key={s.id} className="border-t p-3 first:border-t-0">
+                  <p className="text-sm font-semibold">{s.approvedStartAt ? new Date(s.approvedStartAt).toLocaleString() : 'Shift'} - {s.approvedEndAt ? new Date(s.approvedEndAt).toLocaleString() : 'open'}</p>
+                  <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                    {s.summary.byPaymentMethod.map((m) => <span key={m.name} className="rounded-sm border px-2 py-1">{m.name}: KSh {Math.round(m.total).toLocaleString()}</span>)}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-5 flex justify-end"><button onClick={() => setReport(null)} className="rounded-sm border px-4 py-2 text-sm font-semibold hover:bg-muted">Close</button></div>
+          </div>
         </div>
       )}
     </div>
   )
 }
 
+function Mini({ label, value }: { label: string; value: string }) {
+  return <div className="rounded-sm border bg-muted/30 p-3"><p className="text-xs text-muted-foreground">{label}</p><p className="font-semibold">{value}</p></div>
+}
+
 function EmployeeCalendar({
-  employee, weeks, records, summary, savingKey, openKey, setOpenKey, onSetStatus,
+  employee, weeks, records, shifts, summary, savingKey, openKey, setOpenKey, onSetStatus, onReport,
 }: {
   employee: Employee
   weeks: (number | null)[][]
   records: Map<string, AttendanceRecord>
+  shifts: ShiftSession[]
   summary: Record<AttendanceStatus, number> | undefined
   savingKey: string | null
   openKey: string | null
   setOpenKey: (key: string | null) => void
   onSetStatus: (employeeId: string, day: number, status: AttendanceStatus | null) => void
+  onReport: (employee: Employee) => void
 }) {
   return (
     <section className="rounded-lg border bg-card p-5 shadow-sm">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <h2 className="font-display text-lg font-semibold">{employee.firstName} {employee.lastName}</h2>
         <p className="text-xs text-muted-foreground">{employee.jobTitle}</p>
+        <button onClick={() => onReport(employee)} className="inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1.5 text-xs font-semibold hover:bg-muted"><LuFileText className="size-3.5" /> Employee report</button>
         <p className="flex gap-3 text-xs font-semibold tabular-nums">
           <span className="text-success">{summary?.PRESENT ?? 0} present</span>
           <span className="text-destructive">{summary?.ABSENT ?? 0} absent</span>
@@ -216,6 +272,7 @@ function EmployeeCalendar({
                     employee={employee}
                     day={day}
                     record={records.get(`${employee.id}|${String(day).padStart(2, '0')}`)}
+                    shift={shifts.find((s) => (s.approvedStartAt ?? s.requestedStartAt).slice(8, 10) === String(day).padStart(2, '0'))}
                     isSaving={savingKey === `${employee.id}|${String(day).padStart(2, '0')}`}
                     isOpen={openKey === `${employee.id}|${String(day).padStart(2, '0')}`}
                     setOpenKey={setOpenKey}
@@ -231,11 +288,12 @@ function EmployeeCalendar({
 }
 
 function DayCell({
-  employee, day, record, isSaving, isOpen, setOpenKey, onSetStatus,
+  employee, day, record, shift, isSaving, isOpen, setOpenKey, onSetStatus,
 }: {
   employee: Employee
   day: number
   record: AttendanceRecord | undefined
+  shift: ShiftSession | undefined
   isSaving: boolean
   isOpen: boolean
   setOpenKey: (key: string | null) => void
@@ -244,6 +302,7 @@ function DayCell({
   const key = `${employee.id}|${String(day).padStart(2, '0')}`
   const ref = useRef<HTMLDivElement>(null)
   const status = record?.status
+  const shiftTone = shift?.status === 'ACTIVE' ? 'bg-success' : shift?.status === 'REQUESTED_START' || shift?.status === 'REQUESTED_END' ? 'bg-warning' : shift ? 'bg-secondary' : ''
 
   useEffect(() => {
     if (!isOpen) return
@@ -271,6 +330,7 @@ function DayCell({
           <>
             <span className="text-[11px] font-semibold leading-none opacity-70">{day}</span>
             <span className="text-sm leading-none">{status ? STATUS_LETTER[status] : ''}</span>
+            {shift && <span title={titleCase(shift.status)} className={cn('absolute bottom-1 right-1 size-2 rounded-full', shiftTone)} />}
           </>
         )}
       </button>

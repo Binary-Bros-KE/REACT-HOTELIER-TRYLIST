@@ -77,6 +77,23 @@ type TransactionRow = {
   customer: { firstName: string; lastName: string | null } | null
   supplier: { name: string } | null
 }
+type ShiftSession = {
+  id: string
+  status: 'REQUESTED_START' | 'ACTIVE' | 'REQUESTED_END' | 'ENDED' | 'REJECTED_START' | 'REJECTED_END'
+  requestedStartAt: string
+  approvedStartAt: string | null
+  requestedEndAt: string | null
+  employee: { id: string; firstName: string; lastName: string; jobTitle: string; supervisorId: string | null; isSupervisor: boolean }
+}
+type ShiftSummary = {
+  hours: number
+  totalSales: number
+  totalPaid: number
+  creditSales: number
+  pendingOrders: number
+  byPaymentMethod: { name: string; total: number; count: number }[]
+}
+type ShiftPayload = { serverNow: string; user: { isSupervisor: boolean; role: { name: string } | null }; session: ShiftSession | null; summary: ShiftSummary | null }
 
 const NON_FINAL_STATUSES = ['OPEN', 'PREPARING', 'READY', 'SERVED']
 const titleCase = (value: string) => value.charAt(0) + value.slice(1).toLowerCase().replaceAll('_', ' ')
@@ -1278,10 +1295,121 @@ function HousekeepingDashboard() {
   )
 }
 
+function ShiftControl({ onReady }: { onReady: (ready: boolean) => void }) {
+  const user = useAppSelector((s) => s.auth.user)
+  const [state, setState] = useState<ShiftPayload | null>(null)
+  const [approvals, setApprovals] = useState<(ShiftSession & { summary: ShiftSummary | null })[]>([])
+  const [now, setNow] = useState(new Date())
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const isSuperAdmin = user?.role?.name === 'Super Admin'
+  const isSupervisor = Boolean(user?.isSupervisor || isSuperAdmin)
+
+  const load = useCallback(async () => {
+    if (isSuperAdmin) { onReady(true); return }
+    try {
+      const current = await api<ShiftPayload>('/shifts/current')
+      setState(current)
+      onReady(current.session?.status === 'ACTIVE')
+      if (isSupervisor) {
+        const pending = await api<{ sessions: (ShiftSession & { summary: ShiftSummary | null })[] }>('/shifts/approvals')
+        setApprovals(pending.sessions)
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not load shift status')
+      onReady(false)
+    }
+  }, [isSuperAdmin, isSupervisor, onReady])
+
+  useEffect(() => { void load() }, [load])
+  useEffect(() => { const id = window.setInterval(() => setNow(new Date()), 1000); return () => window.clearInterval(id) }, [])
+
+  async function post(path: string, body: object = {}) {
+    setBusy(true)
+    setError('')
+    try {
+      await api(path, { method: 'POST', body: JSON.stringify(body) })
+      await load()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not update shift')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (isSuperAdmin) return null
+  const session = state?.session
+  const approvedAt = session?.approvedStartAt ? new Date(session.approvedStartAt) : null
+  const elapsed = approvedAt ? Math.max(0, now.getTime() - approvedAt.getTime()) : 0
+  const hours = Math.floor(elapsed / 36e5)
+  const minutes = Math.floor((elapsed % 36e5) / 6e4)
+  const seconds = Math.floor((elapsed % 6e4) / 1000)
+  const timeText = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+
+  return (
+    <section className="mt-6 rounded-sm border bg-card p-5 shadow-sm">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-secondary">Shift</p>
+          <h2 className="mt-1 font-display text-xl font-semibold">{session?.status === 'ACTIVE' ? 'You are on shift' : session?.status === 'REQUESTED_START' ? 'Start request waiting approval' : session?.status === 'REQUESTED_END' ? 'End request waiting approval' : 'Request shift start'}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}</p>
+          {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
+        </div>
+        <div className="text-left lg:text-right">
+          <p className="font-display text-3xl font-semibold tabular-nums">{session?.status === 'ACTIVE' || session?.status === 'REQUESTED_END' ? timeText : '--:--:--'}</p>
+          <p className="text-xs text-muted-foreground">{approvedAt ? `Started ${approvedAt.toLocaleTimeString()}` : 'Supervisor approval starts the clock'}</p>
+        </div>
+      </div>
+      {state?.summary && (
+        <div className="mt-4 grid gap-3 sm:grid-cols-4">
+          <div className="rounded-sm border bg-muted/30 p-3"><p className="text-xs text-muted-foreground">Sales</p><p className="font-semibold">{formatKes(state.summary.totalSales)}</p></div>
+          <div className="rounded-sm border bg-muted/30 p-3"><p className="text-xs text-muted-foreground">Collected</p><p className="font-semibold">{formatKes(state.summary.totalPaid)}</p></div>
+          <div className="rounded-sm border bg-muted/30 p-3"><p className="text-xs text-muted-foreground">Credit</p><p className="font-semibold">{formatKes(state.summary.creditSales)}</p></div>
+          <div className="rounded-sm border bg-muted/30 p-3"><p className="text-xs text-muted-foreground">Pending</p><p className="font-semibold">{state.summary.pendingOrders}</p></div>
+        </div>
+      )}
+      {state?.summary?.byPaymentMethod.length ? (
+        <div className="mt-4 rounded-sm border">
+          {state.summary.byPaymentMethod.map((m) => (
+            <div key={m.name} className="flex items-center justify-between border-t px-3 py-2 text-sm first:border-t-0">
+              <span>{m.name}</span>
+              <span className="font-semibold tabular-nums">{formatKes(m.total)}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      <div className="mt-4 flex flex-wrap gap-2">
+        {!session && <button disabled={busy} onClick={() => void post('/shifts/start-request')} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60"><LuLogIn /> Request start shift</button>}
+        {session?.status === 'ACTIVE' && <button disabled={busy} onClick={() => void post('/shifts/end-request')} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60"><LuLogOut /> Request end shift</button>}
+        {session?.status === 'REQUESTED_START' && <span className="rounded-sm border border-warning/40 bg-warning/10 px-3 py-2 text-sm font-semibold text-warning">Waiting for supervisor</span>}
+        {session?.status === 'REQUESTED_END' && <span className="rounded-sm border border-warning/40 bg-warning/10 px-3 py-2 text-sm font-semibold text-warning">Waiting for handover approval</span>}
+      </div>
+      {approvals.length > 0 && (
+        <div className="mt-5 overflow-hidden rounded-sm border">
+          <div className="bg-muted/40 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Supervisor approvals</div>
+          {approvals.map((a) => (
+            <div key={a.id} className="flex flex-col gap-2 border-t p-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="font-semibold">{a.employee.firstName} {a.employee.lastName}</p>
+                <p className="text-xs text-muted-foreground">{a.status === 'REQUESTED_END' ? `End shift · ${formatKes(a.summary?.totalPaid ?? 0)} collected` : 'Start shift'}</p>
+              </div>
+              <div className="flex gap-2">
+                <button disabled={busy} onClick={() => void post(`/shifts/${a.id}/${a.status === 'REQUESTED_START' ? 'start' : 'end'}-approval`, { action: 'APPROVE' })} className="rounded-sm bg-success px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60">Approve</button>
+                <button disabled={busy} onClick={() => void post(`/shifts/${a.id}/${a.status === 'REQUESTED_START' ? 'start' : 'end'}-approval`, { action: 'REJECT' })} className="rounded-sm border px-3 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-60">Reject</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
 export default function Dashboard() {
   const allModules = navigation.flatMap((g) => g.items).filter((i) => i.moduleKey)
   const user = useAppSelector((s) => s.auth.user)
   const moduleKeys = useAppSelector((s) => s.tenant.moduleKeys)
+  const [shiftReady, setShiftReady] = useState(user?.role?.name === 'Super Admin')
   const firstName = user?.firstName ?? 'there'
   // Revenue and every figure derived from it: Super Admin, Manager, and
   // Accountant — the three roles the user named as allowed to see money.
@@ -1310,13 +1438,15 @@ export default function Dashboard() {
         </p>
       </header>
 
-      {revenueVariant && <RevenueDashboard variant={revenueVariant} />}
-      {isReceptionist && <ReceptionDashboard />}
-      {isWaiter && <WaiterDashboard />}
-      {isStorekeeper && <StorekeeperDashboard />}
-      {isChef && <ChefDashboard />}
-      {isHousekeeping && <HousekeepingDashboard />}
-      {isBarman && <BarmanDashboard />}
+      <ShiftControl onReady={setShiftReady} />
+
+      {shiftReady && revenueVariant && <RevenueDashboard variant={revenueVariant} />}
+      {shiftReady && isReceptionist && <ReceptionDashboard />}
+      {shiftReady && isWaiter && <WaiterDashboard />}
+      {shiftReady && isStorekeeper && <StorekeeperDashboard />}
+      {shiftReady && isChef && <ChefDashboard />}
+      {shiftReady && isHousekeeping && <HousekeepingDashboard />}
+      {shiftReady && isBarman && <BarmanDashboard />}
 
       <section className="mt-8 rounded-sm border border-border bg-card p-6 shadow-sm">
         <div className="mb-5 flex items-center justify-between">

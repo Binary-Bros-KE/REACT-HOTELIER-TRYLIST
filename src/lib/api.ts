@@ -1,4 +1,4 @@
-import { getSessionSnapshot, notifyOutsideShift } from '@/lib/session'
+import { getSessionSnapshot } from '@/lib/session'
 
 const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:4000/api'
 
@@ -30,7 +30,6 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (response.status === 204) return undefined as T
   const data = await response.json() as T & { error?: string; code?: string }
   if (!response.ok) {
-    if (data.code === 'OUTSIDE_SHIFT') notifyOutsideShift()
     throw new Error(data.error ?? 'The request failed')
   }
   return data

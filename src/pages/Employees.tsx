@@ -51,6 +51,7 @@ type Employee = {
   dateHired: string
   supervisorId: string | null
   supervisor: { id: string; firstName: string; lastName: string } | null
+  isSupervisor: boolean
   roleId: string | null
   role: { id: string; name: string } | null
   locations: { id: string; name: string }[]
@@ -87,6 +88,7 @@ type EmployeeForm = {
   status: Status
   dateHired: string
   supervisorId: string
+  isSupervisor: boolean
   roleId: string
   locationIds: string[]
   salaryType: SalaryType
@@ -108,7 +110,7 @@ type EmployeeForm = {
 const emptyForm: EmployeeForm = {
   firstName: '', lastName: '', gender: '', dateOfBirth: '', nationalId: '',
   phone: '', alternativePhone: '', email: '', address: '',
-  departmentId: '', jobTitle: '', employmentType: 'FULL_TIME', status: 'ACTIVE', dateHired: '', supervisorId: '', roleId: '', locationIds: [],
+  departmentId: '', jobTitle: '', employmentType: 'FULL_TIME', status: 'ACTIVE', dateHired: '', supervisorId: '', isSupervisor: false, roleId: '', locationIds: [],
   salaryType: 'MONTHLY', salaryAmount: '', paymentMethod: 'BANK_TRANSFER', bankName: '', bankAccountNumber: '', mpesaNumber: '',
   kraPin: '', nssfNumber: '', shaNumber: '',
   employeeCode: '', pin: '', confirmPin: '',
@@ -211,6 +213,7 @@ export default function Employees() {
       status: employee.status,
       dateHired: employee.dateHired.slice(0, 10),
       supervisorId: employee.supervisorId ?? '',
+      isSupervisor: employee.isSupervisor,
       roleId: employee.roleId ?? '',
       locationIds: employee.locations.map((l) => l.id),
       salaryType: employee.salaryType,
@@ -449,6 +452,10 @@ export default function Employees() {
                   {supervisorOptions.map((s) => <option key={s.id} value={s.id}>{s.firstName} {s.lastName}</option>)}
                 </select>
               </Field>
+              <label className="flex items-center gap-2 rounded-sm border bg-muted/40 px-3 py-2 text-sm font-medium">
+                <input type="checkbox" checked={form.isSupervisor} onChange={(e) => setForm({ ...form, isSupervisor: e.target.checked })} className="size-4 accent-secondary" />
+                Can approve shift starts and handovers
+              </label>
               <Field label="Role" required>
                 <select required value={form.roleId} onChange={(e) => setForm({ ...form, roleId: e.target.value })} className="input">
                   <option value="" disabled>Select a role</option>
