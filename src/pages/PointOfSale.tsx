@@ -542,7 +542,9 @@ export default function PointOfSale() {
       void autoPrint(response.order.id)
       await loadPos()
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not save the order')
+      const message = cause instanceof Error ? cause.message : 'Could not save the order'
+      setError(message)
+      toast.error(message)
     } finally {
       setSubmitting(false)
     }
@@ -552,6 +554,7 @@ export default function PointOfSale() {
     setServingId(orderId)
     try {
       await api(`/pos/orders/${orderId}/serve`, { method: 'PATCH' })
+      toast.success('Order marked served.')
       void loadActiveOrders(true)
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : 'Could not mark the order served')
@@ -1454,6 +1457,7 @@ function AddItemsModal({ order, menuItems, allAddons, onClose, onRefresh, onAdde
   onRefresh: () => void
   onAdded: () => void
 }) {
+  const toast = useToast()
   const [search, setSearch] = useState('')
   const [cart, setCart] = useState<CartLine[]>([])
   const [customizing, setCustomizing] = useState<MenuItem | null>(null)
@@ -1517,10 +1521,13 @@ function AddItemsModal({ order, menuItems, allAddons, onClose, onRefresh, onAdde
     setBusyId(line.id); setError('')
     try {
       await api(`/pos/orders/${order.id}/items/${line.id}`, { method: 'PATCH', body: JSON.stringify(body) })
+      toast.success('Order line updated.')
       await loadExisting()
       onRefresh()
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not update this line')
+      const message = cause instanceof Error ? cause.message : 'Could not update this line'
+      setError(message)
+      toast.error(message)
     } finally { setBusyId(null) }
   }
 
@@ -1529,30 +1536,36 @@ function AddItemsModal({ order, menuItems, allAddons, onClose, onRefresh, onAdde
     setBusyId(line.id); setError('')
     try {
       await api(`/pos/orders/${order.id}/items/${line.id}`, { method: 'DELETE' })
+      toast.success('Order line removed.')
       await loadExisting()
       onRefresh()
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not remove this line')
+      const message = cause instanceof Error ? cause.message : 'Could not remove this line'
+      setError(message)
+      toast.error(message)
     } finally { setBusyId(null) }
   }
 
   async function requestPartialReturn(line: ExistingLine) {
     const pending = (line.returnRequests ?? []).filter((request) => request.status === 'PENDING').reduce((sum, request) => sum + request.quantity, 0)
     const max = line.quantity - pending - 1
-    if (max < 1) { setError('This line cannot be partially returned. Use full return instead.'); return }
+    if (max < 1) { const message = 'This line cannot be partially returned.'; setError(message); toast.error(message); return }
     const qtyInput = window.prompt(`Return how many ${line.menuItemName}? Max ${max}.`, '1')
     if (qtyInput === null) return
     const quantity = Number(qtyInput)
-    if (!Number.isInteger(quantity) || quantity < 1 || quantity > max) { setError(`Enter a whole number between 1 and ${max}.`); return }
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > max) { const message = `Enter a whole number between 1 and ${max}.`; setError(message); toast.error(message); return }
     const reason = window.prompt(`Why is ${quantity} x ${line.menuItemName} being returned?`, '')
-    if (!reason?.trim() || reason.trim().length < 3) { setError('Give a reason for the partial return.'); return }
+    if (!reason?.trim() || reason.trim().length < 3) { const message = 'Give a reason for the partial return.'; setError(message); toast.error(message); return }
     setBusyId(line.id); setError('')
     try {
       await api(`/pos/orders/${order.id}/items/${line.id}/return-request`, { method: 'POST', body: JSON.stringify({ quantity, reason: reason.trim() }) })
+      toast.success('Partial return requested.')
       await loadExisting()
       onRefresh()
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not request this return')
+      const message = cause instanceof Error ? cause.message : 'Could not request this return'
+      setError(message)
+      toast.error(message)
     } finally { setBusyId(null) }
   }
 
@@ -1572,9 +1585,12 @@ function AddItemsModal({ order, menuItems, allAddons, onClose, onRefresh, onAdde
         method: 'POST',
         body: JSON.stringify({ items: cart.map((line) => ({ menuItemId: line.item.id, variantId: line.variant?.id, quantity: line.quantity, addons: line.addons.map((addon) => ({ addonId: addon.id, quantity: 1 })) })) }),
       })
+      toast.success('Items added to order.')
       onAdded()
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not add these items')
+      const message = cause instanceof Error ? cause.message : 'Could not add these items'
+      setError(message)
+      toast.error(message)
     } finally {
       setSubmitting(false)
     }
@@ -1617,11 +1633,6 @@ function AddItemsModal({ order, menuItems, allAddons, onClose, onRefresh, onAdde
 
           <div className="flex flex-col overflow-y-auto border-t bg-muted/20 p-4 lg:border-l lg:border-t-0">
             <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">On this order</p>
-            {servedLocked && (
-              <p className="mb-3 rounded-sm border border-warning/40 bg-warning/10 p-2 text-xs font-medium text-warning">
-                Served lines are locked because stock has already been deducted. Add a new round here, or use Request return for served items.
-              </p>
-            )}
             {existing.length === 0 ? (
               <p className="text-center text-xs text-muted-foreground">No lines yet.</p>
             ) : (
@@ -1689,7 +1700,7 @@ function AddItemsModal({ order, menuItems, allAddons, onClose, onRefresh, onAdde
         </div>
 
         <div className="flex items-center justify-between gap-3 border-t p-4">
-          <span className="text-sm font-semibold">{cart.length > 0 ? `Adding: ${formatKes(addingTotal)}` : servedLocked ? 'Served lines are locked' : 'Line changes save as you make them'}</span>
+          <span className="text-sm font-semibold">{cart.length > 0 ? `Adding: ${formatKes(addingTotal)}` : 'No new items selected'}</span>
           <div className="flex gap-2">
             <button onClick={onClose} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Done</button>
             <button disabled={!cart.length || submitting} onClick={() => void submitAdds()} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">

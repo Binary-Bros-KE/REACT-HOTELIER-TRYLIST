@@ -147,7 +147,7 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, profile
     if (!order || settling) return
     if (remaining > 0.01) {
       if (!order.customer) { setCustModalOpen(true); return }
-      if (!creditReason.trim() || !creditExpectedAt) { setError('Give a credit reason and expected payment date'); return }
+      if (!creditReason.trim() || !creditExpectedAt) { const message = 'Give a credit reason and expected payment date'; setError(message); toast.error(message); return }
       const who = `${order.customer.firstName} ${order.customer.lastName ?? ''}`.trim()
       if (!window.confirm(`${formatKes(remaining)} will be added to ${who}'s balance as credit. Complete the order now?`)) return
     }
@@ -159,9 +159,12 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, profile
         body: JSON.stringify(remaining > 0.01 ? { creditReason: creditReason.trim(), creditExpectedAt } : {}),
       })
       setOrder(response.order)
+      toast.success(remaining > 0.01 ? 'Order completed on credit.' : 'Order completed.')
       onChanged()
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not complete this order')
+      const message = cause instanceof Error ? cause.message : 'Could not complete this order'
+      setError(message)
+      toast.error(message)
     } finally {
       setSettling(false)
     }
@@ -174,24 +177,30 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, profile
     try {
       const response = await api<{ order: Order }>(`/pos/orders/${order.id}/customer`, { method: 'POST', body: JSON.stringify({ customerId: party.customer.id }) })
       setOrder(response.order)
+      toast.success('Customer attached.')
       onChanged()
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not attach the customer')
+      const message = cause instanceof Error ? cause.message : 'Could not attach the customer'
+      setError(message)
+      toast.error(message)
     }
   }
 
   async function requestCancellation() {
     if (!order) return
     const reason = cancelReason.trim()
-    if (reason.length < 3) { setError('Give a reason for the cancellation'); return }
+    if (reason.length < 3) { const message = 'Give a reason for the cancellation'; setError(message); toast.error(message); return }
     setError('')
     setCancelling(true)
     try {
       await api(`/pos/orders/${order.id}/cancel`, { method: 'PATCH', body: JSON.stringify({ reason }) })
+      toast.success(order.servedAt ? 'Return requested.' : 'Cancellation requested.')
       onChanged()
       onClose()
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not submit the cancellation')
+      const message = cause instanceof Error ? cause.message : 'Could not submit the cancellation'
+      setError(message)
+      toast.error(message)
     } finally {
       setCancelling(false)
     }
@@ -201,8 +210,8 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, profile
     event.preventDefault()
     if (!order) return
     if (mode === 'PAY' && !paymentMethodId) return
-    if (mode === 'ROOM' && !reservationId) { setError('Choose a checked-in stay to bill this to'); return }
-    if (mode === 'PAY' && selectedMethod?.requiresReference && !reference.trim()) { setError(`${selectedMethod.name} requires a reference number`); return }
+    if (mode === 'ROOM' && !reservationId) { const message = 'Choose a checked-in stay to bill this to'; setError(message); toast.error(message); return }
+    if (mode === 'PAY' && selectedMethod?.requiresReference && !reference.trim()) { const message = `${selectedMethod.name} requires a reference number`; setError(message); toast.error(message); return }
     setPaying(true)
     setError('')
     try {
@@ -217,9 +226,12 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, profile
       setOrder(response.order)
       setAmount(String(Math.max(0, response.order.total - response.order.paid)))
       setReference('')
+      toast.success(mode === 'PAY' ? 'Payment recorded.' : 'Charged to room.')
       onChanged()
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not record this payment')
+      const message = cause instanceof Error ? cause.message : 'Could not record this payment'
+      setError(message)
+      toast.error(message)
     } finally {
       setPaying(false)
     }

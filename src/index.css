@@ -168,7 +168,7 @@
      <main> pane is the only scroll container (its bar is hidden). Locking the
      scroll on #root (not html/body — that upsets the mobile URL bar and the
      status-bar tint) stops a stray scrollbar from eating a strip off the
-     right edge. Pull-to-refresh is re-implemented on <main> in AppShell. */
+     right edge. Refresh is explicit from the shell controls. */
   html,
   body {
     height: 100%;

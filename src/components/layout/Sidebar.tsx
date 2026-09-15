@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { LuChevronLeft, LuChevronRight, LuLogOut, LuX } from 'react-icons/lu'
+import { LuChevronLeft, LuChevronRight, LuLogOut, LuRefreshCw, LuX } from 'react-icons/lu'
 import { IoPersonCircleSharp } from 'react-icons/io5'
 import { navigation, navItemAllowed, navItemMatchesExactly, type PermissionSection } from '@/config/navigation'
 import { cn } from '@/lib/utils'
@@ -66,14 +66,24 @@ export default function Sidebar({ className, mobile = false, onNavigate }: Sideb
       )}
     >
       {!mobile && (
-        <button
-          type="button"
-          onClick={() => setCollapsed((v) => !v)}
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          className="absolute -right-3.5 top-8 z-30 flex size-7 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-md transition-colors hover:text-foreground"
-        >
-          {collapsed ? <LuChevronRight className="size-4" /> : <LuChevronLeft className="size-4" />}
-        </button>
+        <div className="absolute -right-3.5 top-8 z-30 flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={() => setCollapsed((v) => !v)}
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            className="flex size-7 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-md transition-colors hover:text-foreground"
+          >
+            {collapsed ? <LuChevronRight className="size-4" /> : <LuChevronLeft className="size-4" />}
+          </button>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            title="Refresh page"
+            className="flex size-7 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-md transition-colors hover:text-foreground"
+          >
+            <LuRefreshCw className="size-4" />
+          </button>
+        </div>
       )}
       {/* Brand */}
       <div
