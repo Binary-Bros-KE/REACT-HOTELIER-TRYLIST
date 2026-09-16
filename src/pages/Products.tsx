@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils'
 import StatCard from '@/components/ui/StatCard'
 import UnitsOfMeasureModal from '@/components/UnitsOfMeasureModal'
 import PackQtyInput, { packAndUnit } from '@/components/ui/PackQtyInput'
+import SearchableSelect from '@/components/ui/SearchableSelect'
 
 type Category = { id: string; name: string; level: number; parentId: string | null }
 type Location = { id: string; name: string; type?: string }
@@ -130,6 +131,7 @@ export default function Products() {
   const [categories, setCategories] = useState<Category[]>([])
   const [locations, setLocations] = useState<Location[]>([])
   const [search, setSearch] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('')
   const [lowStockOnly, setLowStockOnly] = useState(false)
   const [form, setForm] = useState<ProductForm>(emptyForm)
   const [editing, setEditing] = useState<Product | null>(null)
@@ -156,6 +158,7 @@ export default function Products() {
     try {
       const query = new URLSearchParams()
       if (search.trim()) query.set('search', search.trim())
+      if (categoryFilter) query.set('categoryId', categoryFilter)
       if (lowStockOnly) query.set('lowStock', 'true')
       const response = await api<{ products: Product[]; summary: Summary }>(`/products${query.size ? `?${query}` : ''}`)
       setProducts(response.products)
@@ -167,7 +170,7 @@ export default function Products() {
     } finally {
       setLoading(false)
     }
-  }, [search, lowStockOnly, toast])
+  }, [search, categoryFilter, lowStockOnly, toast])
 
   useEffect(() => { const timer = window.setTimeout(() => void loadProducts(), 250); return () => window.clearTimeout(timer) }, [loadProducts])
 
@@ -184,6 +187,10 @@ export default function Products() {
   }, [toast, showUnits])
 
   const categoryLabel = useMemo(() => (c: Category) => '— '.repeat(c.level - 1) + c.name, [])
+  const categoryOptions = useMemo(() => [
+    { value: '', label: 'All categories' },
+    ...categories.map((category) => ({ value: category.id, label: categoryLabel(category) })),
+  ], [categories, categoryLabel])
   const packSizeNum = Number(form.packSize) || 0
 
   function openCreate() {
@@ -398,6 +405,16 @@ export default function Products() {
             <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, SKU, barcode, brand…" className="w-full rounded-sm border bg-background py-2.5 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
           </label>
+          <div className="sm:w-64">
+            <SearchableSelect
+              value={categoryFilter}
+              onChange={setCategoryFilter}
+              options={categoryOptions}
+              placeholder="All categories"
+              searchPlaceholder="Search categories..."
+              emptyText="No categories match."
+            />
+          </div>
           <label className="flex items-center gap-2 rounded-sm border bg-background px-3 py-2.5 text-sm font-medium">
             <input type="checkbox" checked={lowStockOnly} onChange={(e) => setLowStockOnly(e.target.checked)} className="size-4 accent-secondary" />
             Low stock only

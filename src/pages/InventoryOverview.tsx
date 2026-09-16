@@ -5,6 +5,7 @@ import { useToast } from '@/components/ui/Toast'
 import StatCard from '@/components/ui/StatCard'
 import { cn } from '@/lib/utils'
 import { packAndUnit } from '@/components/ui/PackQtyInput'
+import SearchableSelect from '@/components/ui/SearchableSelect'
 
 type Location = { id: string; name: string }
 type CategoryBucket = { category: string; units: number; value: number; percent: number }
@@ -47,6 +48,7 @@ export default function InventoryOverview() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [locationFilter, setLocationFilter] = useState<Record<string, 'ALL' | 'LOW_OUT'>>({})
+  const [categoryFilter, setCategoryFilter] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -70,6 +72,22 @@ export default function InventoryOverview() {
   useEffect(() => { api<{ locations: Location[] }>('/locations').then((r) => setLocations(r.locations)).catch(() => {}) }, [])
 
   const maxCategoryValue = useMemo(() => Math.max(1, ...(overview?.overall.byCategory.map((c) => c.value) ?? [1])), [overview])
+  const categoryOptions = useMemo(() => {
+    const names = new Set<string>()
+    let hasUncategorized = false
+    for (const loc of overview?.locations ?? []) {
+      for (const product of loc.products) {
+        if (product.category) names.add(product.category)
+        else hasUncategorized = true
+      }
+    }
+    return [
+      { value: '', label: 'All categories' },
+      ...[...names].sort((a, b) => a.localeCompare(b)).map((name) => ({ value: name, label: name })),
+      ...(hasUncategorized ? [{ value: '__uncategorized__', label: 'Uncategorized' }] : []),
+    ]
+  }, [overview])
+  const categoryMatches = (product: StockProduct) => !categoryFilter || (categoryFilter === '__uncategorized__' ? !product.category : product.category === categoryFilter)
 
   if (!hasApiTenant()) return <SetupMessage />
 
@@ -150,9 +168,24 @@ export default function InventoryOverview() {
           </section>
 
           <div className="mt-6 space-y-6">
+            <div className="rounded-sm border bg-card p-4 shadow-sm">
+              <label className="block max-w-sm text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Category
+                <SearchableSelect
+                  value={categoryFilter}
+                  onChange={setCategoryFilter}
+                  options={categoryOptions}
+                  placeholder="All categories"
+                  searchPlaceholder="Search categories..."
+                  emptyText="No categories match."
+                  className="mt-1.5 font-normal normal-case tracking-normal"
+                />
+              </label>
+            </div>
             {overview.locations.map((loc) => {
               const filter = locationFilter[loc.locationId] ?? 'ALL'
-              const rows = filter === 'ALL' ? loc.products : loc.products.filter((p) => p.low || p.out)
+              const categoryRows = loc.products.filter(categoryMatches)
+              const rows = filter === 'ALL' ? categoryRows : categoryRows.filter((p) => p.low || p.out)
               return (
                 <section key={loc.locationId} className="overflow-hidden rounded-sm border bg-card shadow-sm">
                   <header className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
