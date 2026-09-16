@@ -11,6 +11,7 @@ import { useWorkingLocation } from '@/lib/useWorkingLocation'
 import StatCard from '@/components/ui/StatCard'
 import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
+import { packAndUnit } from '@/components/ui/PackQtyInput'
 
 function getGreeting() {
   const hour = new Date().getHours()
@@ -865,8 +866,9 @@ function BarmanDashboard() {
   )
 }
 
-type LowStockProduct = { id: string; name: string; unit: string; totalQuantity: string; reorderLevel: string | number }
-type StockMovement = { id: string; type: string; quantity: string | number; occurredAt: string; product: { name: string; unit: string } | null; location: { name: string } | null }
+type PackInfo = { unit: string; packSize?: string | null; packLabel?: string | null; packUnit?: { id: string; name: string } | null }
+type LowStockProduct = { id: string; name: string; totalQuantity: string; reorderLevel: string | number } & PackInfo
+type StockMovement = { id: string; type: string; quantity: string | number; occurredAt: string; product: ({ name: string } & PackInfo) | null; location: { name: string } | null }
 type RequisitionStatus2 = 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'CONVERTED' | 'CANCELLED'
 type Requisition = { id: string; requisitionNo: string; purpose: string | null; status: RequisitionStatus2; items: { id: string }[] }
 type PurchaseStatus2 = 'DRAFT' | 'ORDERED' | 'PARTIALLY_RECEIVED' | 'RECEIVED' | 'CANCELLED'
@@ -887,6 +889,8 @@ const purchaseStatusCls: Record<PurchaseStatus2, string> = {
   RECEIVED: 'bg-success/10 text-success',
   CANCELLED: 'bg-destructive/10 text-destructive',
 }
+const stockLabel = (qty: string | number, product: PackInfo) =>
+  packAndUnit(Number(qty), Number(product.packSize) || 0, product.packLabel ?? '', product.packUnit?.name ?? product.unit)
 
 function StorekeeperDashboard() {
   const [lowStock, setLowStock] = useState<LowStockProduct[]>([])
@@ -963,7 +967,7 @@ function StorekeeperDashboard() {
               {lowStock.map((p) => (
                 <div key={p.id} className="flex items-center gap-3 p-3.5 text-sm">
                   <div className="min-w-0 flex-1"><p className="truncate font-medium">{p.name}</p></div>
-                  <p className="shrink-0 tabular-nums text-warning">{Number(p.totalQuantity).toLocaleString()} / {Number(p.reorderLevel).toLocaleString()} {p.unit}</p>
+                  <p className="shrink-0 tabular-nums text-warning">{stockLabel(p.totalQuantity, p)} / {stockLabel(p.reorderLevel, p)}</p>
                 </div>
               ))}
             </div>
@@ -985,7 +989,7 @@ function StorekeeperDashboard() {
                     <p className="truncate font-medium">{m.product?.name ?? 'Unknown product'}</p>
                     <p className="text-xs text-muted-foreground">{titleCase(m.type)}{m.location ? ` · ${m.location.name}` : ''} · {new Date(m.occurredAt).toLocaleDateString()}</p>
                   </div>
-                  <p className={cn('shrink-0 tabular-nums font-semibold', Number(m.quantity) >= 0 ? 'text-success' : 'text-destructive')}>{Number(m.quantity) >= 0 ? '+' : ''}{Number(m.quantity).toLocaleString()} {m.product?.unit ?? ''}</p>
+                  <p className={cn('shrink-0 tabular-nums font-semibold', Number(m.quantity) >= 0 ? 'text-success' : 'text-destructive')}>{Number(m.quantity) >= 0 ? '+' : ''}{m.product ? stockLabel(m.quantity, m.product) : Number(m.quantity).toLocaleString()}</p>
                 </div>
               ))}
             </div>
@@ -1160,7 +1164,7 @@ function ChefDashboard() {
               {lowStock.map((p) => (
                 <div key={p.id} className="flex items-center gap-3 p-3.5 text-sm">
                   <div className="min-w-0 flex-1"><p className="truncate font-medium">{p.name}</p></div>
-                  <p className="shrink-0 tabular-nums text-warning">{Number(p.totalQuantity).toLocaleString()} / {Number(p.reorderLevel).toLocaleString()} {p.unit}</p>
+                  <p className="shrink-0 tabular-nums text-warning">{stockLabel(p.totalQuantity, p)} / {stockLabel(p.reorderLevel, p)}</p>
                 </div>
               ))}
             </div>

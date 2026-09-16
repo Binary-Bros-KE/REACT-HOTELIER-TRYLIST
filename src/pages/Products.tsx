@@ -578,7 +578,7 @@ export default function Products() {
 
             <FieldGroup title="Pack / Container">
               <p className="text-xs text-muted-foreground sm:col-span-2">
-                For bar bottles, kegs and cases: say what one pack holds. Stock is then kept in that unit (e.g. ml), and you can enter or view it either as packs or as the raw amount. Leave blank for items you just count.
+                For bar bottles, kegs and cases: say what one pack holds. Staff will enter and view packs first, while stock is still stored in the measured unit behind the scenes. Leave blank for items you just count.
               </p>
               <Field label="Pack label"><input placeholder="e.g. bottle, can, keg" value={form.packLabel} onChange={(e) => setForm({ ...form, packLabel: e.target.value })} className="input" /></Field>
               <Field label="Contains (per pack)"><input type="number" min="0" step="0.001" placeholder="e.g. 750" value={form.packSize} onChange={(e) => setForm({ ...form, packSize: e.target.value })} className="input" /></Field>
@@ -663,7 +663,7 @@ export default function Products() {
                   {movements.slice(0, 5).map((m) => (
                     <div key={m.id} className="flex items-center justify-between rounded-sm bg-muted/50 px-3 py-2 text-xs">
                       <span className="font-medium">{MOVEMENT_LABELS[m.type] ?? m.type} · {m.location.name}{m.note ? ` — ${m.note}` : ''}</span>
-                      <span className={cn('font-semibold', Number(m.quantity) < 0 ? 'text-destructive' : 'text-success')}>{Number(m.quantity) > 0 ? '+' : ''}{Number(m.quantity).toLocaleString()}</span>
+                      <span className={cn('font-semibold', Number(m.quantity) < 0 ? 'text-destructive' : 'text-success')}>{Number(m.quantity) > 0 ? '+' : ''}{packAndUnit(Number(m.quantity), packSizeNum, form.packLabel, editing.packUnit?.name ?? editing.unit)}</span>
                     </div>
                   ))}
                 </div>

@@ -128,7 +128,7 @@ export default function InventoryWorkspace() {
 
       <section className="mt-7 grid gap-3 sm:grid-cols-3">
         <StatCard index={0} label="Goods receipts" value={receiptSummary.total} icon={<LuPackagePlus />} />
-        <StatCard index={1} label="Units received" value={receiptSummary.unitsReceived.toLocaleString()} icon={<LuPackage />} />
+        <StatCard index={1} label="Line items received" value={receiptSummary.lineItems.toLocaleString()} icon={<LuPackage />} />
         <StatCard index={2} label="Transfers" value={summary.total} icon={<LuTruck />} />
       </section>
 
@@ -168,23 +168,20 @@ export default function InventoryWorkspace() {
                   </tr>
                 </thead>
                 <tbody>
-                  {receipts.map((r) => {
-                    const units = r.items.reduce((s, i) => s + Number(i.quantity), 0)
-                    return (
+                  {receipts.map((r) => (
                       <tr key={r.id} className="border-t transition hover:bg-muted/30">
                         <td className="px-5 py-4">
                           <button onClick={() => setReceiptDetail(r)} className="font-semibold text-secondary hover:underline">{r.receiptNo}</button>
                           <p className="text-xs text-muted-foreground">{new Date(r.createdAt).toLocaleString()}</p>
                         </td>
                         <td className="px-5 py-4"><span className="rounded-sm border border-success/40 bg-success/5 px-2 py-0.5 text-xs font-medium text-success">{r.location.name}</span></td>
-                        <td className="px-5 py-4 text-muted-foreground">{r.items.length} item{r.items.length === 1 ? '' : 's'} · {units.toLocaleString()} unit{units === 1 ? '' : 's'}</td>
+                        <td className="px-5 py-4 text-muted-foreground">{r.items.length} item{r.items.length === 1 ? '' : 's'}</td>
                         <td className="px-5 py-4 text-muted-foreground">{r.createdByEmployee ? `${r.createdByEmployee.firstName} ${r.createdByEmployee.lastName}` : '—'}</td>
                         <td className="px-5 py-4 text-right">
                           <button onClick={() => setReceiptDetail(r)} title="View" className="rounded-sm p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuEye className="size-4" /></button>
                         </td>
                       </tr>
-                    )
-                  })}
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -204,9 +201,7 @@ export default function InventoryWorkspace() {
                 </tr>
               </thead>
               <tbody>
-                {transfers.map((t) => {
-                  const units = t.items.reduce((s, i) => s + Number(i.quantity), 0)
-                  return (
+                {transfers.map((t) => (
                     <tr key={t.id} className="border-t transition hover:bg-muted/30">
                       <td className="px-5 py-4">
                         <button onClick={() => setDetail(t)} className="font-semibold text-secondary hover:underline">{t.transferNo}</button>
@@ -219,14 +214,13 @@ export default function InventoryWorkspace() {
                           <span className="rounded-sm border border-secondary/40 bg-secondary/5 px-2 py-0.5 font-medium text-secondary">{t.toLocation.name}</span>
                         </span>
                       </td>
-                      <td className="px-5 py-4 text-muted-foreground">{t.items.length} item{t.items.length === 1 ? '' : 's'} · {units.toLocaleString()} unit{units === 1 ? '' : 's'}</td>
+                      <td className="px-5 py-4 text-muted-foreground">{t.items.length} item{t.items.length === 1 ? '' : 's'}</td>
                       <td className="px-5 py-4 text-muted-foreground">{t.createdByEmployee ? `${t.createdByEmployee.firstName} ${t.createdByEmployee.lastName}` : '—'}</td>
                       <td className="px-5 py-4 text-right">
                         <button onClick={() => setDetail(t)} title="View" className="rounded-sm p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuEye className="size-4" /></button>
                       </td>
                     </tr>
-                  )
-                })}
+                ))}
               </tbody>
             </table>
           </div>
