@@ -266,78 +266,80 @@ export default function RolesAndPermissions() {
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm"
         >
-          <form onSubmit={saveRole} className="w-full max-w-lg rounded-sm border bg-card p-6 shadow-2xl">
-            <div>
-              <p className="text-sm font-semibold text-secondary">{editing ? 'Edit role' : 'New role'}</p>
-              <h2 className="mt-1 font-display text-2xl font-semibold">{editing ? editing.name : 'Add a role'}</h2>
-            </div>
-
-            <div className="mt-5 space-y-4">
-              <label className="block text-sm font-medium">
-                Role Name <span className="text-destructive">*</span>
-                <input
-                  required
-                  disabled={editing?.isSystemRole}
-                  placeholder="e.g. Night Auditor"
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  className="input mt-1.5 disabled:cursor-not-allowed disabled:opacity-60"
-                />
-                {editing?.isSystemRole && <span className="mt-1 block text-xs text-muted-foreground">System roles can't be renamed — other logic in the app relies on this exact name.</span>}
-              </label>
-              <label className="block text-sm font-medium">
-                Description
-                <input placeholder="e.g. Overnight front desk and reconciliation" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="input mt-1.5" />
-              </label>
+          <form onSubmit={saveRole} className="flex max-h-[calc(100vh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-sm border bg-card shadow-2xl">
+            <div className="overflow-y-auto p-6">
               <div>
-                <p className="text-sm font-medium">Visible Sections</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">Choose which sidebar sections this role can see by default.</p>
-                <div className="mt-2.5 grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  {sections.map((section) => {
-                    const checked = form.allowedSections.includes(section)
-                    return (
-                      <label
-                        key={section}
-                        className={cn(
-                          'flex cursor-pointer items-center gap-2 rounded-sm border px-3 py-2 text-sm font-medium transition-colors',
-                          checked ? 'border-secondary bg-secondary/10 text-secondary' : 'border-border text-muted-foreground hover:bg-muted',
-                        )}
-                      >
-                        <input type="checkbox" checked={checked} onChange={() => toggleSection(section)} className="size-4 accent-secondary" />
-                        {sectionLabels[section]}
-                      </label>
-                    )
-                  })}
+                <p className="text-sm font-semibold text-secondary">{editing ? 'Edit role' : 'New role'}</p>
+                <h2 className="mt-1 font-display text-2xl font-semibold">{editing ? editing.name : 'Add a role'}</h2>
+              </div>
+
+              <div className="mt-5 space-y-4">
+                <label className="block text-sm font-medium">
+                  Role Name <span className="text-destructive">*</span>
+                  <input
+                    required
+                    disabled={editing?.isSystemRole}
+                    placeholder="e.g. Night Auditor"
+                    value={form.name}
+                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    className="input mt-1.5 disabled:cursor-not-allowed disabled:opacity-60"
+                  />
+                  {editing?.isSystemRole && <span className="mt-1 block text-xs text-muted-foreground">System roles can't be renamed — other logic in the app relies on this exact name.</span>}
+                </label>
+                <label className="block text-sm font-medium">
+                  Description
+                  <input placeholder="e.g. Overnight front desk and reconciliation" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="input mt-1.5" />
+                </label>
+                <div>
+                  <p className="text-sm font-medium">Visible Sections</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">Choose which sidebar sections this role can see by default.</p>
+                  <div className="mt-2.5 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                    {sections.map((section) => {
+                      const checked = form.allowedSections.includes(section)
+                      return (
+                        <label
+                          key={section}
+                          className={cn(
+                            'flex cursor-pointer items-center gap-2 rounded-sm border px-3 py-2 text-sm font-medium transition-colors',
+                            checked ? 'border-secondary bg-secondary/10 text-secondary' : 'border-border text-muted-foreground hover:bg-muted',
+                          )}
+                        >
+                          <input type="checkbox" checked={checked} onChange={() => toggleSection(section)} className="size-4 accent-secondary" />
+                          {sectionLabels[section]}
+                        </label>
+                      )
+                    })}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-sm font-medium">Capabilities</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">Specific actions this role is allowed to perform — enforced by the server, not just hidden in the sidebar.</p>
+                  <div className="mt-2.5 space-y-2">
+                    {capabilities.map((capability) => {
+                      const checked = form.permissions.includes(capability)
+                      const { label, hint } = capabilityLabels[capability]
+                      return (
+                        <label
+                          key={capability}
+                          className={cn(
+                            'flex cursor-pointer items-start gap-2.5 rounded-sm border px-3 py-2.5 text-sm transition-colors',
+                            checked ? 'border-secondary bg-secondary/10' : 'border-border hover:bg-muted',
+                          )}
+                        >
+                          <input type="checkbox" checked={checked} onChange={() => toggleCapability(capability)} className="mt-0.5 size-4 accent-secondary" />
+                          <span>
+                            <span className={cn('block font-medium', checked && 'text-secondary')}>{label}</span>
+                            <span className="block text-xs text-muted-foreground">{hint}</span>
+                          </span>
+                        </label>
+                      )
+                    })}
+                  </div>
                 </div>
               </div>
-              <div>
-                <p className="text-sm font-medium">Capabilities</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">Specific actions this role is allowed to perform — enforced by the server, not just hidden in the sidebar.</p>
-                <div className="mt-2.5 space-y-2">
-                  {capabilities.map((capability) => {
-                    const checked = form.permissions.includes(capability)
-                    const { label, hint } = capabilityLabels[capability]
-                    return (
-                      <label
-                        key={capability}
-                        className={cn(
-                          'flex cursor-pointer items-start gap-2.5 rounded-sm border px-3 py-2.5 text-sm transition-colors',
-                          checked ? 'border-secondary bg-secondary/10' : 'border-border hover:bg-muted',
-                        )}
-                      >
-                        <input type="checkbox" checked={checked} onChange={() => toggleCapability(capability)} className="mt-0.5 size-4 accent-secondary" />
-                        <span>
-                          <span className={cn('block font-medium', checked && 'text-secondary')}>{label}</span>
-                          <span className="block text-xs text-muted-foreground">{hint}</span>
-                        </span>
-                      </label>
-                    )
-                  })}
-                </div>
-              </div>
             </div>
 
-            <div className="mt-6 flex justify-end gap-2">
+            <div className="flex shrink-0 justify-end gap-2 border-t bg-card p-5">
               <button type="button" onClick={() => setShowForm(false)} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Cancel</button>
               <button disabled={saving} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
                 {saving && <LuLoaderCircle className="animate-spin" />}

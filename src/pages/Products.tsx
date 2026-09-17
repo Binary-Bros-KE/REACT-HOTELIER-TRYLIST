@@ -759,99 +759,101 @@ export default function Products() {
 
       {showAdjust && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
-          <form onSubmit={saveAdjust} className="w-full max-w-lg rounded-sm border bg-card p-6 shadow-2xl">
-            <div>
-              <p className="text-sm font-semibold text-secondary">Add or remove stock</p>
-              <h2 className="mt-1 font-display text-2xl font-semibold">{adjust.productName}</h2>
-              <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                {locations.length === 0 ? (
-                  <div className="rounded-sm border bg-muted/30 p-3 text-sm text-muted-foreground">No locations configured yet.</div>
-                ) : locations.map((location) => {
-                  const qty = Number(adjust.stockByLocation.find((stock) => stock.locationId === location.id)?.quantity ?? 0)
-                  const selected = adjust.locationId === location.id
-                  return (
-                    <button
-                      key={location.id}
-                      type="button"
-                      onClick={() => setAdjust({ ...adjust, locationId: location.id })}
-                      className={cn(
-                        'rounded-sm border bg-background p-3 text-left transition hover:border-secondary/60 hover:bg-secondary/5',
-                        selected && 'border-secondary bg-secondary/10 ring-2 ring-secondary/15',
-                      )}
-                    >
-                      <span className="block text-xs font-semibold uppercase tracking-wide text-muted-foreground">{location.name}</span>
-                      <span className="mt-1 block font-display text-2xl font-semibold text-foreground">
-                        {packAndUnit(qty, adjust.packSize, adjust.packLabel, adjust.unitName)}
-                      </span>
-                    </button>
-                  )
-                })}
+          <form onSubmit={saveAdjust} className="flex max-h-[calc(100vh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-sm border bg-card shadow-2xl">
+            <div className="overflow-y-auto p-6">
+              <div>
+                <p className="text-sm font-semibold text-secondary">Add or remove stock</p>
+                <h2 className="mt-1 font-display text-2xl font-semibold">{adjust.productName}</h2>
+                <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                  {locations.length === 0 ? (
+                    <div className="rounded-sm border bg-muted/30 p-3 text-sm text-muted-foreground">No locations configured yet.</div>
+                  ) : locations.map((location) => {
+                    const qty = Number(adjust.stockByLocation.find((stock) => stock.locationId === location.id)?.quantity ?? 0)
+                    const selected = adjust.locationId === location.id
+                    return (
+                      <button
+                        key={location.id}
+                        type="button"
+                        onClick={() => setAdjust({ ...adjust, locationId: location.id })}
+                        className={cn(
+                          'rounded-sm border bg-background p-3 text-left transition hover:border-secondary/60 hover:bg-secondary/5',
+                          selected && 'border-secondary bg-secondary/10 ring-2 ring-secondary/15',
+                        )}
+                      >
+                        <span className="block text-xs font-semibold uppercase tracking-wide text-muted-foreground">{location.name}</span>
+                        <span className="mt-1 block font-display text-2xl font-semibold text-foreground">
+                          {packAndUnit(qty, adjust.packSize, adjust.packLabel, adjust.unitName)}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
-            </div>
 
-            {adjustError && (
-              <div className="mt-4 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive">
-                <LuCircleAlert />
-                {adjustError}
-              </div>
-            )}
-
-            <div className="mt-5 space-y-4">
-              <Field label="Action" required>
-                <select required className="input" value={adjust.type} onChange={(e) => setAdjust({ ...adjust, type: e.target.value as ManualMovementType })}>
-                  {MANUAL_MOVEMENT_TYPES.map((t) => <option key={t} value={t}>{MOVEMENT_LABELS[t]}</option>)}
-                </select>
-                <span className="mt-1 block text-xs text-muted-foreground">{MANUAL_MOVEMENT_HINTS[adjust.type]}</span>
-              </Field>
-              <Field label="Location" required>
-                <select required className="input" value={adjust.locationId} onChange={(e) => setAdjust({ ...adjust, locationId: e.target.value })}>
-                  <option value="" disabled>Select location</option>
-                  {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-                </select>
-              </Field>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Quantity" required>
-                  <PackQtyInput
-                    required
-                    autoFocus
-                    allowNegative={adjust.type === 'ADJUSTMENT'}
-                    value={adjust.quantity}
-                    onChange={(v) => setAdjust({ ...adjust, quantity: v })}
-                    packSize={adjust.packSize}
-                    packLabel={adjust.packLabel}
-                    unitName={adjust.unitName}
-                  />
-                </Field>
-                <Field label="Unit cost (KSh)"><input type="number" min="0" step="0.01" placeholder="Optional" value={adjust.unitCost} onChange={(e) => setAdjust({ ...adjust, unitCost: e.target.value })} className="input" /></Field>
-              </div>
-              {adjustLocation && hasAdjustQuantity && (
-                <div className={cn('rounded-sm border bg-muted/30 p-3', adjustWouldGoNegative && 'border-destructive/30 bg-destructive/10')}>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{adjustLocation.name}</p>
-                  <div className="mt-3 grid grid-cols-3 gap-2 text-center">
-                    <div className="rounded-sm border bg-background p-2">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Current</p>
-                      <p className="mt-1 text-sm font-semibold">{packAndUnit(adjustCurrentQty, adjust.packSize, adjust.packLabel, adjust.unitName)}</p>
-                    </div>
-                    <div className="rounded-sm border bg-background p-2">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Change</p>
-                      <p className={cn('mt-1 text-sm font-semibold', adjustDelta < 0 ? 'text-destructive' : adjustDelta > 0 ? 'text-success' : 'text-muted-foreground')}>
-                        {signedPackAndUnit(adjustDelta, adjust.packSize, adjust.packLabel, adjust.unitName)}
-                      </p>
-                    </div>
-                    <div className="rounded-sm border bg-background p-2">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">New</p>
-                      <p className={cn('mt-1 text-sm font-semibold', adjustWouldGoNegative && 'text-destructive')}>
-                        {signedPackAndUnit(adjustAfterQty, adjust.packSize, adjust.packLabel, adjust.unitName).replace(/^\+/, '')}
-                      </p>
-                    </div>
-                  </div>
-                  {adjustWouldGoNegative && <p className="mt-2 text-xs font-medium text-destructive">This would take stock below zero.</p>}
+              {adjustError && (
+                <div className="mt-4 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive">
+                  <LuCircleAlert />
+                  {adjustError}
                 </div>
               )}
-              <Field label="Note"><input placeholder="Optional" value={adjust.note} onChange={(e) => setAdjust({ ...adjust, note: e.target.value })} className="input" /></Field>
+
+              <div className="mt-5 space-y-4">
+                <Field label="Action" required>
+                  <select required className="input" value={adjust.type} onChange={(e) => setAdjust({ ...adjust, type: e.target.value as ManualMovementType })}>
+                    {MANUAL_MOVEMENT_TYPES.map((t) => <option key={t} value={t}>{MOVEMENT_LABELS[t]}</option>)}
+                  </select>
+                  <span className="mt-1 block text-xs text-muted-foreground">{MANUAL_MOVEMENT_HINTS[adjust.type]}</span>
+                </Field>
+                <Field label="Location" required>
+                  <select required className="input" value={adjust.locationId} onChange={(e) => setAdjust({ ...adjust, locationId: e.target.value })}>
+                    <option value="" disabled>Select location</option>
+                    {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+                  </select>
+                </Field>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Quantity" required>
+                    <PackQtyInput
+                      required
+                      autoFocus
+                      allowNegative={adjust.type === 'ADJUSTMENT'}
+                      value={adjust.quantity}
+                      onChange={(v) => setAdjust({ ...adjust, quantity: v })}
+                      packSize={adjust.packSize}
+                      packLabel={adjust.packLabel}
+                      unitName={adjust.unitName}
+                    />
+                  </Field>
+                  <Field label="Unit cost (KSh)"><input type="number" min="0" step="0.01" placeholder="Optional" value={adjust.unitCost} onChange={(e) => setAdjust({ ...adjust, unitCost: e.target.value })} className="input" /></Field>
+                </div>
+                {adjustLocation && hasAdjustQuantity && (
+                  <div className={cn('rounded-sm border bg-muted/30 p-3', adjustWouldGoNegative && 'border-destructive/30 bg-destructive/10')}>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{adjustLocation.name}</p>
+                    <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                      <div className="rounded-sm border bg-background p-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Current</p>
+                        <p className="mt-1 text-sm font-semibold">{packAndUnit(adjustCurrentQty, adjust.packSize, adjust.packLabel, adjust.unitName)}</p>
+                      </div>
+                      <div className="rounded-sm border bg-background p-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Change</p>
+                        <p className={cn('mt-1 text-sm font-semibold', adjustDelta < 0 ? 'text-destructive' : adjustDelta > 0 ? 'text-success' : 'text-muted-foreground')}>
+                          {signedPackAndUnit(adjustDelta, adjust.packSize, adjust.packLabel, adjust.unitName)}
+                        </p>
+                      </div>
+                      <div className="rounded-sm border bg-background p-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">New</p>
+                        <p className={cn('mt-1 text-sm font-semibold', adjustWouldGoNegative && 'text-destructive')}>
+                          {signedPackAndUnit(adjustAfterQty, adjust.packSize, adjust.packLabel, adjust.unitName).replace(/^\+/, '')}
+                        </p>
+                      </div>
+                    </div>
+                    {adjustWouldGoNegative && <p className="mt-2 text-xs font-medium text-destructive">This would take stock below zero.</p>}
+                  </div>
+                )}
+                <Field label="Note"><input placeholder="Optional" value={adjust.note} onChange={(e) => setAdjust({ ...adjust, note: e.target.value })} className="input" /></Field>
+              </div>
             </div>
 
-            <div className="mt-6 flex justify-end gap-2 border-t pt-5">
+            <div className="flex shrink-0 justify-end gap-2 border-t bg-card p-5">
               <button type="button" onClick={() => setShowAdjust(false)} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Cancel</button>
               <button disabled={adjusting} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
                 {adjusting && <LuLoaderCircle className="animate-spin" />}
