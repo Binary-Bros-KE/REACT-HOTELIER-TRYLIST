@@ -79,6 +79,17 @@ const MANUAL_MOVEMENT_HINTS: Record<ManualMovementType, string> = {
   OPENING_STOCK: "A baseline this product didn't get when it was created — adds to stock.",
 }
 
+function manualMovementDelta(type: ManualMovementType, quantity: number) {
+  if (!Number.isFinite(quantity)) return 0
+  if (type === 'DAMAGE_LOSS') return -Math.abs(quantity)
+  return quantity
+}
+
+function signedPackAndUnit(qty: number, packSize: number, packLabel: string, unitName: string) {
+  const sign = qty > 0 ? '+' : qty < 0 ? '-' : ''
+  return `${sign}${packAndUnit(Math.abs(qty), packSize, packLabel, unitName)}`
+}
+
 type ProductForm = {
   categoryId: string
   name: string
@@ -347,6 +358,14 @@ export default function Products() {
       setAdjusting(false)
     }
   }
+
+  const adjustLocation = locations.find((location) => location.id === adjust.locationId)
+  const adjustCurrentQty = Number(adjust.stockByLocation.find((stock) => stock.locationId === adjust.locationId)?.quantity ?? 0)
+  const adjustEnteredQty = Number(adjust.quantity)
+  const hasAdjustQuantity = adjust.quantity.trim() !== '' && Number.isFinite(adjustEnteredQty)
+  const adjustDelta = hasAdjustQuantity ? manualMovementDelta(adjust.type, adjustEnteredQty) : 0
+  const adjustAfterQty = adjustCurrentQty + adjustDelta
+  const adjustWouldGoNegative = hasAdjustQuantity && adjustAfterQty < 0
 
   if (!hasApiTenant()) return <SetupMessage />
 
@@ -740,13 +759,34 @@ export default function Products() {
 
       {showAdjust && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
-          <form onSubmit={saveAdjust} className="w-full max-w-md rounded-sm border bg-card p-6 shadow-2xl">
+          <form onSubmit={saveAdjust} className="w-full max-w-lg rounded-sm border bg-card p-6 shadow-2xl">
             <div>
               <p className="text-sm font-semibold text-secondary">Add or remove stock</p>
               <h2 className="mt-1 font-display text-2xl font-semibold">{adjust.productName}</h2>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {adjust.stockByLocation.length === 0 ? 'No stock recorded yet' : adjust.stockByLocation.map((s) => `${s.locationName}: ${packAndUnit(Number(s.quantity), adjust.packSize, adjust.packLabel, adjust.unitName)}`).join(' · ')}
-              </p>
+              <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                {locations.length === 0 ? (
+                  <div className="rounded-sm border bg-muted/30 p-3 text-sm text-muted-foreground">No locations configured yet.</div>
+                ) : locations.map((location) => {
+                  const qty = Number(adjust.stockByLocation.find((stock) => stock.locationId === location.id)?.quantity ?? 0)
+                  const selected = adjust.locationId === location.id
+                  return (
+                    <button
+                      key={location.id}
+                      type="button"
+                      onClick={() => setAdjust({ ...adjust, locationId: location.id })}
+                      className={cn(
+                        'rounded-sm border bg-background p-3 text-left transition hover:border-secondary/60 hover:bg-secondary/5',
+                        selected && 'border-secondary bg-secondary/10 ring-2 ring-secondary/15',
+                      )}
+                    >
+                      <span className="block text-xs font-semibold uppercase tracking-wide text-muted-foreground">{location.name}</span>
+                      <span className="mt-1 block font-display text-2xl font-semibold text-foreground">
+                        {packAndUnit(qty, adjust.packSize, adjust.packLabel, adjust.unitName)}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
             </div>
 
             {adjustError && (
@@ -784,6 +824,30 @@ export default function Products() {
                 </Field>
                 <Field label="Unit cost (KSh)"><input type="number" min="0" step="0.01" placeholder="Optional" value={adjust.unitCost} onChange={(e) => setAdjust({ ...adjust, unitCost: e.target.value })} className="input" /></Field>
               </div>
+              {adjustLocation && hasAdjustQuantity && (
+                <div className={cn('rounded-sm border bg-muted/30 p-3', adjustWouldGoNegative && 'border-destructive/30 bg-destructive/10')}>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{adjustLocation.name}</p>
+                  <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                    <div className="rounded-sm border bg-background p-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Current</p>
+                      <p className="mt-1 text-sm font-semibold">{packAndUnit(adjustCurrentQty, adjust.packSize, adjust.packLabel, adjust.unitName)}</p>
+                    </div>
+                    <div className="rounded-sm border bg-background p-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Change</p>
+                      <p className={cn('mt-1 text-sm font-semibold', adjustDelta < 0 ? 'text-destructive' : adjustDelta > 0 ? 'text-success' : 'text-muted-foreground')}>
+                        {signedPackAndUnit(adjustDelta, adjust.packSize, adjust.packLabel, adjust.unitName)}
+                      </p>
+                    </div>
+                    <div className="rounded-sm border bg-background p-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">New</p>
+                      <p className={cn('mt-1 text-sm font-semibold', adjustWouldGoNegative && 'text-destructive')}>
+                        {signedPackAndUnit(adjustAfterQty, adjust.packSize, adjust.packLabel, adjust.unitName).replace(/^\+/, '')}
+                      </p>
+                    </div>
+                  </div>
+                  {adjustWouldGoNegative && <p className="mt-2 text-xs font-medium text-destructive">This would take stock below zero.</p>}
+                </div>
+              )}
               <Field label="Note"><input placeholder="Optional" value={adjust.note} onChange={(e) => setAdjust({ ...adjust, note: e.target.value })} className="input" /></Field>
             </div>
 
