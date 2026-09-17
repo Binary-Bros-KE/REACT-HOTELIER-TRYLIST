@@ -117,6 +117,7 @@ const CONNECTIONS: { value: ThermalConnection; label: string }[] = [
   { value: 'bridge', label: 'Local print bridge (any OS printer)' },
   { value: 'usb', label: 'USB (WebUSB, direct)' },
   { value: 'bluetooth', label: 'Bluetooth (direct)' },
+  { value: 'relay', label: 'No printer here — send to another device' },
   { value: 'dialog', label: 'Browser print dialog' },
 ]
 
@@ -211,6 +212,12 @@ function ReceiptPrinter() {
               </select>
             </div>
           </div>
+
+          {s.connection === 'relay' && (
+            <p className="mt-5 max-w-xl rounded-sm border border-secondary/30 bg-secondary/5 p-3 text-xs text-muted-foreground">
+              This device has no printer of its own. Clicking Print here just queues the receipt — any other device at the same location that <span className="font-semibold text-foreground">does</span> have a printer connected (bridge, USB, or Bluetooth) picks it up in the background and prints it automatically, as long as that device's tab is open. Nothing else to set up on that end.
+            </p>
+          )}
 
           {s.connection === 'bridge' && (
             <>

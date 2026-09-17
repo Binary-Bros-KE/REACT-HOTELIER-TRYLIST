@@ -501,8 +501,8 @@ export default function PointOfSale() {
     if (!s.enabled || !s.autoPrint || s.connection === 'dialog') return
     try {
       const { order } = await api<{ order: ReceiptOrder }>(`/pos/orders/${orderId}`)
-      await printReceipt(order, profile as ReceiptProfile)
-      toast.success('Receipt sent to printer')
+      const result = await printReceipt(order, profile as ReceiptProfile)
+      toast.success(result.method === 'relay' ? 'Sent to the printer — printing shortly' : 'Receipt sent to printer')
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : 'Auto-print failed — use the Print button')
     }

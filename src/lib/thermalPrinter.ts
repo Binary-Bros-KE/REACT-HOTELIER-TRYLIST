@@ -1,22 +1,26 @@
 import ReceiptPrinterEncoder from '@point-of-sale/receipt-printer-encoder'
 import type { ReceiptOrder, ReceiptProfile } from '@/components/pos/OrderReceipt'
 import { receiptFooterText, receiptHeaderText, receiptPhone, servedByName, showsTaxAsAddedOn } from '@/lib/receiptFields'
+import { createPrintJob } from '@/lib/printRelay'
 
 /**
- * Direct ESC/POS thermal printing from the browser. Four transports:
+ * Direct ESC/POS thermal printing from the browser. Five transports:
  *
  *  - 'usb'       WebUSB, direct to a driverless / WinUSB printer (no dialog)
  *  - 'bluetooth' Web Bluetooth, direct to a BLE printer (no dialog)
  *  - 'bridge'    the local HOTELIER print bridge on 127.0.0.1 — spools RAW to
  *                any OS-installed printer BY NAME, incl. old USB thermals
  *                behind a vendor driver (the case WebUSB can't reach)
+ *  - 'relay'     no printer on this device at all — queues the job for
+ *                whichever OTHER device at this location has one connected
+ *                (see src/lib/printRelay.ts and src/lib/printRelayHost.ts)
  *  - 'dialog'    the browser print sheet, 80mm page — works with anything
  */
 
 const KEY = 'hotelier.thermal'
 const DEFAULT_BRIDGE_URL = 'http://127.0.0.1:47011'
 
-export type ThermalConnection = 'usb' | 'bluetooth' | 'bridge' | 'dialog'
+export type ThermalConnection = 'usb' | 'bluetooth' | 'bridge' | 'relay' | 'dialog'
 
 export type ThermalSettings = {
   enabled: boolean
@@ -428,13 +432,27 @@ export function printViaDialog(): void {
 
 // ---------------------------------------------------------------- orchestrator
 
-export type PrintResult = { method: 'thermal' | 'dialog' }
+/** Dispatches already-built ESC/POS bytes to whichever *local* hardware
+ * connection is configured — the piece shared between printing straight
+ * from this device and the relay host printing someone else's queued job
+ * over this same connection. Never call with connection 'relay' or
+ * 'dialog', neither of which sends bytes anywhere from here. */
+export async function sendLocal(bytes: Uint8Array, s: ThermalSettings): Promise<void> {
+  if (s.connection === 'bridge') await sendBridge(bytes, s)
+  else if (s.connection === 'bluetooth') await sendBluetooth(bytes)
+  else await sendUsb(bytes)
+}
+
+export type PrintResult = { method: 'thermal' | 'dialog' | 'relay'; jobId?: string }
 
 /**
- * Print a receipt. With a thermal printer configured, sends ESC/POS straight
- * to it and resolves `{ method: 'thermal' }` (no dialog). Otherwise opens the
- * browser print sheet. A thermal-send failure rejects so the caller can show
- * it rather than silently falling back.
+ * Print a receipt. With a thermal printer configured on THIS device, sends
+ * ESC/POS straight to it and resolves `{ method: 'thermal' }` (no dialog).
+ * With connection 'relay' (no printer here), queues the job for whichever
+ * other device at this order's location has one and resolves
+ * `{ method: 'relay', jobId }` — see src/lib/printRelay.ts. Otherwise opens
+ * the browser print sheet. A thermal-send failure rejects so the caller can
+ * show it rather than silently falling back.
  *
  * `order` may be omitted (e.g. the existing DOM-only Print buttons): then it
  * always uses the dialog, which prints whatever `.receipt-print-area` holds.
@@ -447,9 +465,12 @@ export async function printReceipt(order?: ReceiptOrder | null, profile?: Receip
     return { method: 'dialog' }
   }
 
+  if (s.connection === 'relay') {
+    const job = await createPrintJob(order.id)
+    return { method: 'relay', jobId: job.id }
+  }
+
   const bytes = buildReceiptBytes(order, profile ?? null, s)
-  if (s.connection === 'bridge') await sendBridge(bytes, s)
-  else if (s.connection === 'bluetooth') await sendBluetooth(bytes)
-  else await sendUsb(bytes)
+  await sendLocal(bytes, s)
   return { method: 'thermal' }
 }

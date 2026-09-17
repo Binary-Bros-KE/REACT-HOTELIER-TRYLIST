@@ -6,11 +6,16 @@ import Sidebar from '@/components/layout/Sidebar'
 import LicenseBanner from '@/components/layout/LicenseBanner'
 import { useAppSelector } from '@/store/hooks'
 import { resolveLogoUrl } from '@/lib/api'
+import { usePrintRelayHost } from '@/lib/printRelayHost'
 
 export default function AppShell() {
   const [mobileNav, setMobileNav] = useState(false)
   const logoUrl = useAppSelector((s) => s.tenant.logoUrl)
   const location = useLocation()
+  // Runs for as long as this tab is open — turns this device into a print
+  // host for its own location whenever it has a real printer connection
+  // configured. See src/lib/printRelayHost.ts.
+  usePrintRelayHost()
 
   const mainRef = useRef<HTMLElement>(null)
   const [jump, setJump] = useState({ scrollable: false, atTop: true, atBottom: true })

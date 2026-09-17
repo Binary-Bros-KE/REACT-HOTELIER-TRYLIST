@@ -41,6 +41,7 @@ export default function ReceiptPreviewModal({
     try {
       const result = await printReceipt(order, profile)
       if (result.method === 'thermal') toast.success('Receipt sent to printer')
+      else if (result.method === 'relay') toast.success('Sent to the printer — printing shortly')
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : 'Could not print the receipt')
     } finally {
