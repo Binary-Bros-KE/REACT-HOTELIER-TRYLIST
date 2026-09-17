@@ -10,6 +10,7 @@ import { useAppSelector } from '@/store/hooks'
 import { useWorkingLocation } from '@/lib/useWorkingLocation'
 import StatCard from '@/components/ui/StatCard'
 import { useToast } from '@/components/ui/Toast'
+import ConfirmModal from '@/components/ui/ConfirmModal'
 import { cn } from '@/lib/utils'
 import { packAndUnit } from '@/components/ui/PackQtyInput'
 
@@ -1339,6 +1340,7 @@ function ShiftControl({ onReady }: { onReady: (ready: boolean) => void }) {
   const [now, setNow] = useState(new Date())
   const [busyKey, setBusyKey] = useState('')
   const [error, setError] = useState('')
+  const [confirmEndShift, setConfirmEndShift] = useState(false)
   const isSuperAdmin = user?.role?.name === 'Super Admin'
   const isSupervisor = Boolean(user?.isSupervisor || isSuperAdmin)
 
@@ -1432,7 +1434,7 @@ function ShiftControl({ onReady }: { onReady: (ready: boolean) => void }) {
       ) : null}
       <div className="mt-4 flex flex-wrap gap-2">
         {!session && <ShiftButton loading={busyKey === 'start'} onClick={() => void post('/shifts/start-request', {}, 'start')} icon={<LuLogIn />}>{startText}</ShiftButton>}
-        {session?.status === 'ACTIVE' && <ShiftButton loading={busyKey === 'end'} onClick={() => void post('/shifts/end-request', {}, 'end')} icon={<LuLogOut />}>{endText}</ShiftButton>}
+        {session?.status === 'ACTIVE' && <ShiftButton loading={busyKey === 'end'} onClick={() => setConfirmEndShift(true)} icon={<LuLogOut />}>{endText}</ShiftButton>}
         {session?.status === 'REQUESTED_START' && <span className="rounded-sm border border-warning/40 bg-warning/10 px-3 py-2 text-sm font-semibold text-warning">Waiting for supervisor</span>}
         {session?.status === 'REQUESTED_END' && <span className="rounded-sm border border-warning/40 bg-warning/10 px-3 py-2 text-sm font-semibold text-warning">Waiting for handover approval</span>}
       </div>
@@ -1508,6 +1510,16 @@ function ShiftControl({ onReady }: { onReady: (ready: boolean) => void }) {
           onReject={() => void post(`/shifts/${selectedSummary.session.id}/end-approval`, { action: 'REJECT' }, `${selectedSummary.session.id}:reject-end`).then((ok) => { if (ok) setSelectedSummary(null) })}
         />
       )}
+      <ConfirmModal
+        open={confirmEndShift}
+        tone="warning"
+        title="Are you sure you want to end shift?"
+        message={isSupervisor ? "This closes your shift now — you'll need to start a new one to keep selling." : "This sends an end-shift request to your supervisor for approval."}
+        confirmLabel={endText}
+        loading={busyKey === 'end'}
+        onCancel={() => setConfirmEndShift(false)}
+        onConfirm={() => void post('/shifts/end-request', {}, 'end').then((ok) => { if (ok) setConfirmEndShift(false) })}
+      />
     </section>
   )
 }
