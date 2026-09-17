@@ -672,6 +672,7 @@ export default function PointOfSale() {
                   const owed = Math.max(0, order.total - order.paid)
                   const compBadge = complementaryBadge(order)
                   const pendingReturns = pendingReturnQuantity(order)
+                  const waiter = order.createdBy ? staffNames[order.createdBy] : undefined
                   const overdue = owed > 0.01 && order.creditExpectedAt && new Date(order.creditExpectedAt).getTime() < Date.now()
                   const badge = order.saleType === 'COMPLIMENTARY'
                     ? { label: 'Completed', cls: 'bg-success/10 text-success' }
@@ -691,6 +692,7 @@ export default function PointOfSale() {
                           <span className={cn('rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide', badge.cls)}>{badge.label}</span>
                         </div>
                       </div>
+                      {waiter && <p className="mt-1.5 flex items-center gap-1.5 text-xs font-bold text-amber-600"><LuUserRound className="size-3.5" /> Waiter: {waiter}</p>}
                       <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground"><LuUserRound className="size-3.5" /> {order.customer ? `${order.customer.firstName} ${order.customer.lastName ?? ''}` : 'Walk-in'} · {order.table?.label ?? 'Takeaway'}</p>
                       {compBadge && <p className={cn('mt-2 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', compBadge.cls)}>{compBadge.label}{order.complimentarySession ? ` - ${order.complimentarySession.title}` : ''}</p>}
                       <p className="mt-1 text-[11px] text-muted-foreground">{new Date(order.updatedAt).toLocaleString()}</p>
@@ -798,6 +800,7 @@ export default function PointOfSale() {
                   {otherActiveOrders.map((order) => {
                     const compBadge = complementaryBadge(order)
                     const pendingReturns = pendingReturnQuantity(order)
+                    const waiter = order.createdBy ? staffNames[order.createdBy] : undefined
                     return (
                     <article key={order.id} className={cn('rounded-sm border bg-card p-5 shadow-sm', compBadge && 'border-secondary/30')}>
                       <div className="flex items-start justify-between gap-2">
@@ -807,6 +810,7 @@ export default function PointOfSale() {
                           <span className="rounded-full bg-warning/15 px-2.5 py-1 text-xs font-semibold text-warning">{order.status}</span>
                         </div>
                       </div>
+                      {waiter && <p className="mt-1.5 flex items-center gap-1.5 text-xs font-bold text-amber-600"><LuUserRound className="size-3.5" /> Waiter: {waiter}</p>}
                       <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground"><LuUserRound className="size-3.5" /> {order.customer ? `${order.customer.firstName} ${order.customer.lastName ?? ''}` : 'Walk-in'}</p>
                       {compBadge && <p className={cn('mt-2 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', compBadge.cls)}>{compBadge.label}{order.complimentarySession ? ` - ${order.complimentarySession.title}` : ''}</p>}
                       <p className="mt-1 text-xs text-muted-foreground">{order.table?.label ?? 'Takeaway'}</p>
