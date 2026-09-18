@@ -37,6 +37,7 @@ import Customers from "@/pages/Customers";
 import Services from "@/pages/Services";
 import Stays from "@/pages/Stays";
 import PaymentMethods from "@/pages/PaymentMethods";
+import PrinterSettings from "@/pages/PrinterSettings";
 import Transactions from "@/pages/Transactions";
 import Expenses from "@/pages/Expenses";
 import LostAndFound from "@/pages/LostAndFound";
@@ -233,6 +234,7 @@ function App() {
         <Route path="/reception/stays" element={<Stays />} />
         <Route path="/reception/payment-methods" element={<PaymentMethods />} />
         <Route path="/sales/payment-methods" element={<PaymentMethods />} />
+        <Route path="/sales/printer-settings" element={<PrinterSettings />} />
         <Route
           path="/service-center/payment-methods"
           element={<ServicePaymentMethods />}

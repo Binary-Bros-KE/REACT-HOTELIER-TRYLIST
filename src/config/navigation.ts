@@ -49,6 +49,7 @@ import {
   LuBoxes,
   LuTrendingUp,
   LuBadgeDollarSign,
+  LuPrinter,
 } from 'react-icons/lu'
 
 export const PERMISSION_SECTIONS = ['OVERVIEW', 'RECEPTION', 'HOUSEKEEPING', 'SALES', 'KITCHEN', 'SERVICE_CENTER', 'INVENTORY', 'TEAM', 'FINANCE', 'REPORTS', 'SYSTEM'] as const
@@ -133,6 +134,7 @@ export const navigation: NavGroup[] = [
       { label: 'Riders', href: '/sales/riders', icon: LuBike },
       { label: 'Deliveries', href: '/sales/deliveries', icon: LuTruck },
       { label: 'Payment Methods', href: '/sales/payment-methods', icon: LuCreditCard },
+      { label: 'Printer Settings', href: '/sales/printer-settings', icon: LuPrinter },
     ],
   },
   {
