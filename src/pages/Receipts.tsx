@@ -10,7 +10,7 @@ import OrderSettlementPanel from '@/components/pos/OrderSettlementPanel'
 import ReceiptPreviewModal from '@/components/pos/ReceiptPreviewModal'
 
 type PaymentStatus = 'UNPAID' | 'PARTIAL' | 'PAID'
-type ReceiptRow = ReceiptOrder & { total: number; paid: number; paymentStatus?: PaymentStatus; createdBy: string | null }
+type ReceiptRow = ReceiptOrder & { total: number; paid: number; paymentStatus?: PaymentStatus; createdBy: string | null; customer?: { firstName: string; lastName: string | null; phone: string | null } | null }
 type LocationOption = { id: string; name: string }
 type PaymentMethod = { id: string; name: string; requiresReference: boolean }
 type EmployeeOption = { id: string; firstName: string; lastName: string | null }
@@ -111,7 +111,11 @@ export default function Receipts() {
     }
     if (!search.trim()) return true
     const query = search.trim().toLowerCase()
-    return String(order.orderNumber).includes(query) || (order.table?.label ?? 'takeaway').toLowerCase().includes(query)
+    const customerName = order.customer ? `${order.customer.firstName} ${order.customer.lastName ?? ''}`.trim().toLowerCase() : ''
+    return String(order.orderNumber).includes(query)
+      || (order.table?.label ?? 'takeaway').toLowerCase().includes(query)
+      || customerName.includes(query)
+      || (order.customer?.phone ?? '').toLowerCase().includes(query)
   })
 
   const completedVisible = visible.filter((o) => o.status !== 'CANCELLED')
@@ -140,7 +144,7 @@ export default function Receipts() {
           Search
           <span className="relative">
             <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Order # or table…" className="input pl-9" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Order #, table, or customer…" className="input pl-9" />
           </span>
         </label>
 
@@ -221,6 +225,7 @@ export default function Receipts() {
                 <tr>
                   <th className="px-5 py-3">Order</th>
                   <th className="px-5 py-3">Table</th>
+                  <th className="px-5 py-3">Customer</th>
                   <th className="px-5 py-3">Date</th>
                   <th className="px-5 py-3">Status</th>
                   <th className="px-5 py-3 text-right">Paid</th>
@@ -240,6 +245,14 @@ export default function Receipts() {
                         {order.createdBy && staffNames[order.createdBy] && (
                           <span className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground/80"><LuUserRound className="size-3" /> {staffNames[order.createdBy]}</span>
                         )}
+                      </td>
+                      <td className="px-5 py-4 text-muted-foreground">
+                        {order.customer ? (
+                          <>
+                            {order.customer.firstName} {order.customer.lastName ?? ''}
+                            {order.customer.phone && <span className="block text-[11px] text-muted-foreground/80">{order.customer.phone}</span>}
+                          </>
+                        ) : '—'}
                       </td>
                       <td className="px-5 py-4 text-muted-foreground">{new Date(order.updatedAt).toLocaleString()}</td>
                       <td className="px-5 py-4">
