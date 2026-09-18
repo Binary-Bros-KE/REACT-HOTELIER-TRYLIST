@@ -55,7 +55,12 @@ const PAYMENT_META: Record<PaymentStatus, { label: string; className: string }> 
   PARTIAL: { label: 'Partially paid', className: 'bg-secondary/10 text-secondary' },
   PAID: { label: 'Paid', className: 'bg-success/10 text-success' },
 }
-type MenuPriceRef = { id: string; name: string; price: string }
+// A price-editable target surfaced from a product's menu links — either a
+// menu item with no variants (base price is used on POS) or one specific
+// variant (the base price is unused once an item has variants).
+type MenuPriceRef = { key: string; label: string; price: string; menuItemId: string; variantId?: string }
+type MenuItemVariantRef = { id: string; name: string; price: string; stockProductId: string | null }
+type MenuItemRef = { id: string; name: string; price: string; variants: MenuItemVariantRef[] }
 type StockProduct = {
   id: string
   name: string
@@ -68,12 +73,12 @@ type StockProduct = {
   taxRate?: string | null
   taxMode?: TaxMode | null
   taxTreatment?: TaxTreatment | null
-  menuItems?: MenuPriceRef[]
-  variantStocks?: { menuItem: MenuPriceRef }[]
-  recipeIngredients?: { recipe: { menuItems: MenuPriceRef[] } }[]
+  menuItems?: MenuItemRef[]
+  variantStocks?: { id: string; name: string; price: string; menuItem: { id: string; name: string } }[]
+  recipeIngredients?: { recipe: { menuItems: MenuItemRef[] } }[]
 }
 type Product = StockProduct
-type MenuPriceUpdate = { menuItemId: string; sellingPrice: string }
+type MenuPriceUpdate = { menuItemId: string; variantId?: string; sellingPrice: string }
 type PurchaseItem = {
   id: string
   productId: string
@@ -89,7 +94,7 @@ type PurchaseItem = {
   receivedQuantity: string
   note: string | null
   product: StockProduct
-  menuPriceUpdates: { id: string; menuItemId: string; sellingPrice: string; menuItem: MenuPriceRef }[]
+  menuPriceUpdates: { id: string; menuItemId: string; variantId: string | null; sellingPrice: string; menuItem: { id: string; name: string; price: string }; variant: { id: string; name: string; price: string } | null }[]
 }
 type GoodsReceiptItem = { id: string; productId: string; quantity: string; unitCost: string; note: string | null; product: StockProduct }
 type GoodsReceipt = {
@@ -164,12 +169,30 @@ function productTaxDefaults(product: Product) {
     taxRate: product.taxRate != null ? String(Number(product.taxRate)) : treatment === 'STANDARD' ? fallback.rate : '0',
   }
 }
+// A menu item's base price is only ever charged on POS when it has no
+// variants — once it has any, each variant carries its own price and the
+// base price sits unused. So: items with no variants map straight through,
+// but items with variants map to their variants instead (only the ones this
+// product actually feeds — a variant pinned to a different product via its
+// own stockProductId isn't affected by this product's cost changing).
 function menuReferencesForProduct(product: Product | undefined) {
   const refs = new Map<string, MenuPriceRef>()
-  product?.menuItems?.forEach((item) => refs.set(item.id, item))
-  product?.variantStocks?.forEach((entry) => refs.set(entry.menuItem.id, entry.menuItem))
-  product?.recipeIngredients?.forEach((entry) => entry.recipe.menuItems.forEach((item) => refs.set(item.id, item)))
-  return [...refs.values()].sort((a, b) => a.name.localeCompare(b.name))
+  const addItem = (item: MenuItemRef) => {
+    if (item.variants.length === 0) {
+      refs.set(`item:${item.id}`, { key: `item:${item.id}`, label: item.name, price: item.price, menuItemId: item.id })
+      return
+    }
+    for (const v of item.variants) {
+      if (v.stockProductId && v.stockProductId !== product?.id) continue
+      refs.set(`variant:${v.id}`, { key: `variant:${v.id}`, label: `${item.name} — ${v.name}`, price: v.price, menuItemId: item.id, variantId: v.id })
+    }
+  }
+  product?.menuItems?.forEach(addItem)
+  product?.variantStocks?.forEach((v) =>
+    refs.set(`variant:${v.id}`, { key: `variant:${v.id}`, label: `${v.menuItem.name} — ${v.name}`, price: v.price, menuItemId: v.menuItem.id, variantId: v.id }),
+  )
+  product?.recipeIngredients?.forEach((entry) => entry.recipe.menuItems.forEach(addItem))
+  return [...refs.values()].sort((a, b) => a.label.localeCompare(b.label))
 }
 const todayInput = () => {
   const d = new Date()
@@ -278,7 +301,7 @@ export default function Purchases() {
 
   function addProduct(p: Product) {
     const tax = productTaxDefaults(p)
-    const menuPriceUpdates = menuReferencesForProduct(p).map((item) => ({ menuItemId: item.id, sellingPrice: String(Number(item.price)) }))
+    const menuPriceUpdates = menuReferencesForProduct(p).map((ref) => ({ menuItemId: ref.menuItemId, variantId: ref.variantId, sellingPrice: String(Number(ref.price)) }))
     setForm((f) => (f.items.some((i) => i.productId === p.id) ? f : {
       ...f,
       items: [...f.items, {
@@ -324,7 +347,7 @@ export default function Purchases() {
         taxRate: String(Number(i.taxRate)),
         taxMode: i.taxMode,
         taxTreatment: i.taxTreatment,
-        menuPriceUpdates: i.menuPriceUpdates.map((update) => ({ menuItemId: update.menuItemId, sellingPrice: String(Number(update.sellingPrice)) })),
+        menuPriceUpdates: i.menuPriceUpdates.map((update) => ({ menuItemId: update.menuItemId, variantId: update.variantId ?? undefined, sellingPrice: String(Number(update.sellingPrice)) })),
         note: i.note ?? '',
       })),
     })
@@ -352,7 +375,7 @@ export default function Purchases() {
         taxTreatment: r.taxTreatment,
         menuPriceUpdates: r.menuPriceUpdates
           .filter((update) => update.menuItemId && update.sellingPrice !== '')
-          .map((update) => ({ menuItemId: update.menuItemId, sellingPrice: Number(update.sellingPrice) || 0 })),
+          .map((update) => ({ menuItemId: update.menuItemId, variantId: update.variantId || undefined, sellingPrice: Number(update.sellingPrice) || 0 })),
         note: r.note.trim() || undefined,
       }))
     if (!form.supplierId) { setFormError('Choose a supplier'); return }
@@ -581,7 +604,7 @@ export default function Purchases() {
                 <p className="mt-3 rounded-sm border border-dashed p-4 text-center text-sm text-muted-foreground">No items yet — search above to add products.</p>
               ) : (
                 <div className="mt-3 space-y-2">
-                  <div className="grid grid-cols-[1fr_8rem_6.5rem_6.5rem_6.5rem_10rem_6.5rem_2rem] gap-2 px-1 text-xs font-medium text-muted-foreground">
+                  <div className="hidden lg:grid grid-cols-[1fr_8rem_6.5rem_6.5rem_6.5rem_10rem_6.5rem_2rem] gap-2 px-1 text-xs font-medium text-muted-foreground">
                     <span>Product</span><span>Qty</span><span>Buying</span><span>Selling</span><span>Discount</span><span>Tax</span><span className="text-right">Total</span><span />
                   </div>
                   {form.items.map((row, index) => {
@@ -593,9 +616,58 @@ export default function Purchases() {
                     const rate = Number(row.taxRate) || 0
                     const taxAmount = row.taxTreatment === 'STANDARD' && rate > 0 ? (row.taxMode === 'EXCLUSIVE' ? baseAmount * (rate / 100) : baseAmount - baseAmount / (1 + rate / 100)) : 0
                     const lineTotal = row.taxMode === 'EXCLUSIVE' ? baseAmount + taxAmount : baseAmount
+                    const taxSelect = (
+                      <select
+                        value={`${row.taxTreatment}:${row.taxRate}:${row.taxMode}`}
+                        onChange={(e) => {
+                          const [taxTreatment, taxRate, taxMode] = e.target.value.split(':') as [TaxTreatment, string, TaxMode]
+                          setRow(index, { taxTreatment, taxRate, taxMode })
+                        }}
+                        className="input"
+                      >
+                        {taxOptions.map((option) => <option key={`${option.treatment}:${option.rate}:${option.mode}`} value={`${option.treatment}:${option.rate}:${option.mode}`}>{option.label}</option>)}
+                      </select>
+                    )
                     return (
-                      <div key={row.productId} className="rounded-sm border p-2">
-                        <div className="grid grid-cols-[1fr_8rem_6.5rem_6.5rem_6.5rem_10rem_6.5rem_2rem] items-start gap-2">
+                      <div key={row.productId} className="rounded-sm border p-3 lg:p-2">
+                        {/* Mobile / tablet — stacked card; the 8-column grid below needs desktop width to fit. */}
+                        <div className="lg:hidden">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium">{product?.name ?? 'Unknown product'}</p>
+                              {unitLabel && (
+                                <p className="text-xs text-muted-foreground">
+                                  {packSize > 0 ? `priced per ${product?.packLabel || 'pack'}; stock in ${unitLabel}` : `per ${unitLabel}`}
+                                </p>
+                              )}
+                            </div>
+                            <button type="button" onClick={() => removeRow(index)} title="Remove" className="shrink-0 rounded-sm p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><LuX className="size-4" /></button>
+                          </div>
+                          <div className="mt-2.5 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                            <label className="block text-xs font-medium text-muted-foreground">Qty
+                              <span className="mt-1 block"><PackQtyInput value={row.quantity} onChange={(v) => setRow(index, { quantity: v })} packSize={packSize} packLabel={product?.packLabel ?? ''} unitName={unitLabel} /></span>
+                            </label>
+                            <label className="block text-xs font-medium text-muted-foreground">Buying
+                              <input type="number" min="0" step="0.01" placeholder="Buying" value={row.unitCost} onChange={(e) => setRow(index, { unitCost: e.target.value })} className="input mt-1" />
+                            </label>
+                            <label className="block text-xs font-medium text-muted-foreground">Selling
+                              <input type="number" min="0" step="0.01" placeholder="Selling" value={row.sellingPrice} onChange={(e) => setRow(index, { sellingPrice: e.target.value })} className="input mt-1" />
+                            </label>
+                            <label className="block text-xs font-medium text-muted-foreground">Discount
+                              <input type="number" min="0" step="0.01" placeholder="Discount" value={row.discountPerUnit} onChange={(e) => setRow(index, { discountPerUnit: e.target.value })} className="input mt-1" />
+                            </label>
+                            <label className="block text-xs font-medium text-muted-foreground sm:col-span-2">Tax
+                              <span className="mt-1 block">{taxSelect}</span>
+                            </label>
+                          </div>
+                          <div className="mt-2.5 flex items-center justify-between border-t pt-2 text-sm">
+                            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Total</span>
+                            <span className="font-semibold tabular-nums">{lineTotal ? formatKes(lineTotal) : '—'}</span>
+                          </div>
+                        </div>
+
+                        {/* Desktop — the full 8-column row. */}
+                        <div className="hidden lg:grid grid-cols-[1fr_8rem_6.5rem_6.5rem_6.5rem_10rem_6.5rem_2rem] items-start gap-2">
                         <div className="min-w-0 pt-2">
                           <p className="truncate text-sm font-medium">{product?.name ?? 'Unknown product'}</p>
                           {unitLabel && (
@@ -608,16 +680,7 @@ export default function Purchases() {
                         <input type="number" min="0" step="0.01" placeholder="Buying" value={row.unitCost} onChange={(e) => setRow(index, { unitCost: e.target.value })} className="input" />
                         <input type="number" min="0" step="0.01" placeholder="Selling" value={row.sellingPrice} onChange={(e) => setRow(index, { sellingPrice: e.target.value })} className="input" />
                         <input type="number" min="0" step="0.01" placeholder="Discount" value={row.discountPerUnit} onChange={(e) => setRow(index, { discountPerUnit: e.target.value })} className="input" />
-                        <select
-                          value={`${row.taxTreatment}:${row.taxRate}:${row.taxMode}`}
-                          onChange={(e) => {
-                            const [taxTreatment, taxRate, taxMode] = e.target.value.split(':') as [TaxTreatment, string, TaxMode]
-                            setRow(index, { taxTreatment, taxRate, taxMode })
-                          }}
-                          className="input"
-                        >
-                          {taxOptions.map((option) => <option key={`${option.treatment}:${option.rate}:${option.mode}`} value={`${option.treatment}:${option.rate}:${option.mode}`}>{option.label}</option>)}
-                        </select>
+                        {taxSelect}
                         <span className="pt-2 text-right text-sm tabular-nums text-muted-foreground">{lineTotal ? formatKes(lineTotal) : '—'}</span>
                         <button type="button" onClick={() => removeRow(index)} title="Remove" className="rounded-sm p-1.5 pt-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><LuX className="size-4" /></button>
                         </div>
@@ -625,20 +688,21 @@ export default function Purchases() {
                           <div className="mt-2 rounded-sm bg-muted/35 p-2">
                             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Menu items using this product</p>
                             <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                              {menuRefs.map((item) => {
-                                const value = row.menuPriceUpdates.find((update) => update.menuItemId === item.id)?.sellingPrice ?? String(Number(item.price))
+                              {menuRefs.map((ref) => {
+                                const isSame = (update: MenuPriceUpdate) => update.menuItemId === ref.menuItemId && (update.variantId ?? undefined) === ref.variantId
+                                const value = row.menuPriceUpdates.find(isSame)?.sellingPrice ?? String(Number(ref.price))
                                 return (
-                                  <label key={item.id} className="grid grid-cols-[1fr_6.5rem] items-center gap-2 text-xs">
-                                    <span className="truncate text-muted-foreground">{item.name}</span>
+                                  <label key={ref.key} className="grid grid-cols-[1fr_6.5rem] items-center gap-2 text-xs">
+                                    <span className="truncate text-muted-foreground">{ref.label}</span>
                                     <input
                                       type="number"
                                       min="0"
                                       step="0.01"
                                       value={value}
                                       onChange={(e) => {
-                                        const updates = row.menuPriceUpdates.some((update) => update.menuItemId === item.id)
-                                          ? row.menuPriceUpdates.map((update) => update.menuItemId === item.id ? { ...update, sellingPrice: e.target.value } : update)
-                                          : [...row.menuPriceUpdates, { menuItemId: item.id, sellingPrice: e.target.value }]
+                                        const updates = row.menuPriceUpdates.some(isSame)
+                                          ? row.menuPriceUpdates.map((update) => isSame(update) ? { ...update, sellingPrice: e.target.value } : update)
+                                          : [...row.menuPriceUpdates, { menuItemId: ref.menuItemId, variantId: ref.variantId, sellingPrice: e.target.value }]
                                         setRow(index, { menuPriceUpdates: updates })
                                       }}
                                       className="input h-9"
@@ -928,21 +992,34 @@ function ReceiveGoodsModal({ purchase, locations, onClose, onReceived }: {
 
         <div className="mt-5 space-y-2">
           <div className="flex items-center justify-between gap-3 px-1">
-            <div className="grid flex-1 grid-cols-[1fr_6rem_6rem] gap-2 text-xs font-medium text-muted-foreground">
+            <div className="hidden flex-1 sm:grid grid-cols-[1fr_6rem_6rem] gap-2 text-xs font-medium text-muted-foreground">
               <span>Product</span><span>Qty received</span><span>Unit cost</span>
             </div>
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:hidden">Items</span>
             <button type="button" onClick={() => setLines((cur) => cur.map((line) => ({ ...line, quantity: String(line.remaining) })))} className="text-xs font-semibold uppercase tracking-wide text-secondary hover:underline">Receive all</button>
           </div>
           {lines.length === 0 ? (
             <p className="rounded-sm border border-dashed p-4 text-center text-sm text-muted-foreground">Nothing left to receive on this order.</p>
           ) : lines.map((l) => (
-            <div key={l.purchaseItemId} className="grid grid-cols-[1fr_6rem_6rem] items-center gap-2">
-              <div className="min-w-0">
+            <div key={l.purchaseItemId} className="rounded-sm border p-3 sm:border-0 sm:p-0">
+              <div className="min-w-0 sm:hidden">
                 <p className="truncate text-sm font-medium">{l.productName}</p>
                 <p className="text-xs text-muted-foreground">{packAndUnit(l.remaining, l.packSize, l.packLabel, l.unit)} outstanding</p>
               </div>
-              <PackQtyInput value={l.quantity} onChange={(v) => setLine(l.purchaseItemId, { quantity: v })} packSize={l.packSize} packLabel={l.packLabel} unitName={l.unit} max={l.remaining} className="input" />
-              <input type="number" min="0" step="0.01" value={l.unitCost} onChange={(e) => setLine(l.purchaseItemId, { unitCost: e.target.value })} className="input" />
+              <div className="mt-2.5 grid grid-cols-2 gap-2.5 sm:mt-0 sm:grid-cols-[1fr_6rem_6rem] sm:items-center sm:gap-2">
+                <div className="col-span-2 hidden min-w-0 sm:block">
+                  <p className="truncate text-sm font-medium">{l.productName}</p>
+                  <p className="text-xs text-muted-foreground">{packAndUnit(l.remaining, l.packSize, l.packLabel, l.unit)} outstanding</p>
+                </div>
+                <label className="block text-xs font-medium text-muted-foreground sm:hidden">Qty received
+                  <span className="mt-1 block"><PackQtyInput value={l.quantity} onChange={(v) => setLine(l.purchaseItemId, { quantity: v })} packSize={l.packSize} packLabel={l.packLabel} unitName={l.unit} max={l.remaining} className="input" /></span>
+                </label>
+                <div className="hidden sm:block"><PackQtyInput value={l.quantity} onChange={(v) => setLine(l.purchaseItemId, { quantity: v })} packSize={l.packSize} packLabel={l.packLabel} unitName={l.unit} max={l.remaining} className="input" /></div>
+                <label className="block text-xs font-medium text-muted-foreground sm:hidden">Unit cost
+                  <input type="number" min="0" step="0.01" value={l.unitCost} onChange={(e) => setLine(l.purchaseItemId, { unitCost: e.target.value })} className="input mt-1" />
+                </label>
+                <input type="number" min="0" step="0.01" value={l.unitCost} onChange={(e) => setLine(l.purchaseItemId, { unitCost: e.target.value })} className="input hidden sm:block" />
+              </div>
             </div>
           ))}
         </div>

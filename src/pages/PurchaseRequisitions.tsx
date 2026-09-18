@@ -512,30 +512,40 @@ export default function PurchaseRequisitions() {
                 <p className="mt-3 rounded-sm border border-dashed p-4 text-center text-sm text-muted-foreground">No items yet — search above to add products.</p>
               ) : (
                 <div className="mt-3 space-y-2">
-                  <div className="grid grid-cols-[1fr_16rem_2rem] gap-2 px-1 text-xs font-medium text-muted-foreground">
+                  <div className="hidden sm:grid grid-cols-[1fr_16rem_2rem] gap-2 px-1 text-xs font-medium text-muted-foreground">
                     <span>Product</span><span>Qty</span><span />
                   </div>
                   {form.items.map((row, index) => {
                     const product = productById(row.productId)
+                    const unitLabel = product?.packUnit?.name ?? product?.unit ?? ''
+                    const qtyInput = (
+                      <PackQtyInput
+                        value={row.quantity}
+                        onChange={(value) => setRow(index, { quantity: value })}
+                        packSize={Number(product?.packSize) || 0}
+                        packLabel={product?.packLabel ?? ''}
+                        unitName={unitLabel}
+                        className="input"
+                      />
+                    )
                     return (
-                      <div key={row.productId} className="grid grid-cols-[1fr_16rem_2rem] items-start gap-2">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium">{product?.name ?? 'Unknown product'}</p>
-                          {product?.unit && (
-                            <p className="text-xs text-muted-foreground">
-                              {product.packSize ? `request by ${product.packLabel || 'pack'}; stock in ${product.packUnit?.name ?? product.unit}` : `per ${product.unit}`}
-                            </p>
-                          )}
+                      <div key={row.productId} className="rounded-sm border p-3 sm:grid sm:grid-cols-[1fr_16rem_2rem] sm:items-start sm:gap-2 sm:border-0 sm:p-0">
+                        <div className="flex items-start justify-between gap-2 sm:block sm:min-w-0">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium">{product?.name ?? 'Unknown product'}</p>
+                            {product?.unit && (
+                              <p className="text-xs text-muted-foreground">
+                                {product.packSize ? `request by ${product.packLabel || 'pack'}; stock in ${unitLabel}` : `per ${unitLabel}`}
+                              </p>
+                            )}
+                          </div>
+                          <button type="button" onClick={() => removeRow(index)} title="Remove" className="shrink-0 rounded-sm p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive sm:hidden"><LuX className="size-4" /></button>
                         </div>
-                        <PackQtyInput
-                          value={row.quantity}
-                          onChange={(value) => setRow(index, { quantity: value })}
-                          packSize={Number(product?.packSize) || 0}
-                          packLabel={product?.packLabel ?? ''}
-                          unitName={product?.packUnit?.name ?? product?.unit ?? ''}
-                          className="input"
-                        />
-                        <button type="button" onClick={() => removeRow(index)} title="Remove" className="rounded-sm p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><LuX className="size-4" /></button>
+                        <label className="mt-2.5 block text-xs font-medium text-muted-foreground sm:mt-0 sm:hidden">Qty
+                          <span className="mt-1 block">{qtyInput}</span>
+                        </label>
+                        <div className="hidden sm:block">{qtyInput}</div>
+                        <button type="button" onClick={() => removeRow(index)} title="Remove" className="hidden rounded-sm p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive sm:block"><LuX className="size-4" /></button>
                       </div>
                     )
                   })}

@@ -65,7 +65,13 @@ type MenuItem = {
   stockQtyPerUnit: string | null
   product: StockProduct | null
   recipe: Recipe | null
+  variants: { price: string }[]
   _count: { orderItems: number; variants: number }
+}
+
+function displayPrice(item: MenuItem): number {
+  if (item.variants.length === 0) return Number(item.price)
+  return Math.min(...item.variants.map((v) => Number(v.price)))
 }
 
 type Variant = {
@@ -483,7 +489,7 @@ export default function MenuItems() {
                     <td className="px-4 py-3 text-muted-foreground">{item.menuCategory.name}</td>
                     <td className="px-4 py-3 text-right tabular-nums font-medium">
                       {item._count.variants > 0 ? <span className="text-xs font-normal text-muted-foreground">from </span> : null}
-                      {money(item.price)}
+                      {money(displayPrice(item))}
                       <span className="ml-1 text-xs text-muted-foreground">{describeItemTax(item, bizTax)}</span>
                     </td>
                     <td className="px-4 py-3">
@@ -585,7 +591,16 @@ export default function MenuItems() {
             </FieldGroup>
 
             <FieldGroup title="Pricing">
-              <Field label="Price (KSh)" required><input required type="number" min="0" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className="input" /></Field>
+              {editing && editing._count.variants > 0 ? (
+                <div>
+                  <span className="text-sm font-medium">Price (KSh)</span>
+                  <p className="mt-1.5 rounded-sm border border-dashed bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                    Not used — this item has variants, each with its own price. Manage them from the item's row. Delete all variants to price this item directly again.
+                  </p>
+                </div>
+              ) : (
+                <Field label="Price (KSh)" required><input required type="number" min="0" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className="input" /></Field>
+              )}
               <Field label="SKU"><input placeholder="Optional — unique" value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} className="input" /></Field>
               <Field label="Tax treatment">
                 <select className="input" value={form.taxChoice} onChange={(e) => setForm({ ...form, taxChoice: e.target.value as TaxChoice })}>
