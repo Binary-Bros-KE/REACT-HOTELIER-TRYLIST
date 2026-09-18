@@ -34,6 +34,17 @@ const taxCategoryKey = (treatment: TaxTreatment, mode: TaxMode): TaxCategoryKey 
   treatment === 'STANDARD' ? (mode === 'EXCLUSIVE' ? 'STANDARD_EXCLUSIVE' : 'STANDARD_INCLUSIVE') : treatment
 
 const titleCase = (value: string) => value.charAt(0) + value.slice(1).toLowerCase()
+
+// 0 = plain midnight-to-midnight (the default). Anything else names the hour
+// (Nairobi time) the "trading day" rolls over on, e.g. 9 for a club that's
+// still open past midnight — a 1am sale then still counts toward the night
+// that's still technically open instead of bleeding into "today."
+const businessDayHourLabel = (hour: number) => {
+  if (hour === 0) return '12:00 AM — Midnight (calendar day)'
+  const period = hour < 12 ? 'AM' : 'PM'
+  const twelveHour = hour % 12 === 0 ? 12 : hour % 12
+  return `${twelveHour}:00 ${period}`
+}
 const currencyLabels: Record<Currency, string> = {
   KES: 'KES — Kenyan Shilling',
   UGX: 'UGX — Ugandan Shilling',
@@ -51,6 +62,7 @@ type BusinessProfile = {
   taxRate: string | null
   taxMode: TaxMode
   taxTreatment: TaxTreatment
+  businessDayStartHour: number
   primaryPhone: string | null
   alternativePhone: string | null
   email: string | null
@@ -74,6 +86,7 @@ type ProfileForm = {
   taxRate: string
   taxMode: TaxMode
   taxTreatment: TaxTreatment
+  businessDayStartHour: number
   primaryPhone: string
   alternativePhone: string
   email: string
@@ -90,7 +103,7 @@ type ProfileForm = {
 const emptyForm: ProfileForm = {
   shortName: '',
   businessName: '', businessType: '', currency: '', registrationNumber: '', kraPin: '',
-  taxRate: '16', taxMode: 'INCLUSIVE', taxTreatment: 'STANDARD',
+  taxRate: '16', taxMode: 'INCLUSIVE', taxTreatment: 'STANDARD', businessDayStartHour: 0,
   primaryPhone: '', alternativePhone: '', email: '', website: '',
   country: '', county: '', city: '', address: '',
   ownerName: '', ownerPhone: '', ownerEmail: '',
@@ -107,6 +120,7 @@ function formFromProfile(profile: BusinessProfile): ProfileForm {
     taxRate: profile.taxRate ?? '16',
     taxMode: profile.taxMode,
     taxTreatment: profile.taxTreatment ?? 'STANDARD',
+    businessDayStartHour: profile.businessDayStartHour ?? 0,
     primaryPhone: profile.primaryPhone ?? '',
     alternativePhone: profile.alternativePhone ?? '',
     email: profile.email ?? '',
@@ -307,6 +321,23 @@ export default function BusinessInformation() {
               />
               <span className="mt-1 block text-xs text-muted-foreground">
                 {form.taxTreatment === 'STANDARD' ? 'Applied to standard-rated sales (e.g. 16% VAT).' : 'Only used when the category is Standard rate.'}
+              </span>
+            </Field>
+          </Section>
+
+          <Section title="Reporting" description="When the dashboard and reports treat 'today' as starting — matters for a venue that trades past midnight.">
+            <Field label="Business Day Starts At" className="sm:col-span-2">
+              <select
+                className="input"
+                value={form.businessDayStartHour}
+                onChange={(e) => set('businessDayStartHour', Number(e.target.value))}
+              >
+                {Array.from({ length: 24 }, (_, hour) => (
+                  <option key={hour} value={hour}>{businessDayHourLabel(hour)}</option>
+                ))}
+              </select>
+              <span className="mt-1 block text-xs text-muted-foreground">
+                Sales, revenue, and every "today" figure roll over at this hour instead of midnight — e.g. a club open until 3am can set this to 9:00 AM so a 1am sale still counts toward last night's trading day.
               </span>
             </Field>
           </Section>
