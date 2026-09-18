@@ -1341,21 +1341,23 @@ function ShiftControl({ onReady }: { onReady: (ready: boolean) => void }) {
   const [busyKey, setBusyKey] = useState('')
   const [error, setError] = useState('')
   const [confirmEndShift, setConfirmEndShift] = useState(false)
+  const [confirmAction, setConfirmAction] = useState<{ title: string; message: string; confirmLabel: string; tone?: 'warning' | 'danger'; busyKey: string; run: () => Promise<boolean> } | null>(null)
   const isSuperAdmin = user?.role?.name === 'Super Admin'
   const isSupervisor = Boolean(user?.isSupervisor || isSuperAdmin)
 
   const load = useCallback(async () => {
-    if (isSuperAdmin) { onReady(true); return }
     try {
       const current = await api<ShiftPayload>('/shifts/current')
       setState(current)
-      onReady(current.session?.status === 'ACTIVE')
-      const historyResponse = await api<{ sessions: (ShiftSession & { summary: ShiftSummary | null })[] }>('/shifts/history')
+      onReady(isSuperAdmin || current.session?.status === 'ACTIVE')
+      const historyResponse = isSupervisor
+        ? await api<{ sessions: (ShiftSession & { summary: ShiftSummary | null })[] }>('/shifts/sessions?status=ENDED&take=32')
+        : await api<{ sessions: (ShiftSession & { summary: ShiftSummary | null })[] }>('/shifts/history')
       setHistory(historyResponse.sessions)
       if (isSupervisor) {
         const [pending, active] = await Promise.all([
           api<{ sessions: (ShiftSession & { summary: ShiftSummary | null })[] }>('/shifts/approvals'),
-          current.session?.status === 'ACTIVE' ? api<{ sessions: (ShiftSession & { summary: ShiftSummary | null })[] }>('/shifts/active-supervised') : Promise.resolve({ sessions: [] }),
+          api<{ sessions: (ShiftSession & { summary: ShiftSummary | null })[] }>('/shifts/active-supervised'),
         ])
         setApprovals(pending.sessions)
         setActiveStaff(active.sessions)
@@ -1387,7 +1389,29 @@ function ShiftControl({ onReady }: { onReady: (ready: boolean) => void }) {
     }
   }
 
-  if (isSuperAdmin) return null
+  async function openShiftSummary(session: ShiftSession & { summary?: ShiftSummary | null }, title: string, approval = false) {
+    setBusyKey(`${session.id}:summary`)
+    setError('')
+    try {
+      if (session.summary) {
+        setSelectedSummary({ title, session, summary: session.summary, approval })
+        return
+      }
+      const response = await api<{ session: ShiftSession; summary: ShiftSummary | null }>(`/shifts/${session.id}/summary`)
+      if (!response.summary) {
+        toast.error('No shift summary is available yet.')
+        return
+      }
+      setSelectedSummary({ title, session: response.session, summary: response.summary, approval })
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'Could not load shift summary'
+      setError(message)
+      toast.error(message)
+    } finally {
+      setBusyKey('')
+    }
+  }
+
   const session = state?.session
   const approvedAt = session?.approvedStartAt ? new Date(session.approvedStartAt) : null
   const elapsed = approvedAt ? Math.max(0, now.getTime() - approvedAt.getTime()) : 0
@@ -1397,10 +1421,15 @@ function ShiftControl({ onReady }: { onReady: (ready: boolean) => void }) {
   const timeText = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
   const startText = isSupervisor ? 'Start shift' : 'Request start shift'
   const endText = isSupervisor ? 'End shift' : 'Request end shift'
+  const runConfirmedAction = () => {
+    const action = confirmAction
+    if (!action) return
+    void action.run().then((ok) => { if (ok) setConfirmAction(null) })
+  }
 
   return (
     <section className="mt-6 space-y-5">
-      <div className="rounded-sm border bg-card p-5 shadow-sm">
+      {!isSuperAdmin && <div className="rounded-sm border bg-card p-5 shadow-sm">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wider text-secondary">Shift</p>
@@ -1433,12 +1462,18 @@ function ShiftControl({ onReady }: { onReady: (ready: boolean) => void }) {
         </div>
       ) : null}
       <div className="mt-4 flex flex-wrap gap-2">
-        {!session && <ShiftButton loading={busyKey === 'start'} onClick={() => void post('/shifts/start-request', {}, 'start')} icon={<LuLogIn />}>{startText}</ShiftButton>}
+        {!session && <ShiftButton loading={busyKey === 'start'} onClick={() => setConfirmAction({
+          title: isSupervisor ? 'Are you sure you want to start shift?' : 'Request shift start?',
+          message: isSupervisor ? 'Your shift will start immediately.' : 'Your supervisor will need to approve this request before you can work.',
+          confirmLabel: startText,
+          busyKey: 'start',
+          run: () => post('/shifts/start-request', {}, 'start'),
+        })} icon={<LuLogIn />}>{startText}</ShiftButton>}
         {session?.status === 'ACTIVE' && <ShiftButton loading={busyKey === 'end'} onClick={() => setConfirmEndShift(true)} icon={<LuLogOut />}>{endText}</ShiftButton>}
         {session?.status === 'REQUESTED_START' && <span className="rounded-sm border border-warning/40 bg-warning/10 px-3 py-2 text-sm font-semibold text-warning">Waiting for supervisor</span>}
         {session?.status === 'REQUESTED_END' && <span className="rounded-sm border border-warning/40 bg-warning/10 px-3 py-2 text-sm font-semibold text-warning">Waiting for handover approval</span>}
       </div>
-      </div>
+      </div>}
       {approvals.length > 0 && (
         <div className="overflow-hidden rounded-sm border bg-card">
           <div className="bg-muted/40 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Supervisor approvals</div>
@@ -1449,9 +1484,22 @@ function ShiftControl({ onReady }: { onReady: (ready: boolean) => void }) {
                 <p className="text-xs text-muted-foreground">{a.status === 'REQUESTED_END' ? `End shift · ${formatKes(a.summary?.totalPaid ?? 0)} collected` : 'Start shift'}</p>
               </div>
               <div className="flex gap-2">
-                {a.status === 'REQUESTED_END' && a.summary && <button onClick={() => setSelectedSummary({ title: `${a.employee.firstName}'s handover`, session: a, summary: a.summary!, approval: true })} className="rounded-sm border px-3 py-1.5 text-xs font-semibold hover:bg-muted">Review</button>}
-                {a.status === 'REQUESTED_START' && <button disabled={busyKey === `${a.id}:approve`} onClick={() => void post(`/shifts/${a.id}/start-approval`, { action: 'APPROVE' }, `${a.id}:approve`)} className="inline-flex items-center gap-1.5 rounded-sm bg-success px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60">{busyKey === `${a.id}:approve` && <LuLoaderCircle className="size-3 animate-spin" />}Approve</button>}
-                {a.status === 'REQUESTED_START' && <button disabled={busyKey === `${a.id}:reject`} onClick={() => void post(`/shifts/${a.id}/start-approval`, { action: 'REJECT' }, `${a.id}:reject`)} className="inline-flex items-center gap-1.5 rounded-sm border px-3 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-60">{busyKey === `${a.id}:reject` && <LuLoaderCircle className="size-3 animate-spin" />}Reject</button>}
+                {a.status === 'REQUESTED_END' && a.summary && <button onClick={() => void openShiftSummary(a, `${a.employee.firstName}'s handover`, true)} className="rounded-sm border px-3 py-1.5 text-xs font-semibold hover:bg-muted">Review</button>}
+                {a.status === 'REQUESTED_START' && <button disabled={busyKey === `${a.id}:approve`} onClick={() => setConfirmAction({
+                  title: 'Approve shift start?',
+                  message: `${a.employee.firstName} ${a.employee.lastName} will be marked active immediately.`,
+                  confirmLabel: 'Approve',
+                  busyKey: `${a.id}:approve`,
+                  run: () => post(`/shifts/${a.id}/start-approval`, { action: 'APPROVE' }, `${a.id}:approve`),
+                })} className="inline-flex items-center gap-1.5 rounded-sm bg-success px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60">{busyKey === `${a.id}:approve` && <LuLoaderCircle className="size-3 animate-spin" />}Approve</button>}
+                {a.status === 'REQUESTED_START' && <button disabled={busyKey === `${a.id}:reject`} onClick={() => setConfirmAction({
+                  title: 'Reject shift start?',
+                  message: `${a.employee.firstName} ${a.employee.lastName}'s start request will be rejected.`,
+                  confirmLabel: 'Reject',
+                  tone: 'danger',
+                  busyKey: `${a.id}:reject`,
+                  run: () => post(`/shifts/${a.id}/start-approval`, { action: 'REJECT' }, `${a.id}:reject`),
+                })} className="inline-flex items-center gap-1.5 rounded-sm border px-3 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-60">{busyKey === `${a.id}:reject` && <LuLoaderCircle className="size-3 animate-spin" />}Reject</button>}
               </div>
             </div>
           ))}
@@ -1465,12 +1513,13 @@ function ShiftControl({ onReady }: { onReady: (ready: boolean) => void }) {
               const started = s.approvedStartAt ? new Date(s.approvedStartAt) : null
               const liveHours = started ? Math.max(0, (now.getTime() - started.getTime()) / 36e5) : 0
               return (
-                <div key={s.id} className="border-t p-3 text-sm sm:border-r">
+                <button key={s.id} type="button" onClick={() => void openShiftSummary(s, `${s.employee.firstName}'s active shift`)} className="border-t p-3 text-left text-sm transition hover:bg-muted/50 sm:border-r">
                   <p className="font-semibold">{s.employee.firstName} {s.employee.lastName}</p>
                   <p className="text-xs text-muted-foreground">{s.employee.jobTitle || 'Employee'} - {liveHours.toFixed(1)} hrs</p>
                   <div className="mt-2 flex items-center justify-between text-xs"><span>Sales</span><span className="font-semibold">{formatKes(s.summary?.totalSales ?? 0)}</span></div>
                   <div className="mt-1 flex items-center justify-between text-xs"><span>Credit</span><span className="font-semibold">{formatKes(s.summary?.creditSales ?? 0)}</span></div>
-                </div>
+                  <p className="mt-2 text-[11px] font-semibold text-secondary">{busyKey === `${s.id}:summary` ? 'Loading...' : 'View shift details'}</p>
+                </button>
               )
             })}
           </div>
@@ -1478,12 +1527,12 @@ function ShiftControl({ onReady }: { onReady: (ready: boolean) => void }) {
       )}
       {history.length > 0 && (
         <div className="overflow-hidden rounded-sm border bg-card">
-          <div className="bg-muted/40 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">My shift history</div>
+          <div className="bg-muted/40 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{isSupervisor ? 'Recent staff shifts' : 'My shift history'}</div>
           <div className="max-h-80 overflow-y-auto">
             {history.map((s) => (
               <div key={s.id} className="flex flex-col gap-2 border-t p-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="font-semibold">{s.approvedStartAt ? new Date(s.approvedStartAt).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) : 'Shift'}</p>
+                  <p className="font-semibold">{isSupervisor ? `${s.employee.firstName} ${s.employee.lastName}` : s.approvedStartAt ? new Date(s.approvedStartAt).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) : 'Shift'}</p>
                   <p className="text-xs text-muted-foreground">{s.approvedStartAt ? new Date(s.approvedStartAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--'} - {s.approvedEndAt ? new Date(s.approvedEndAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--'} - {(s.summary?.hours ?? 0).toFixed(1)} hrs</p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -1491,7 +1540,7 @@ function ShiftControl({ onReady }: { onReady: (ready: boolean) => void }) {
                     <p className="font-semibold">{formatKes(s.summary?.totalSales ?? 0)}</p>
                     <p className="text-muted-foreground">{formatKes(s.summary?.totalPaid ?? 0)} collected</p>
                   </div>
-                  {s.summary && <button onClick={() => setSelectedSummary({ title: 'Shift summary', session: s, summary: s.summary! })} className="rounded-sm border px-3 py-1.5 text-xs font-semibold hover:bg-muted">View</button>}
+                  <button onClick={() => void openShiftSummary(s, isSupervisor ? `${s.employee.firstName}'s shift summary` : 'Shift summary')} className="rounded-sm border px-3 py-1.5 text-xs font-semibold hover:bg-muted">{busyKey === `${s.id}:summary` ? 'Loading...' : 'View'}</button>
                 </div>
               </div>
             ))}
@@ -1506,8 +1555,21 @@ function ShiftControl({ onReady }: { onReady: (ready: boolean) => void }) {
           approval={selectedSummary.approval}
           busyKey={busyKey}
           onClose={() => setSelectedSummary(null)}
-          onApprove={() => void post(`/shifts/${selectedSummary.session.id}/end-approval`, { action: 'APPROVE' }, `${selectedSummary.session.id}:approve-end`).then((ok) => { if (ok) setSelectedSummary(null) })}
-          onReject={() => void post(`/shifts/${selectedSummary.session.id}/end-approval`, { action: 'REJECT' }, `${selectedSummary.session.id}:reject-end`).then((ok) => { if (ok) setSelectedSummary(null) })}
+          onApprove={() => setConfirmAction({
+            title: 'Are you sure you want to approve this shift end?',
+            message: `${selectedSummary.session.employee.firstName} ${selectedSummary.session.employee.lastName}'s shift will be marked cleared and ended.`,
+            confirmLabel: 'Mark cleared and end shift',
+            busyKey: `${selectedSummary.session.id}:approve-end`,
+            run: () => post(`/shifts/${selectedSummary.session.id}/end-approval`, { action: 'APPROVE' }, `${selectedSummary.session.id}:approve-end`).then((ok) => { if (ok) setSelectedSummary(null); return ok }),
+          })}
+          onReject={() => setConfirmAction({
+            title: 'Reject this shift end?',
+            message: `${selectedSummary.session.employee.firstName} ${selectedSummary.session.employee.lastName}'s end request will be rejected.`,
+            confirmLabel: 'Reject',
+            tone: 'danger',
+            busyKey: `${selectedSummary.session.id}:reject-end`,
+            run: () => post(`/shifts/${selectedSummary.session.id}/end-approval`, { action: 'REJECT' }, `${selectedSummary.session.id}:reject-end`).then((ok) => { if (ok) setSelectedSummary(null); return ok }),
+          })}
         />
       )}
       <ConfirmModal
@@ -1519,6 +1581,16 @@ function ShiftControl({ onReady }: { onReady: (ready: boolean) => void }) {
         loading={busyKey === 'end'}
         onCancel={() => setConfirmEndShift(false)}
         onConfirm={() => void post('/shifts/end-request', {}, 'end').then((ok) => { if (ok) setConfirmEndShift(false) })}
+      />
+      <ConfirmModal
+        open={confirmAction !== null}
+        tone={confirmAction?.tone ?? 'warning'}
+        title={confirmAction?.title ?? ''}
+        message={confirmAction?.message}
+        confirmLabel={confirmAction?.confirmLabel}
+        loading={Boolean(confirmAction && busyKey === confirmAction.busyKey)}
+        onCancel={() => setConfirmAction(null)}
+        onConfirm={runConfirmedAction}
       />
     </section>
   )
