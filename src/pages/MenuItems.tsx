@@ -440,10 +440,99 @@ export default function MenuItems() {
         ) : items.length === 0 ? (
           <div className="min-h-64 p-16 text-center text-sm text-muted-foreground">{search.trim() || categoryFilter || statusFilter !== 'all' ? 'No items match these filters.' : 'No menu items yet.'}</div>
         ) : (
-          <div className="overflow-x-auto">
+          <div>
             {!canReorder && !search.trim() && !categoryFilter && (
               <p className="border-b bg-muted/40 px-4 py-2 text-xs text-muted-foreground">Filter by a single category to drag items into order.</p>
             )}
+
+            {/* Mobile — cards */}
+            <div className="divide-y sm:hidden">
+              {items.map((item, index) => (
+                <div key={item.id} className={cn('flex gap-3 p-4', !item.isActive && 'opacity-60')}>
+                  <span className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted/50 text-muted-foreground">
+                    {item.photoUrl
+                      ? <img src={item.photoUrl} alt="" className="size-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none' }} />
+                      : <LuImageOff className="size-4" />}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate font-semibold">{item.name}</p>
+                        <p className="text-xs text-muted-foreground">{item.menuCategory.name}</p>
+                      </div>
+                      <p className="shrink-0 text-right text-sm font-medium tabular-nums">
+                        {item._count.variants > 0 && <span className="block text-[10px] font-normal leading-tight text-muted-foreground">from</span>}
+                        {money(displayPrice(item))}
+                      </p>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {[item.shortName, item.sku && `SKU ${item.sku}`].filter(Boolean).join(' · ') || <span className="italic">no short name</span>}
+                      {' · '}{describeItemTax(item, bizTax)}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {item.locations.length > 0 ? `Only at: ${item.locations.map((l) => l.name).join(', ')}` : 'Available everywhere'}
+                    </p>
+
+                    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                      <button
+                        onClick={() => void patch(item, { isAvailable: !item.isAvailable }, item.isAvailable ? 'Marked unavailable.' : 'Marked available.')}
+                        disabled={busy}
+                        className={cn(
+                          'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold transition',
+                          item.isAvailable ? 'border-success/40 text-success hover:bg-success/10' : 'border-warning/40 text-warning hover:bg-warning/10',
+                        )}
+                      >
+                        {!item.isAvailable && <LuEyeOff className="size-3" />}
+                        {item.isAvailable ? 'Available' : 'Sold out'}
+                      </button>
+                      <span className={cn(
+                        'inline-flex whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide',
+                        item.isActive ? 'border-success/40 text-success' : 'border-muted-foreground/30 text-muted-foreground',
+                      )}>
+                        {item.isActive ? 'Active' : 'Inactive'}
+                      </span>
+                    </div>
+
+                    <div className="mt-2 flex items-center justify-between">
+                      <div className="flex items-center gap-0.5">
+                        <button onClick={() => void move(index, -1)} disabled={busy || !canReorder || index === 0} title={canReorder ? 'Move up' : 'Filter to one category to reorder'} className="rounded-sm p-1 text-muted-foreground hover:bg-muted disabled:opacity-20">
+                          <LuChevronUp className="size-4" />
+                        </button>
+                        <button onClick={() => void move(index, 1)} disabled={busy || !canReorder || index === items.length - 1} title={canReorder ? 'Move down' : 'Filter to one category to reorder'} className="rounded-sm p-1 text-muted-foreground hover:bg-muted disabled:opacity-20">
+                          <LuChevronDown className="size-4" />
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => setVariantsFor(item)} title="Variants (sizes / options)" className="relative rounded-md p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary">
+                          <LuLayers className="size-4" />
+                          {item._count.variants > 0 && <span className="absolute -right-0.5 -top-0.5 flex min-w-4 items-center justify-center rounded-full bg-secondary px-1 text-[10px] font-bold leading-4 text-secondary-foreground">{item._count.variants}</span>}
+                        </button>
+                        <button onClick={() => openEdit(item)} title="Edit" className="rounded-md p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuPencil className="size-4" /></button>
+                        <button
+                          onClick={() => void patch(item, { isActive: !item.isActive }, item.isActive ? 'Item deactivated.' : 'Item activated.')}
+                          disabled={busy}
+                          title={item.isActive ? 'Deactivate' : 'Activate'}
+                          className={cn('rounded-md p-2 hover:bg-muted', item.isActive ? 'text-muted-foreground' : 'text-success')}
+                        >
+                          <LuPower className="size-4" />
+                        </button>
+                        <button
+                          onClick={() => void remove(item)}
+                          disabled={item._count.orderItems > 0}
+                          title={item._count.orderItems > 0 ? 'On an order — deactivate instead' : 'Delete'}
+                          className="rounded-md p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-30"
+                        >
+                          <LuTrash2 className="size-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop / tablet — table */}
+            <div className="hidden overflow-x-auto sm:block">
             <table className="w-full min-w-[860px] text-left text-sm">
               <thead className="bg-primary text-primary-foreground">
                 <tr className="[&>th]:px-4 [&>th]:py-3 [&>th]:text-xs [&>th]:font-semibold [&>th]:uppercase [&>th]:tracking-wide">
@@ -542,6 +631,7 @@ export default function MenuItems() {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         )}
       </section>

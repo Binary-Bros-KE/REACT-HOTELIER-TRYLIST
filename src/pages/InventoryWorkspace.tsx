@@ -493,36 +493,69 @@ function DistributeModal({ locations, onClose, onRecorded }: { locations: Locati
                     No products with stock at this source location.
                   </div>
                 ) : (
-                  <table className="w-full text-left text-sm">
-                    <thead className="sticky top-0 bg-primary text-xs uppercase text-primary-foreground">
-                      <tr><th className="px-4 py-2.5">Product</th><th className="px-4 py-2.5">On hand</th><th className="px-4 py-2.5">Send</th></tr>
-                    </thead>
-                    <tbody>
+                  <>
+                    {/* Mobile — cards */}
+                    <div className="divide-y sm:hidden">
                       {visibleProducts.map((product) => {
                         const max = availableAt(product)
                         const staged = batch.find((b) => b.productId === product.id)
                         const packSize = Number(product.packSize) || 0
                         const unitLabel = product.packUnit?.name ?? product.unit
                         return (
-                          <tr key={product.id} className="border-t bg-card">
-                            <td className="px-4 py-2.5 font-medium">{product.name}</td>
-                            <td className="px-4 py-2.5 text-muted-foreground">{packAndUnit(max, packSize, product.packLabel ?? '', unitLabel)}</td>
-                            <td className="px-4 py-2.5">
-                              <PackQtyInput
-                                value={staged?.quantity ?? ''}
-                                onChange={(v) => setBatchQuantity(product, v)}
-                                packSize={packSize}
-                                packLabel={product.packLabel ?? ''}
-                                unitName={unitLabel}
-                                max={max}
-                                className="w-24 rounded-sm border bg-background px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring"
-                              />
-                            </td>
-                          </tr>
+                          <div key={product.id} className="bg-card px-4 py-3">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium">{product.name}</p>
+                              <p className="text-xs text-muted-foreground">On hand: {packAndUnit(max, packSize, product.packLabel ?? '', unitLabel)}</p>
+                            </div>
+                            <label className="mt-2 block text-xs font-medium text-muted-foreground">Send
+                              <span className="mt-1 block">
+                                <PackQtyInput
+                                  value={staged?.quantity ?? ''}
+                                  onChange={(v) => setBatchQuantity(product, v)}
+                                  packSize={packSize}
+                                  packLabel={product.packLabel ?? ''}
+                                  unitName={unitLabel}
+                                  max={max}
+                                  className="w-full rounded-sm border bg-background px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring"
+                                />
+                              </span>
+                            </label>
+                          </div>
                         )
                       })}
-                    </tbody>
-                  </table>
+                    </div>
+                    {/* Desktop / tablet — table */}
+                    <table className="hidden w-full text-left text-sm sm:table">
+                      <thead className="sticky top-0 bg-primary text-xs uppercase text-primary-foreground">
+                        <tr><th className="px-4 py-2.5">Product</th><th className="px-4 py-2.5">On hand</th><th className="px-4 py-2.5">Send</th></tr>
+                      </thead>
+                      <tbody>
+                        {visibleProducts.map((product) => {
+                          const max = availableAt(product)
+                          const staged = batch.find((b) => b.productId === product.id)
+                          const packSize = Number(product.packSize) || 0
+                          const unitLabel = product.packUnit?.name ?? product.unit
+                          return (
+                            <tr key={product.id} className="border-t bg-card">
+                              <td className="px-4 py-2.5 font-medium">{product.name}</td>
+                              <td className="px-4 py-2.5 text-muted-foreground">{packAndUnit(max, packSize, product.packLabel ?? '', unitLabel)}</td>
+                              <td className="px-4 py-2.5">
+                                <PackQtyInput
+                                  value={staged?.quantity ?? ''}
+                                  onChange={(v) => setBatchQuantity(product, v)}
+                                  packSize={packSize}
+                                  packLabel={product.packLabel ?? ''}
+                                  unitName={unitLabel}
+                                  max={max}
+                                  className="w-24 rounded-sm border bg-background px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring"
+                                />
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </>
                 )}
               </div>
 
@@ -687,7 +720,7 @@ function ReceiveGoodsModal({ locations, onClose, onRecorded }: { locations: Loca
           </section>
 
           <section className="rounded-sm border">
-            <div className="grid grid-cols-[1fr_150px_44px] bg-primary px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-primary-foreground">
+            <div className="hidden bg-primary px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-primary-foreground sm:grid sm:grid-cols-[1fr_150px_44px]">
               <span>Product</span>
               <span className="text-right">Qty received</span>
               <span />
@@ -695,20 +728,25 @@ function ReceiveGoodsModal({ locations, onClose, onRecorded }: { locations: Loca
             {batch.length === 0 ? (
               <p className="p-6 text-center text-sm text-muted-foreground">No products added yet.</p>
             ) : batch.map((item) => (
-              <div key={item.productId} className="grid grid-cols-[1fr_150px_44px] items-center gap-3 border-t px-4 py-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold">{item.name}</p>
-                  <p className="text-xs text-muted-foreground">{item.packSize ? `${item.packLabel || 'Pack'} contains ${item.packSize.toLocaleString()} ${item.unit}` : item.unit}</p>
+              <div key={item.productId} className="border-t px-4 py-3 sm:grid sm:grid-cols-[1fr_150px_44px] sm:items-center sm:gap-3">
+                <div className="flex items-start justify-between gap-3 sm:contents">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold">{item.name}</p>
+                    <p className="text-xs text-muted-foreground">{item.packSize ? `${item.packLabel || 'Pack'} contains ${item.packSize.toLocaleString()} ${item.unit}` : item.unit}</p>
+                  </div>
+                  <button type="button" onClick={() => removeFromBatch(item.productId)} className="order-3 hidden shrink-0 rounded-sm p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive sm:block"><LuTrash2 className="size-4" /></button>
                 </div>
-                <PackQtyInput
-                  value={item.quantity}
-                  onChange={(v) => setBatchQuantity(item.productId, v)}
-                  packSize={item.packSize}
-                  packLabel={item.packLabel}
-                  unitName={item.unit}
-                  className="w-full rounded-sm border bg-background px-2 py-1.5 text-right text-sm outline-none focus:ring-2 focus:ring-ring"
-                />
-                <button type="button" onClick={() => removeFromBatch(item.productId)} className="rounded-sm p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><LuTrash2 className="size-4" /></button>
+                <div className="mt-2.5 flex items-center gap-2 sm:mt-0 sm:contents">
+                  <PackQtyInput
+                    value={item.quantity}
+                    onChange={(v) => setBatchQuantity(item.productId, v)}
+                    packSize={item.packSize}
+                    packLabel={item.packLabel}
+                    unitName={item.unit}
+                    className="w-full rounded-sm border bg-background px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring sm:text-right"
+                  />
+                  <button type="button" onClick={() => removeFromBatch(item.productId)} className="shrink-0 rounded-sm p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive sm:hidden"><LuTrash2 className="size-4" /></button>
+                </div>
               </div>
             ))}
           </section>
