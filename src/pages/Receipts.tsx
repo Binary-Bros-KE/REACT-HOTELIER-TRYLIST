@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
-import { LuBan, LuCalendarDays, LuCircleAlert, LuLoaderCircle, LuMapPin, LuPrinter, LuReceiptText, LuSearch, LuWallet } from 'react-icons/lu'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { LuBan, LuCalendarDays, LuCircleAlert, LuLoaderCircle, LuMapPin, LuPrinter, LuReceiptText, LuSearch, LuUserRound, LuWallet } from 'react-icons/lu'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/Toast'
@@ -10,9 +10,10 @@ import OrderSettlementPanel from '@/components/pos/OrderSettlementPanel'
 import ReceiptPreviewModal from '@/components/pos/ReceiptPreviewModal'
 
 type PaymentStatus = 'UNPAID' | 'PARTIAL' | 'PAID'
-type ReceiptRow = ReceiptOrder & { total: number; paid: number; paymentStatus?: PaymentStatus }
+type ReceiptRow = ReceiptOrder & { total: number; paid: number; paymentStatus?: PaymentStatus; createdBy: string | null }
 type LocationOption = { id: string; name: string }
 type PaymentMethod = { id: string; name: string; requiresReference: boolean }
+type EmployeeOption = { id: string; firstName: string; lastName: string | null }
 type PaymentFilter = 'ALL' | 'UNPAID' | 'PARTIAL' | 'PAID'
 type StatusFilter = 'ALL' | 'COMPLETED' | 'CANCELLED'
 
@@ -47,11 +48,13 @@ export default function Receipts() {
   const toast = useToast()
   const [orders, setOrders] = useState<ReceiptRow[]>([])
   const [locations, setLocations] = useState<LocationOption[]>([])
+  const [employees, setEmployees] = useState<EmployeeOption[]>([])
   const [profile, setProfile] = useState<ReceiptProfile>(null)
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
   const [search, setSearch] = useState('')
   const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>('ALL')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL')
+  const [employeeFilter, setEmployeeFilter] = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [loading, setLoading] = useState(true)
@@ -66,16 +69,18 @@ export default function Receipts() {
     setError('')
     try {
       let query = effectiveLocationId ? `&locationId=${effectiveLocationId}` : ''
+      if (employeeFilter) query += `&employeeId=${employeeFilter}`
       if (dateFrom) query += `&from=${dateFrom}`
       if (dateTo) query += `&to=${dateTo}`
       // Only pull the statuses actually needed — narrowing the Status filter
       // to Completed or Cancelled halves the payload instead of fetching
       // both and throwing one half away client-side.
       const statuses: ('COMPLETED' | 'CANCELLED')[] = statusFilter === 'ALL' ? ['COMPLETED', 'CANCELLED'] : [statusFilter]
-      const [orderResponses, profileResponse, locationResponse, methodsResponse] = await Promise.all([
+      const [orderResponses, profileResponse, locationResponse, employeeResponse, methodsResponse] = await Promise.all([
         Promise.all(statuses.map((s) => api<{ orders: ReceiptRow[] }>(`/pos/orders?status=${s}&limit=${FETCH_LIMIT}${query}`))),
         api<{ profile: ReceiptProfile }>('/business-profile'),
         api<{ locations: LocationOption[] }>('/locations'),
+        api<{ employees: EmployeeOption[] }>('/employees'),
         api<{ methods: (PaymentMethod & { code: string })[] }>('/payment-methods?activeOnly=true'),
       ])
       const merged = orderResponses.flatMap((r) => r.orders).sort(
@@ -84,6 +89,7 @@ export default function Receipts() {
       setOrders(merged)
       setProfile(profileResponse.profile)
       setLocations(locationResponse.locations)
+      setEmployees(employeeResponse.employees)
       setPaymentMethods(methodsResponse.methods.filter((m) => m.code !== 'ROOM_CHARGE'))
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Could not load receipts'
@@ -92,9 +98,11 @@ export default function Receipts() {
     } finally {
       setLoading(false)
     }
-  }, [effectiveLocationId, statusFilter, dateFrom, dateTo, toast])
+  }, [effectiveLocationId, statusFilter, employeeFilter, dateFrom, dateTo, toast])
 
   useEffect(() => { void load() }, [load])
+
+  const staffNames = useMemo(() => Object.fromEntries(employees.map((e) => [e.id, `${e.firstName} ${e.lastName ?? ''}`.trim()])), [employees])
 
   const visible = orders.filter((order) => {
     if (paymentFilter !== 'ALL') {
@@ -155,6 +163,14 @@ export default function Receipts() {
           </select>
         </label>
 
+        <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+          Employee
+          <select aria-label="Filter by employee" value={employeeFilter} onChange={(e) => setEmployeeFilter(e.target.value)} className="input">
+            <option value="">All employees</option>
+            {employees.map((e) => <option key={e.id} value={e.id}>{e.firstName} {e.lastName ?? ''}</option>)}
+          </select>
+        </label>
+
         {fixedLocation ? (
           <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
             Location
@@ -196,7 +212,7 @@ export default function Receipts() {
       {loading ? (
         <div className="mt-7 flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><LuLoaderCircle className="animate-spin" /> Loading receipts…</div>
       ) : visible.length === 0 ? (
-        <div className="mt-7 min-h-64 rounded-sm border bg-card p-16 text-center text-sm text-muted-foreground">No sales {search.trim() || paymentFilter !== 'ALL' || statusFilter !== 'ALL' || dateFrom || dateTo ? 'match this view' : 'yet'}.</div>
+        <div className="mt-7 min-h-64 rounded-sm border bg-card p-16 text-center text-sm text-muted-foreground">No sales {search.trim() || paymentFilter !== 'ALL' || statusFilter !== 'ALL' || employeeFilter || dateFrom || dateTo ? 'match this view' : 'yet'}.</div>
       ) : (
         <section className="mt-7 overflow-hidden rounded-sm border bg-card">
           <div className="overflow-x-auto">
@@ -219,7 +235,12 @@ export default function Receipts() {
                   return (
                     <tr key={order.id} className="cursor-pointer border-t transition hover:bg-muted/30" onClick={() => setManageId(order.id)}>
                       <td className="px-5 py-4 font-semibold">#{order.orderNumber}</td>
-                      <td className="px-5 py-4 text-muted-foreground">{order.table?.label ?? 'Takeaway'}</td>
+                      <td className="px-5 py-4 text-muted-foreground">
+                        {order.table?.label ?? 'Takeaway'}
+                        {order.createdBy && staffNames[order.createdBy] && (
+                          <span className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground/80"><LuUserRound className="size-3" /> {staffNames[order.createdBy]}</span>
+                        )}
+                      </td>
                       <td className="px-5 py-4 text-muted-foreground">{new Date(order.updatedAt).toLocaleString()}</td>
                       <td className="px-5 py-4">
                         <span className={cn('inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide', badge.cls)}>{badge.label}</span>
