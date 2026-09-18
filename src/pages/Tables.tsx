@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
-import { LuCircleAlert, LuLoaderCircle, LuPencil, LuPlus, LuReceiptText, LuTable2, LuTrash2, LuX } from 'react-icons/lu'
+import { LuCircleAlert, LuLoaderCircle, LuPencil, LuPlus, LuPrinter, LuReceiptText, LuTable2, LuTrash2, LuX } from 'react-icons/lu'
 import { api } from '@/lib/api'
 import Button from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
@@ -8,6 +8,7 @@ import { useWorkingLocation } from '@/lib/useWorkingLocation'
 import { cn } from '@/lib/utils'
 import { type ReceiptProfile } from '@/components/pos/OrderReceipt'
 import OrderSettlementPanel from '@/components/pos/OrderSettlementPanel'
+import ReceiptPreviewModal from '@/components/pos/ReceiptPreviewModal'
 
 type TableStatus = 'AVAILABLE' | 'OCCUPIED' | 'RESERVED' | 'OUT_OF_SERVICE'
 type ActiveOrderSummary = {
@@ -55,6 +56,7 @@ export default function Tables() {
   const [saving, setSaving] = useState(false)
 
   const [panel, setPanel] = useState<PanelTarget | null>(null)
+  const [receiptOrderId, setReceiptOrderId] = useState<string | null>(null)
 
   const { fixed: fixedLocation, options: pickableLocations, selectedId: selectedLocationId, setLocation, effectiveId: effectiveLocationId } = useWorkingLocation(locations, { persist: false })
   // Fixed-location staff always see only their own location; a floating
@@ -199,6 +201,9 @@ export default function Tables() {
               {table.activeOrders.length > 1 && <p className="mt-2 text-xs font-semibold text-warning">{table.activeOrders.length} active orders</p>}
               <div className="mt-4 flex flex-wrap gap-2">
                 <button onClick={() => openTable(table)} className="inline-flex items-center gap-1.5 rounded-sm border px-3 py-1.5 text-xs font-semibold hover:bg-muted"><LuReceiptText className="size-3.5" /> {table.activeOrders.length > 0 ? 'View orders' : 'Details'}</button>
+                {table.activeOrders.length === 1 && (
+                  <button onClick={() => setReceiptOrderId(table.activeOrders[0].id)} title="View / print receipt" className="rounded-sm border p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"><LuPrinter className="size-3.5" /></button>
+                )}
                 <button onClick={() => openEditForm(table)} className="rounded-sm border p-1.5 text-muted-foreground hover:bg-muted"><LuPencil className="size-3.5" /></button>
                 <button onClick={() => void deleteTable(table)} className="rounded-sm border border-destructive/30 p-1.5 text-destructive hover:bg-destructive/10"><LuTrash2 className="size-3.5" /></button>
               </div>
@@ -255,18 +260,21 @@ export default function Tables() {
             ) : (
               <div className="mt-5 space-y-2">
                 {panel.table.activeOrders.map((activeOrder) => (
-                  <button key={activeOrder.id} onClick={() => selectOrderInPanel(activeOrder.id)} className="block w-full rounded-sm border p-3 text-left text-sm hover:bg-muted/40">
-                    <span className="flex items-center justify-between">
-                      <span className="font-semibold">Order #{activeOrder.orderNumber}</span>
-                      <span className="text-xs text-muted-foreground">{activeOrder.status}</span>
-                    </span>
-                    <span className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
-                      <span>{new Date(activeOrder.createdAt).toLocaleString()}</span>
-                      <span>{activeOrder.itemCount} item{activeOrder.itemCount === 1 ? '' : 's'}</span>
-                      {activeOrder.servedBy && <span>Waiter: {activeOrder.servedBy.firstName} {activeOrder.servedBy.lastName}</span>}
-                      {activeOrder.customer && <span>Client: {activeOrder.customer.firstName} {activeOrder.customer.lastName ?? ''}</span>}
-                    </span>
-                  </button>
+                  <div key={activeOrder.id} className="flex items-stretch gap-1 rounded-sm border hover:bg-muted/40">
+                    <button onClick={() => selectOrderInPanel(activeOrder.id)} className="min-w-0 flex-1 p-3 text-left text-sm">
+                      <span className="flex items-center justify-between">
+                        <span className="font-semibold">Order #{activeOrder.orderNumber}</span>
+                        <span className="text-xs text-muted-foreground">{activeOrder.status}</span>
+                      </span>
+                      <span className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                        <span>{new Date(activeOrder.createdAt).toLocaleString()}</span>
+                        <span>{activeOrder.itemCount} item{activeOrder.itemCount === 1 ? '' : 's'}</span>
+                        {activeOrder.servedBy && <span>Waiter: {activeOrder.servedBy.firstName} {activeOrder.servedBy.lastName}</span>}
+                        {activeOrder.customer && <span>Client: {activeOrder.customer.firstName} {activeOrder.customer.lastName ?? ''}</span>}
+                      </span>
+                    </button>
+                    <button onClick={() => setReceiptOrderId(activeOrder.id)} title="View / print receipt" className="shrink-0 self-center rounded-sm p-2 text-muted-foreground hover:bg-muted hover:text-foreground"><LuPrinter className="size-4" /></button>
+                  </div>
                 ))}
               </div>
             )}
@@ -280,7 +288,6 @@ export default function Tables() {
             orderId={panel.orderId}
             title={`${panel.table.label}${panel.table.area ? ` · ${panel.table.area}` : ''}`}
             subtitle={panel.table.activeOrders.length > 1 ? 'One of several orders on this table' : undefined}
-            profile={profile}
             paymentMethods={paymentMethods}
             onClose={() => setPanel(null)}
             onChanged={() => void load()}
@@ -291,6 +298,14 @@ export default function Tables() {
             </button>
           )}
         </>
+      )}
+
+      {receiptOrderId && (
+        <ReceiptPreviewModal
+          orderId={receiptOrderId}
+          profile={profile}
+          onClose={() => setReceiptOrderId(null)}
+        />
       )}
     </div>
   )

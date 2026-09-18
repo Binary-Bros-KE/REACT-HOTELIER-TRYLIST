@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { LuBan, LuCalendarDays, LuCircleAlert, LuLoaderCircle, LuMapPin, LuReceiptText, LuSearch, LuWallet } from 'react-icons/lu'
+import { LuBan, LuCalendarDays, LuCircleAlert, LuLoaderCircle, LuMapPin, LuPrinter, LuReceiptText, LuSearch, LuWallet } from 'react-icons/lu'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/Toast'
@@ -7,6 +7,7 @@ import { useWorkingLocation } from '@/lib/useWorkingLocation'
 import StatCard from '@/components/ui/StatCard'
 import { type ReceiptOrder, type ReceiptProfile } from '@/components/pos/OrderReceipt'
 import OrderSettlementPanel from '@/components/pos/OrderSettlementPanel'
+import ReceiptPreviewModal from '@/components/pos/ReceiptPreviewModal'
 
 type PaymentStatus = 'UNPAID' | 'PARTIAL' | 'PAID'
 type ReceiptRow = ReceiptOrder & { total: number; paid: number; paymentStatus?: PaymentStatus }
@@ -56,6 +57,7 @@ export default function Receipts() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [manageId, setManageId] = useState<string | null>(null)
+  const [receiptOrderId, setReceiptOrderId] = useState<string | null>(null)
 
   const { fixed: fixedLocation, options: pickableLocations, selectedId: selectedLocationId, setLocation, effectiveId: effectiveLocationId } = useWorkingLocation(locations, { persist: false })
 
@@ -230,7 +232,8 @@ export default function Receipts() {
                           {order.status !== 'CANCELLED' && owed > 0.01 && (
                             <button onClick={(e) => { e.stopPropagation(); setManageId(order.id) }} title="Take payment" className="rounded-sm p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuWallet /></button>
                           )}
-                          <button onClick={(e) => { e.stopPropagation(); setManageId(order.id) }} title="View receipt / request a return" className="rounded-sm p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuReceiptText /></button>
+                          <button onClick={(e) => { e.stopPropagation(); setReceiptOrderId(order.id) }} title="View / print receipt" className="rounded-sm p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuPrinter /></button>
+                          <button onClick={(e) => { e.stopPropagation(); setManageId(order.id) }} title="Manage / request a return" className="rounded-sm p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuReceiptText /></button>
                         </div>
                       </td>
                     </tr>
@@ -246,10 +249,17 @@ export default function Receipts() {
         <OrderSettlementPanel
           orderId={manageId}
           title="Receipt"
-          profile={profile}
           paymentMethods={paymentMethods}
           onClose={() => setManageId(null)}
           onChanged={() => void load()}
+        />
+      )}
+
+      {receiptOrderId && (
+        <ReceiptPreviewModal
+          orderId={receiptOrderId}
+          profile={profile}
+          onClose={() => setReceiptOrderId(null)}
         />
       )}
     </div>

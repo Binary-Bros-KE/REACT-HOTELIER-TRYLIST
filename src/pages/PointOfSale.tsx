@@ -1163,7 +1163,6 @@ export default function PointOfSale() {
         <OrderSettlementPanel
           orderId={settlementOrderId}
           title="Active order"
-          profile={profile as ReceiptProfile}
           paymentMethods={paymentMethods}
           onClose={() => setSettlementOrderId(null)}
           onChanged={() => { void loadActiveOrders(true); if (tab === 'COMPLETED') void loadCompletedOrders() }}

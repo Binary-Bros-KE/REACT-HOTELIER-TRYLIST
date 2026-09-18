@@ -1,14 +1,11 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { LuCircleAlert, LuLoaderCircle, LuPrinter, LuShare2, LuUserPlus, LuX } from 'react-icons/lu'
+import { LuCircleAlert, LuLoaderCircle, LuUserPlus, LuX } from 'react-icons/lu'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/Toast'
 import CustomerSelectModal, { type SaleParty } from '@/components/pos/CustomerSelectModal'
-import OrderReceipt, { type ReceiptOrder, type ReceiptProfile } from './OrderReceipt'
-import { printReceipt } from '@/lib/thermalPrinter'
-import { receiptToText, shareReceipt } from '@/lib/receipt'
-import { usePrintJobWatcher, PrintJobStatusBar } from './PrintJobStatus'
+import type { ReceiptOrder } from './OrderReceipt'
 
 type PaymentMethod = { id: string; name: string; requiresReference: boolean }
 type CheckedInStay = { id: string; reservationNo: string; customer: { firstName: string; lastName: string | null }; room: { number: string } }
@@ -31,6 +28,15 @@ const formatKes = (value: number | string) => `KSh ${Number(value).toLocaleStrin
 // client thinks, so this can never be a security check, just a label.
 const RETURN_WINDOW_MS = 60 * 60 * 1000
 
+function SettlementStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-sm bg-muted/60 p-2.5">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+      <p className="mt-0.5 truncate text-sm font-semibold text-foreground" title={value}>{value}</p>
+    </div>
+  )
+}
+
 function timeAgo(iso: string): string {
   const mins = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000))
   if (mins < 1) return 'just now'
@@ -39,15 +45,16 @@ function timeAgo(iso: string): string {
   return `${hrs} h ${mins % 60} min ago`
 }
 
-/** The full "view a served order, print/preview the bill, settle it (cash
- * now or charged to a checked-in guest's room), or cancel it before serving"
- * flow — shared by Tables.tsx and the Point of Sale's Active Orders tab so
- * neither has to keep its own copy of this in sync. */
-export default function OrderSettlementPanel({ orderId, title, subtitle, profile, paymentMethods, onClose, onChanged }: {
+/** The full "view a served order's payment status, settle it (cash now or
+ * charged to a checked-in guest's room), or cancel it before serving" flow —
+ * shared by Tables.tsx and the Point of Sale's Active Orders tab so neither
+ * has to keep its own copy of this in sync. The receipt itself lives in the
+ * separate ReceiptPreviewModal (the printer icon) — this one is purely
+ * about payment, deliberately, so nothing here can be mistaken for it. */
+export default function OrderSettlementPanel({ orderId, title, subtitle, paymentMethods, onClose, onChanged }: {
   orderId: string
   title: string
   subtitle?: string
-  profile: ReceiptProfile
   paymentMethods: PaymentMethod[]
   onClose: () => void
   onChanged: () => void
@@ -56,46 +63,14 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, profile
   const [order, setOrder] = useState<Order | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [printing, setPrinting] = useState(false)
-  const [sharing, setSharing] = useState(false)
-  const printJob = usePrintJobWatcher()
-
-  async function handlePrint() {
-    if (!order || printing) return
-    setPrinting(true)
-    try {
-      const result = await printReceipt(order, profile)
-      if (result.method === 'thermal') toast.success('Receipt sent to printer')
-      else if (result.method === 'relay') {
-        toast.success('Sent to the printer — printing shortly')
-        if (result.jobId) printJob.watch(result.jobId)
-      }
-    } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : 'Could not print the receipt')
-    } finally {
-      setPrinting(false)
-    }
-  }
-
-  async function handleShare() {
-    if (!order || sharing) return
-    setSharing(true)
-    try {
-      let shareUrl: string | undefined
-      try {
-        const r = await api<{ url: string }>(`/pos/orders/${order.id}/share`, { method: 'POST', body: '{}' })
-        shareUrl = r.url
-      } catch { /* endpoint not available — share text only */ }
-      await shareReceipt(receiptToText(order, profile, shareUrl))
-    } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : 'Could not share the receipt')
-    } finally {
-      setSharing(false)
-    }
-  }
 
   const [mode, setMode] = useState<'PAY' | 'ROOM'>('PAY')
-  const [paymentMethodId, setPaymentMethodId] = useState(paymentMethods[0]?.id ?? '')
+  // Deliberately not defaulted to paymentMethods[0] — a pre-selected method
+  // (cash, usually first) plus the amount already defaulting to the full
+  // balance meant one reflexive tap on "Record payment" fully paid a sale
+  // on cash by accident. Forcing an explicit pick, matched by the Record
+  // payment button staying disabled until one's chosen, was the actual fix.
+  const [paymentMethodId, setPaymentMethodId] = useState('')
   const [amount, setAmount] = useState('')
   const [reference, setReference] = useState('')
   const [staySearch, setStaySearch] = useState('')
@@ -339,41 +314,41 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, profile
                 </p>
               )}
 
-              {/* The receipt itself — items, tax breakdown, served-by, time
-                  placed, payments — shown directly rather than behind a
-                  "view receipt" button, since it's already the richest,
-                  most useful view of what's happening with this order. */}
-              <div className="mt-4 -mx-6 border-y bg-muted/20">
-                <OrderReceipt order={order} profile={profile} />
-              </div>
-              <div className="mt-1 border-b pb-4">
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => void handlePrint()}
-                    disabled={printing}
-                    className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-sm bg-primary px-3 py-2.5 text-xs font-bold text-primary-foreground disabled:opacity-50"
-                  >
-                    {printing ? <LuLoaderCircle className="size-3.5 animate-spin" /> : <LuPrinter className="size-3.5" />} Print
-                  </button>
-                  <button
-                    onClick={() => void handleShare()}
-                    disabled={sharing}
-                    className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-sm bg-accent px-3 py-2.5 text-xs font-bold text-accent-foreground disabled:opacity-50"
-                  >
-                    {sharing ? <LuLoaderCircle className="size-3.5 animate-spin" /> : <LuShare2 className="size-3.5" />} Share
-                  </button>
-                </div>
-                <PrintJobStatusBar watcher={printJob} />
+              {/* A quick glance, not the receipt itself — that's a tap away
+                  on the printer icon (ReceiptPreviewModal), so it doesn't
+                  need repeating here too. */}
+              <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <SettlementStat label="Total" value={formatKes(order.total)} />
+                <SettlementStat label="Items" value={String(order.items.reduce((sum, item) => sum + item.quantity, 0))} />
+                <SettlementStat label={order.table ? 'Table' : 'Channel'} value={order.table ? order.table.label : 'Takeaway'} />
+                <SettlementStat label="Served by" value={order.servedBy ? `${order.servedBy.firstName} ${order.servedBy.lastName}` : '—'} />
               </div>
 
-              <div className="mt-4 flex justify-between border-b pb-4 text-base">
-                <span className="font-semibold">Balance due</span>
-                <span className="flex items-center gap-2">
-                  {order.paymentStatus === 'PARTIAL' && <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-bold uppercase text-warning">Part-paid</span>}
-                  {isComplementary && <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-bold uppercase text-warning">Complementary</span>}
-                  {!isComplementary && order.paymentStatus === 'UNPAID' && remaining > 0 && order.status === 'COMPLETED' && <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-bold uppercase', isCreditOverdue ? 'bg-destructive/10 text-destructive' : 'bg-warning/15 text-warning')}>{isCreditOverdue ? 'Overdue' : 'On credit'}</span>}
-                  <span className="font-bold">{formatKes(remaining)}</span>
-                </span>
+              <div className="mt-4 rounded-sm border bg-muted/30 p-3.5">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Payment</p>
+                  <span className="flex items-center gap-1.5">
+                    {order.paymentStatus === 'PARTIAL' && <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-bold uppercase text-warning">Part-paid</span>}
+                    {isComplementary && <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-bold uppercase text-warning">Complementary</span>}
+                    {!isComplementary && order.paymentStatus === 'UNPAID' && remaining > 0 && order.status === 'COMPLETED' && <span className={cn('rounded-full px-2 py-0.5 text-[10px] font-bold uppercase', isCreditOverdue ? 'bg-destructive/10 text-destructive' : 'bg-warning/15 text-warning')}>{isCreditOverdue ? 'Overdue' : 'On credit'}</span>}
+                  </span>
+                </div>
+                <div className="mt-2 space-y-1 text-sm">
+                  <div className="flex justify-between text-muted-foreground"><span>Total</span><span>{formatKes(order.total)}</span></div>
+                  <div className="flex justify-between text-muted-foreground"><span>Paid</span><span className="text-success">{formatKes(order.paid)}</span></div>
+                  <div className="flex justify-between border-t pt-1 text-base"><span className="font-semibold">Balance due</span><span className="font-bold">{formatKes(remaining)}</span></div>
+                </div>
+                {order.payments.length > 0 && (
+                  <div className="mt-3 space-y-1 border-t pt-2">
+                    <p className="text-[10.5px] font-semibold uppercase tracking-wide text-muted-foreground">Payments received</p>
+                    {order.payments.map((p) => (
+                      <div key={p.id} className="flex justify-between text-xs text-muted-foreground">
+                        <span>{p.paymentMethod.name}{p.reference ? ` · ${p.reference}` : ''}</span>
+                        <span className="font-medium text-foreground">{formatKes(p.amount)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {pendingReturnTotal > 0 && (
@@ -486,8 +461,8 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, profile
                       <div className="grid grid-cols-2 gap-3">
                         <label className="block text-sm font-medium">
                           Method
-                          <select className="input mt-1.5" value={paymentMethodId} onChange={(e) => setPaymentMethodId(e.target.value)}>
-                            <option value="">Select method</option>
+                          <select required className="input mt-1.5" value={paymentMethodId} onChange={(e) => setPaymentMethodId(e.target.value)}>
+                            <option value="">Select payment method</option>
                             {paymentMethods.map((m) => <option key={m.id} value={m.id}>{m.name}{m.requiresReference ? ' (reference required)' : ''}</option>)}
                           </select>
                         </label>
