@@ -13,6 +13,7 @@ import { useToast } from '@/components/ui/Toast'
 import ConfirmModal from '@/components/ui/ConfirmModal'
 import { cn } from '@/lib/utils'
 import { packAndUnit } from '@/components/ui/PackQtyInput'
+import ShiftSummaryModal, { type ShiftSession, type ShiftSummary } from '@/components/shifts/ShiftSummaryModal'
 
 function getGreeting() {
   const hour = new Date().getHours()
@@ -79,50 +80,6 @@ type TransactionRow = {
   paymentMethod: { name: string } | null
   customer: { firstName: string; lastName: string | null } | null
   supplier: { name: string } | null
-}
-type ShiftSession = {
-  id: string
-  status: 'REQUESTED_START' | 'ACTIVE' | 'REQUESTED_END' | 'ENDED' | 'REJECTED_START' | 'REJECTED_END'
-  requestedStartAt: string
-  approvedStartAt: string | null
-  requestedEndAt: string | null
-  approvedEndAt: string | null
-  employee: { id: string; firstName: string; lastName: string; jobTitle: string; supervisorId: string | null; isSupervisor: boolean }
-}
-type ShiftSummary = {
-  from: string
-  to: string
-  hours: number
-  totalSales: number
-  totalPaid: number
-  complimentaryTotal: number
-  complimentaryCount: number
-  creditSales: number
-  pendingOrders: number
-  byPaymentMethod: { name: string; total: number; count: number }[]
-  transactions: {
-    id: string
-    transactionNo: string
-    direction: 'IN' | 'OUT'
-    source: string
-    amount: number
-    paymentMethod: string | null
-    reference: string | null
-    description: string | null
-    createdAt: string
-  }[]
-  sales: {
-    id: string
-    orderNumber: number
-    status: string
-    paymentStatus: string
-    saleType: 'SALE' | 'COMPLIMENTARY'
-    complimentaryOrderRole: string | null
-    complimentaryRecipientName: string | null
-    createdAt: string
-    total: number
-    paid: number
-  }[]
 }
 type ShiftPayload = { serverNow: string; user: { isSupervisor: boolean; role: { name: string } | null }; session: ShiftSession | null; summary: ShiftSummary | null }
 
@@ -1351,7 +1308,7 @@ function ShiftControl({ onReady }: { onReady: (ready: boolean) => void }) {
       setState(current)
       onReady(isSuperAdmin || current.session?.status === 'ACTIVE')
       const historyResponse = isSupervisor
-        ? await api<{ sessions: (ShiftSession & { summary: ShiftSummary | null })[] }>('/shifts/sessions?status=ENDED&take=32')
+        ? await api<{ sessions: (ShiftSession & { summary: ShiftSummary | null })[] }>('/shifts/sessions?status=ENDED&status=REJECTED_START&status=REJECTED_END&take=32')
         : await api<{ sessions: (ShiftSession & { summary: ShiftSummary | null })[] }>('/shifts/history')
       setHistory(historyResponse.sessions)
       if (isSupervisor) {
@@ -1529,21 +1486,31 @@ function ShiftControl({ onReady }: { onReady: (ready: boolean) => void }) {
         <div className="overflow-hidden rounded-sm border bg-card">
           <div className="bg-muted/40 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{isSupervisor ? 'Recent staff shifts' : 'My shift history'}</div>
           <div className="max-h-80 overflow-y-auto">
-            {history.map((s) => (
-              <div key={s.id} className="flex flex-col gap-2 border-t p-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="font-semibold">{isSupervisor ? `${s.employee.firstName} ${s.employee.lastName}` : s.approvedStartAt ? new Date(s.approvedStartAt).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) : 'Shift'}</p>
-                  <p className="text-xs text-muted-foreground">{s.approvedStartAt ? new Date(s.approvedStartAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--'} - {s.approvedEndAt ? new Date(s.approvedEndAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--'} - {(s.summary?.hours ?? 0).toFixed(1)} hrs</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="text-right text-xs">
-                    <p className="font-semibold">{formatKes(s.summary?.totalSales ?? 0)}</p>
-                    <p className="text-muted-foreground">{formatKes(s.summary?.totalPaid ?? 0)} collected</p>
+            {history.map((s) => {
+              const rejected = s.status === 'REJECTED_START' || s.status === 'REJECTED_END'
+              const hasSummary = s.status !== 'REJECTED_START'
+              return (
+                <div key={s.id} className="flex flex-col gap-2 border-t p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="flex items-center gap-2 font-semibold">
+                      {isSupervisor ? `${s.employee.firstName} ${s.employee.lastName}` : s.approvedStartAt ? new Date(s.approvedStartAt).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) : 'Shift'}
+                      {rejected && <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-destructive">Rejected</span>}
+                    </p>
+                    <p className="text-xs text-muted-foreground">{s.approvedStartAt ? new Date(s.approvedStartAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--'} - {s.approvedEndAt ? new Date(s.approvedEndAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--'} - {(s.summary?.hours ?? 0).toFixed(1)} hrs</p>
+                    {rejected && <p className="mt-0.5 text-xs text-destructive">{s.rejectionReason || 'No reason given'}</p>}
                   </div>
-                  <button onClick={() => void openShiftSummary(s, isSupervisor ? `${s.employee.firstName}'s shift summary` : 'Shift summary')} className="rounded-sm border px-3 py-1.5 text-xs font-semibold hover:bg-muted">{busyKey === `${s.id}:summary` ? 'Loading...' : 'View'}</button>
+                  <div className="flex items-center gap-3">
+                    {hasSummary && (
+                      <div className="text-right text-xs">
+                        <p className="font-semibold">{formatKes(s.summary?.totalSales ?? 0)}</p>
+                        <p className="text-muted-foreground">{formatKes(s.summary?.totalPaid ?? 0)} collected</p>
+                      </div>
+                    )}
+                    {hasSummary && <button onClick={() => void openShiftSummary(s, isSupervisor ? `${s.employee.firstName}'s shift summary` : 'Shift summary')} className="rounded-sm border px-3 py-1.5 text-xs font-semibold hover:bg-muted">{busyKey === `${s.id}:summary` ? 'Loading...' : 'View'}</button>}
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       )}
@@ -1555,20 +1522,20 @@ function ShiftControl({ onReady }: { onReady: (ready: boolean) => void }) {
           approval={selectedSummary.approval}
           busyKey={busyKey}
           onClose={() => setSelectedSummary(null)}
-          onApprove={() => setConfirmAction({
+          onApprove={(cashVariance) => setConfirmAction({
             title: 'Are you sure you want to approve this shift end?',
             message: `${selectedSummary.session.employee.firstName} ${selectedSummary.session.employee.lastName}'s shift will be marked cleared and ended.`,
             confirmLabel: 'Mark cleared and end shift',
             busyKey: `${selectedSummary.session.id}:approve-end`,
-            run: () => post(`/shifts/${selectedSummary.session.id}/end-approval`, { action: 'APPROVE' }, `${selectedSummary.session.id}:approve-end`).then((ok) => { if (ok) setSelectedSummary(null); return ok }),
+            run: () => post(`/shifts/${selectedSummary.session.id}/end-approval`, { action: 'APPROVE', cashVariance }, `${selectedSummary.session.id}:approve-end`).then((ok) => { if (ok) setSelectedSummary(null); return ok }),
           })}
-          onReject={() => setConfirmAction({
+          onReject={(cashVariance) => setConfirmAction({
             title: 'Reject this shift end?',
             message: `${selectedSummary.session.employee.firstName} ${selectedSummary.session.employee.lastName}'s end request will be rejected.`,
             confirmLabel: 'Reject',
             tone: 'danger',
             busyKey: `${selectedSummary.session.id}:reject-end`,
-            run: () => post(`/shifts/${selectedSummary.session.id}/end-approval`, { action: 'REJECT' }, `${selectedSummary.session.id}:reject-end`).then((ok) => { if (ok) setSelectedSummary(null); return ok }),
+            run: () => post(`/shifts/${selectedSummary.session.id}/end-approval`, { action: 'REJECT', cashVariance }, `${selectedSummary.session.id}:reject-end`).then((ok) => { if (ok) setSelectedSummary(null); return ok }),
           })}
         />
       )}
@@ -1602,70 +1569,6 @@ function ShiftButton({ loading, onClick, icon, children }: { loading: boolean; o
       {loading ? <LuLoaderCircle className="size-4 animate-spin" /> : icon}
       {children}
     </button>
-  )
-}
-
-function ShiftSummaryModal({ title, session, summary, approval, busyKey, onClose, onApprove, onReject }: { title: string; session: ShiftSession; summary: ShiftSummary; approval?: boolean; busyKey: string; onClose: () => void; onApprove: () => void; onReject: () => void }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/45 px-4 py-8">
-      <div className="w-full max-w-4xl rounded-sm border bg-card shadow-xl">
-        <div className="flex items-start justify-between gap-4 border-b p-5">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-secondary">Shift handover</p>
-            <h2 className="mt-1 font-display text-2xl font-semibold">{title}</h2>
-            <p className="mt-1 text-sm text-muted-foreground">{session.employee.firstName} {session.employee.lastName} - {summary.from ? new Date(summary.from).toLocaleString() : ''}</p>
-          </div>
-          <button onClick={onClose} className="rounded-sm border px-3 py-1.5 text-sm font-semibold hover:bg-muted">Close</button>
-        </div>
-        <div className="space-y-5 p-5">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-            <ShiftMiniStat label="Hours" value={`${summary.hours.toFixed(2)}h`} />
-            <ShiftMiniStat label="Sales" value={formatKes(summary.totalSales)} />
-            <ShiftMiniStat label="Collected" value={formatKes(summary.totalPaid)} />
-            <ShiftMiniStat label="Credit" value={formatKes(summary.creditSales)} />
-            <ShiftMiniStat label="Complimentary" value={formatKes(summary.complimentaryTotal)} />
-          </div>
-          <ShiftSummaryTable title="Sales by payment method" empty="No payments collected.">
-            {summary.byPaymentMethod.map((m) => <tr key={m.name} className="border-t"><td className="px-3 py-2">{m.name}</td><td className="px-3 py-2 text-right">{m.count}</td><td className="px-3 py-2 text-right font-semibold">{formatKes(m.total)}</td></tr>)}
-          </ShiftSummaryTable>
-          <ShiftSummaryTable title="Transactions" empty="No transactions recorded.">
-            {summary.transactions.map((t) => (
-              <tr key={t.id} className="border-t">
-                <td className="px-3 py-2">
-                  <p className="font-semibold">{t.reference || t.transactionNo}</p>
-                  {t.reference && <p className="text-[11px] text-muted-foreground">Txn {t.transactionNo}</p>}
-                </td>
-                <td className="px-3 py-2">{t.paymentMethod ?? t.source}</td>
-                <td className="px-3 py-2">{new Date(t.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
-                <td className={cn('px-3 py-2 text-right font-semibold', t.direction === 'IN' ? 'text-success' : 'text-destructive')}>{t.direction === 'IN' ? '+' : '-'}{formatKes(t.amount)}</td>
-              </tr>
-            ))}
-          </ShiftSummaryTable>
-          <ShiftSummaryTable title="Sales" empty="No sales recorded.">
-            {summary.sales.map((s) => <tr key={s.id} className="border-t"><td className="px-3 py-2">#{s.orderNumber}</td><td className="px-3 py-2">{s.saleType === 'COMPLIMENTARY' ? `Complementary${s.complimentaryRecipientName ? ` - ${s.complimentaryRecipientName}` : ''}` : s.paymentStatus}</td><td className="px-3 py-2">{new Date(s.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td><td className="px-3 py-2 text-right font-semibold">{formatKes(s.total)}</td></tr>)}
-          </ShiftSummaryTable>
-        </div>
-        {approval && (
-          <div className="flex flex-wrap justify-end gap-2 border-t p-5">
-            <button disabled={busyKey === `${session.id}:reject-end`} onClick={onReject} className="inline-flex items-center gap-2 rounded-sm border px-4 py-2 text-sm font-semibold hover:bg-muted disabled:opacity-60">{busyKey === `${session.id}:reject-end` && <LuLoaderCircle className="size-4 animate-spin" />}Reject</button>
-            <button disabled={busyKey === `${session.id}:approve-end`} onClick={onApprove} className="inline-flex items-center gap-2 rounded-sm bg-success px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">{busyKey === `${session.id}:approve-end` && <LuLoaderCircle className="size-4 animate-spin" />}Mark cleared and end shift</button>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function ShiftMiniStat({ label, value }: { label: string; value: string }) {
-  return <div className="rounded-sm border bg-muted/30 p-3"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 font-semibold tabular-nums">{value}</p></div>
-}
-
-function ShiftSummaryTable({ title, empty, children }: { title: string; empty: string; children: ReactNode[] }) {
-  return (
-    <div className="overflow-hidden rounded-sm border">
-      <div className="bg-muted/40 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</div>
-      {children.length === 0 ? <p className="p-3 text-sm text-muted-foreground">{empty}</p> : <div className="max-h-56 overflow-y-auto"><table className="w-full text-left text-sm"><tbody>{children}</tbody></table></div>}
-    </div>
   )
 }
 

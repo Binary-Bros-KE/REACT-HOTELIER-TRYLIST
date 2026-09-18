@@ -3,6 +3,7 @@ import { LuChevronLeft, LuChevronRight, LuCircleAlert, LuFileText, LuLoaderCircl
 import { api } from '@/lib/api'
 import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
+import ShiftSummaryModal, { formatKes, type ShiftSession as FullShiftSession, type ShiftSummary } from '@/components/shifts/ShiftSummaryModal'
 
 type Employee = { id: string; firstName: string; lastName: string; jobTitle: string; status: string }
 type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'LATE' | 'ON_LEAVE'
@@ -10,8 +11,8 @@ type AttendanceRecord = { employeeId: string; date: string; status: AttendanceSt
 type ShiftSession = { id: string; employeeId: string; status: string; requestedStartAt: string; approvedStartAt: string | null; approvedEndAt: string | null }
 type EmployeeReport = {
   employee: Employee
-  totals: { shifts: number; hours: number; sales: number; paid: number; creditSales: number }
-  sessions: { id: string; approvedStartAt: string | null; approvedEndAt: string | null; summary: { byPaymentMethod: { name: string; total: number }[] } }[]
+  totals: { shifts: number; rejected: number; hours: number; sales: number; paid: number; creditSales: number }
+  sessions: (FullShiftSession & { summary: ShiftSummary | null })[]
 }
 
 const STATUS_ORDER: AttendanceStatus[] = ['PRESENT', 'ABSENT', 'LATE', 'ON_LEAVE']
@@ -60,6 +61,7 @@ export default function Attendance() {
   const [records, setRecords] = useState<Map<string, AttendanceRecord>>(new Map())
   const [shiftSessions, setShiftSessions] = useState<ShiftSession[]>([])
   const [report, setReport] = useState<EmployeeReport | null>(null)
+  const [selectedSummary, setSelectedSummary] = useState<{ title: string; session: FullShiftSession; summary: ShiftSummary } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [savingKey, setSavingKey] = useState<string | null>(null)
@@ -202,25 +204,50 @@ export default function Attendance() {
           <div className="w-full max-w-2xl rounded-sm border bg-card p-6 shadow-2xl">
             <p className="text-sm font-semibold text-secondary">Employee report</p>
             <h2 className="mt-1 font-display text-2xl font-semibold">{report.employee.firstName} {report.employee.lastName}</h2>
-            <div className="mt-4 grid gap-3 sm:grid-cols-4">
+            <div className="mt-4 grid gap-3 sm:grid-cols-5">
               <Mini label="Shifts" value={String(report.totals.shifts)} />
+              <Mini label="Rejected" value={String(report.totals.rejected)} />
               <Mini label="Hours" value={report.totals.hours.toFixed(1)} />
               <Mini label="Sales" value={`KSh ${Math.round(report.totals.sales).toLocaleString()}`} />
               <Mini label="Credit" value={`KSh ${Math.round(report.totals.creditSales).toLocaleString()}`} />
             </div>
             <div className="mt-4 max-h-72 overflow-y-auto rounded-sm border">
-              {report.sessions.length === 0 ? <p className="p-6 text-center text-sm text-muted-foreground">No ended shifts in this period.</p> : report.sessions.map((s) => (
-                <div key={s.id} className="border-t p-3 first:border-t-0">
-                  <p className="text-sm font-semibold">{s.approvedStartAt ? new Date(s.approvedStartAt).toLocaleString() : 'Shift'} - {s.approvedEndAt ? new Date(s.approvedEndAt).toLocaleString() : 'open'}</p>
-                  <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                    {s.summary.byPaymentMethod.map((m) => <span key={m.name} className="rounded-sm border px-2 py-1">{m.name}: KSh {Math.round(m.total).toLocaleString()}</span>)}
-                  </div>
-                </div>
-              ))}
+              {report.sessions.length === 0 ? <p className="p-6 text-center text-sm text-muted-foreground">No shifts in this period.</p> : report.sessions.map((s) => {
+                const rejected = s.status === 'REJECTED_START' || s.status === 'REJECTED_END'
+                const clickable = Boolean(s.summary)
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    disabled={!clickable}
+                    onClick={() => s.summary && setSelectedSummary({ title: `${report.employee.firstName}'s shift summary`, session: s, summary: s.summary })}
+                    className={cn('block w-full border-t p-3 text-left first:border-t-0', clickable && 'transition hover:bg-muted/50')}
+                  >
+                    <p className="flex items-center gap-2 text-sm font-semibold">
+                      {s.approvedStartAt ? new Date(s.approvedStartAt).toLocaleString() : 'Shift'} - {s.approvedEndAt ? new Date(s.approvedEndAt).toLocaleString() : rejected ? 'rejected' : 'open'}
+                      {rejected && <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-destructive">Rejected</span>}
+                    </p>
+                    {rejected && <p className="mt-1 text-xs text-destructive">{s.rejectionReason || 'No reason given'}</p>}
+                    {s.summary && (
+                      <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                        {s.summary.byPaymentMethod.map((m) => <span key={m.name} className="rounded-sm border px-2 py-1">{m.name}: {formatKes(m.total)}</span>)}
+                      </div>
+                    )}
+                  </button>
+                )
+              })}
             </div>
             <div className="mt-5 flex justify-end"><button onClick={() => setReport(null)} className="rounded-sm border px-4 py-2 text-sm font-semibold hover:bg-muted">Close</button></div>
           </div>
         </div>
+      )}
+      {selectedSummary && (
+        <ShiftSummaryModal
+          title={selectedSummary.title}
+          session={selectedSummary.session}
+          summary={selectedSummary.summary}
+          onClose={() => setSelectedSummary(null)}
+        />
       )}
     </div>
   )
