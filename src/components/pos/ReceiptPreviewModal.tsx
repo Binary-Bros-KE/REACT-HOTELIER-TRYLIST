@@ -5,6 +5,7 @@ import { useToast } from '@/components/ui/Toast'
 import { receiptToText, shareReceipt } from '@/lib/receipt'
 import { printReceipt } from '@/lib/thermalPrinter'
 import OrderReceipt, { type ReceiptOrder, type ReceiptProfile } from './OrderReceipt'
+import { usePrintJobWatcher, PrintJobStatusBar } from './PrintJobStatus'
 
 /**
  * Read-only receipt preview for an order, with Print + Share at the bottom.
@@ -24,6 +25,7 @@ export default function ReceiptPreviewModal({
   const [error, setError] = useState('')
   const [printing, setPrinting] = useState(false)
   const [sharing, setSharing] = useState(false)
+  const printJob = usePrintJobWatcher()
 
   useEffect(() => {
     let alive = true
@@ -41,7 +43,10 @@ export default function ReceiptPreviewModal({
     try {
       const result = await printReceipt(order, profile)
       if (result.method === 'thermal') toast.success('Receipt sent to printer')
-      else if (result.method === 'relay') toast.success('Sent to the printer — printing shortly')
+      else if (result.method === 'relay') {
+        toast.success('Sent to the printer — printing shortly')
+        if (result.jobId) printJob.watch(result.jobId)
+      }
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : 'Could not print the receipt')
     } finally {
@@ -84,21 +89,24 @@ export default function ReceiptPreviewModal({
           )}
         </div>
 
-        <div className="flex items-center gap-2 border-t p-3 print:hidden">
-          <button
-            onClick={onPrint}
-            disabled={!order || printing}
-            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-sm bg-primary px-3 py-2.5 text-xs font-bold text-primary-foreground disabled:opacity-50"
-          >
-            {printing ? <LuLoaderCircle className="size-3.5 animate-spin" /> : <LuPrinter className="size-3.5" />} Print
-          </button>
-          <button
-            onClick={onShare}
-            disabled={!order || sharing}
-            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-sm bg-accent px-3 py-2.5 text-xs font-bold text-accent-foreground disabled:opacity-50"
-          >
-            {sharing ? <LuLoaderCircle className="size-3.5 animate-spin" /> : <LuShare2 className="size-3.5" />} Share
-          </button>
+        <div className="border-t p-3 print:hidden">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onPrint}
+              disabled={!order || printing}
+              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-sm bg-primary px-3 py-2.5 text-xs font-bold text-primary-foreground disabled:opacity-50"
+            >
+              {printing ? <LuLoaderCircle className="size-3.5 animate-spin" /> : <LuPrinter className="size-3.5" />} Print
+            </button>
+            <button
+              onClick={onShare}
+              disabled={!order || sharing}
+              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-sm bg-accent px-3 py-2.5 text-xs font-bold text-accent-foreground disabled:opacity-50"
+            >
+              {sharing ? <LuLoaderCircle className="size-3.5 animate-spin" /> : <LuShare2 className="size-3.5" />} Share
+            </button>
+          </div>
+          <PrintJobStatusBar watcher={printJob} />
         </div>
       </div>
     </div>

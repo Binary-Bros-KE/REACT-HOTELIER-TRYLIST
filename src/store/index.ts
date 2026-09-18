@@ -1,12 +1,14 @@
 import { configureStore } from '@reduxjs/toolkit'
 import authReducer from '@/store/authSlice'
 import tenantReducer from '@/store/tenantSlice'
+import printJobsReducer from '@/store/printJobsSlice'
 import { setSessionSnapshot } from '@/lib/session'
 
 export const store = configureStore({
   reducer: {
     auth: authReducer,
     tenant: tenantReducer,
+    printJobs: printJobsReducer,
   },
 })
 

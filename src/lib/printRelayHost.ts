@@ -1,9 +1,10 @@
 import { useEffect, useRef } from 'react'
-import { useAppSelector } from '@/store/hooks'
+import { useAppSelector, useAppDispatch } from '@/store/hooks'
 import { api } from '@/lib/api'
 import { getThermalSettings, buildReceiptBytes, sendLocal } from '@/lib/thermalPrinter'
 import { listPendingPrintJobs, claimPrintJob, completePrintJob, failPrintJob } from '@/lib/printRelay'
 import type { ReceiptOrder, ReceiptProfile } from '@/components/pos/OrderReceipt'
+import { setPrintJobCounts } from '@/store/printJobsSlice'
 
 const POLL_MS = 3000
 
@@ -20,6 +21,7 @@ const POLL_MS = 3000
  * as long as this tab stays open — not tied to any one POS page.
  */
 export function usePrintRelayHost(): void {
+  const dispatch = useAppDispatch()
   const user = useAppSelector((s) => s.auth.user)
   const locationId = user?.locations.length === 1 ? user.locations[0].id : (user?.defaultLocation?.id ?? null)
   const profileRef = useRef<ReceiptProfile | undefined>(undefined)
@@ -34,10 +36,14 @@ export function usePrintRelayHost(): void {
     async function tick() {
       if (cancelled || runningRef.current) return
       const s = getThermalSettings()
-      if (!s.enabled || s.connection === 'relay' || s.connection === 'dialog') return
+      if (!s.enabled || s.connection === 'relay' || s.connection === 'dialog') {
+        dispatch(setPrintJobCounts({ pendingCount: 0, nudgedCount: 0 }))
+        return
+      }
       runningRef.current = true
       try {
         const jobs = await listPendingPrintJobs(locationId!)
+        dispatch(setPrintJobCounts({ pendingCount: jobs.length, nudgedCount: jobs.filter((j) => j.nudgedAt).length }))
         for (const job of jobs) {
           if (cancelled) break
           const claimed = await claimPrintJob(job.id)
@@ -62,6 +68,6 @@ export function usePrintRelayHost(): void {
       }
     }
 
-    return () => { cancelled = true; window.clearInterval(timer) }
-  }, [locationId])
+    return () => { cancelled = true; window.clearInterval(timer); dispatch(setPrintJobCounts({ pendingCount: 0, nudgedCount: 0 })) }
+  }, [locationId, dispatch])
 }

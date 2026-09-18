@@ -8,6 +8,7 @@ import CustomerSelectModal, { type SaleParty } from '@/components/pos/CustomerSe
 import OrderReceipt, { type ReceiptOrder, type ReceiptProfile } from './OrderReceipt'
 import { printReceipt } from '@/lib/thermalPrinter'
 import { receiptToText, shareReceipt } from '@/lib/receipt'
+import { usePrintJobWatcher, PrintJobStatusBar } from './PrintJobStatus'
 
 type PaymentMethod = { id: string; name: string; requiresReference: boolean }
 type CheckedInStay = { id: string; reservationNo: string; customer: { firstName: string; lastName: string | null }; room: { number: string } }
@@ -57,6 +58,7 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, profile
   const [error, setError] = useState('')
   const [printing, setPrinting] = useState(false)
   const [sharing, setSharing] = useState(false)
+  const printJob = usePrintJobWatcher()
 
   async function handlePrint() {
     if (!order || printing) return
@@ -64,7 +66,10 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, profile
     try {
       const result = await printReceipt(order, profile)
       if (result.method === 'thermal') toast.success('Receipt sent to printer')
-      else if (result.method === 'relay') toast.success('Sent to the printer — printing shortly')
+      else if (result.method === 'relay') {
+        toast.success('Sent to the printer — printing shortly')
+        if (result.jobId) printJob.watch(result.jobId)
+      }
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : 'Could not print the receipt')
     } finally {
@@ -341,21 +346,24 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, profile
               <div className="mt-4 -mx-6 border-y bg-muted/20">
                 <OrderReceipt order={order} profile={profile} />
               </div>
-              <div className="mt-1 flex items-center gap-2 border-b pb-4">
-                <button
-                  onClick={() => void handlePrint()}
-                  disabled={printing}
-                  className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-sm bg-primary px-3 py-2.5 text-xs font-bold text-primary-foreground disabled:opacity-50"
-                >
-                  {printing ? <LuLoaderCircle className="size-3.5 animate-spin" /> : <LuPrinter className="size-3.5" />} Print
-                </button>
-                <button
-                  onClick={() => void handleShare()}
-                  disabled={sharing}
-                  className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-sm bg-accent px-3 py-2.5 text-xs font-bold text-accent-foreground disabled:opacity-50"
-                >
-                  {sharing ? <LuLoaderCircle className="size-3.5 animate-spin" /> : <LuShare2 className="size-3.5" />} Share
-                </button>
+              <div className="mt-1 border-b pb-4">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => void handlePrint()}
+                    disabled={printing}
+                    className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-sm bg-primary px-3 py-2.5 text-xs font-bold text-primary-foreground disabled:opacity-50"
+                  >
+                    {printing ? <LuLoaderCircle className="size-3.5 animate-spin" /> : <LuPrinter className="size-3.5" />} Print
+                  </button>
+                  <button
+                    onClick={() => void handleShare()}
+                    disabled={sharing}
+                    className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-sm bg-accent px-3 py-2.5 text-xs font-bold text-accent-foreground disabled:opacity-50"
+                  >
+                    {sharing ? <LuLoaderCircle className="size-3.5 animate-spin" /> : <LuShare2 className="size-3.5" />} Share
+                  </button>
+                </div>
+                <PrintJobStatusBar watcher={printJob} />
               </div>
 
               <div className="mt-4 flex justify-between border-b pb-4 text-base">

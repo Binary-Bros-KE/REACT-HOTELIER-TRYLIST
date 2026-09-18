@@ -7,6 +7,7 @@ import LicenseBanner from '@/components/layout/LicenseBanner'
 import { useAppSelector } from '@/store/hooks'
 import { resolveLogoUrl } from '@/lib/api'
 import { usePrintRelayHost } from '@/lib/printRelayHost'
+import PrintJobsBadge from '@/components/pos/PrintJobsBadge'
 
 export default function AppShell() {
   const [mobileNav, setMobileNav] = useState(false)
@@ -78,6 +79,7 @@ export default function AppShell() {
           className="size-6 shrink-0 rounded-sm object-contain"
         />
         <span className="font-display text-sm font-extrabold tracking-tight">HOTELIER</span>
+        <PrintJobsBadge className="ml-auto" />
         <button
           type="button"
           onClick={() => window.location.reload()}

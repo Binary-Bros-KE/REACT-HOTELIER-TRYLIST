@@ -10,21 +10,28 @@ import { api } from '@/lib/api'
  */
 
 export type PrintJobStatus = 'PENDING' | 'CLAIMED' | 'DONE' | 'FAILED'
-export type PendingPrintJob = { id: string; orderId: string; createdAt: string }
+export type PendingPrintJob = { id: string; orderId: string; createdAt: string; nudgedAt: string | null }
 
 export async function createPrintJob(orderId: string): Promise<{ id: string; status: PrintJobStatus }> {
   const response = await api<{ job: { id: string; status: PrintJobStatus; createdAt: string } }>(`/pos/orders/${orderId}/print-jobs`, { method: 'POST', body: '{}' })
   return response.job
 }
 
-export async function getPrintJobStatus(id: string): Promise<{ id: string; status: PrintJobStatus; error: string | null }> {
-  const response = await api<{ job: { id: string; status: PrintJobStatus; error: string | null } }>(`/pos/print-jobs/${id}`)
+export async function getPrintJobStatus(id: string): Promise<{ id: string; status: PrintJobStatus; error: string | null; nudgedAt: string | null }> {
+  const response = await api<{ job: { id: string; status: PrintJobStatus; error: string | null; nudgedAt: string | null } }>(`/pos/print-jobs/${id}`)
   return response.job
 }
 
 export async function listPendingPrintJobs(locationId: string): Promise<PendingPrintJob[]> {
   const response = await api<{ jobs: PendingPrintJob[] }>(`/pos/print-jobs/pending?locationId=${locationId}`)
   return response.jobs
+}
+
+/** Flags a still-pending job as taking a while — surfaced to whichever
+ * device is polling /pending. Throws (caller should ignore/toast) once the
+ * job has already finished, which the server reports as 409. */
+export async function nudgePrintJob(id: string): Promise<void> {
+  await api(`/pos/print-jobs/${id}/nudge`, { method: 'POST', body: '{}' })
 }
 
 /** Atomically claims a job before printing it — returns null if another
