@@ -106,6 +106,9 @@ export default function ShiftSummaryModal({
   const flaggedMissingInfo = somethingOff && (!parsedVariance || Math.abs(parsedVariance) < 0.005 || !noteInput.trim())
   const decidedVariance = !approval && live.cashVariance != null ? Number(live.cashVariance) : null
   const decided = live.status === 'ENDED' || live.status === 'REJECTED_END'
+  // Everything in the Transactions table below, money in minus money out — set
+  // beside Sales so a missing or extra transaction stands out at a glance.
+  const transactionsNet = summary.transactions.reduce((sum, t) => sum + (t.direction === 'IN' ? t.amount : -t.amount), 0)
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/45 px-4 py-8">
@@ -136,9 +139,10 @@ export default function ShiftSummaryModal({
           )}
           {!approval && decided && canReview && <ReviewPanel session={live} onSaved={(next) => { setLive(next); onChanged?.() }} />}
           {!approval && decided && canSalary && <PayrollPanel session={live} onSaved={() => onChanged?.()} />}
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
             <ShiftMiniStat label="Hours" value={`${summary.hours.toFixed(2)}h`} />
-            <ShiftMiniStat label="Sales" value={formatKes(summary.totalSales)} />
+            <ShiftMiniStat label="Sales" value={formatKes(summary.totalSales)} hint={`${summary.sales.length} sale${summary.sales.length === 1 ? '' : 's'}`} />
+            <ShiftMiniStat label="Transactions" value={formatKes(transactionsNet)} hint={`${summary.transactions.length} transaction${summary.transactions.length === 1 ? '' : 's'}`} />
             <ShiftMiniStat label="Collected" value={formatKes(summary.totalPaid)} />
             <ShiftMiniStat label="Credit" value={formatKes(summary.creditSales)} />
             <ShiftMiniStat label="Complimentary" value={formatKes(summary.complimentaryTotal)} />
@@ -203,8 +207,8 @@ export default function ShiftSummaryModal({
   )
 }
 
-function ShiftMiniStat({ label, value }: { label: string; value: string }) {
-  return <div className="rounded-sm border bg-muted/30 p-3"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 font-semibold tabular-nums">{value}</p></div>
+function ShiftMiniStat({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  return <div className="rounded-sm border bg-muted/30 p-3"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 font-semibold tabular-nums">{value}</p>{hint && <p className="mt-0.5 text-[11px] text-muted-foreground">{hint}</p>}</div>
 }
 
 function ShiftSummaryTable({ title, empty, children }: { title: string; empty: string; children: ReactNode[] }) {

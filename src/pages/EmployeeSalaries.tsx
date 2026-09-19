@@ -188,7 +188,11 @@ export default function EmployeeSalaries() {
 
   function updateProcess(next: Partial<ProcessForm>) {
     const merged = { ...processForm, ...next }
-    const draft = existingDraft(merged.employeeId, merged.payPeriod)
+    // Only (re)load a saved draft when the employee or month being edited
+    // changes — doing it on every keystroke overwrote whatever was just typed
+    // (basic salary, lines, notes...) with the draft's stored values.
+    const targetChanged = 'employeeId' in next || 'payPeriod' in next
+    const draft = targetChanged ? existingDraft(merged.employeeId, merged.payPeriod) : undefined
     if (draft) {
       setProcessForm({
         ...merged,
