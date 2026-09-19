@@ -4,6 +4,7 @@ import { api, hasApiTenant } from '@/lib/api'
 import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
 import { packAndUnit } from '@/components/ui/PackQtyInput'
+import MenuLedgerPanel from '@/pages/MenuLedger'
 
 type MoveType =
   | 'OPENING_STOCK' | 'PURCHASE' | 'SALE' | 'TRANSFER_IN' | 'TRANSFER_OUT' | 'RETURN'
@@ -53,7 +54,7 @@ const money = (v: number) => `KSh ${v.toLocaleString('en-KE', { minimumFractionD
 const THIS_YEAR = new Date().getFullYear()
 const YEARS = Array.from({ length: 6 }, (_, i) => THIS_YEAR - i)
 
-export default function StockLedger() {
+function StockMovementsPanel() {
   const toast = useToast()
   const [entries, setEntries] = useState<Entry[]>([])
   const [pagination, setPagination] = useState<Pagination>({ page: 1, pageSize: 50, total: 0, pages: 1 })
@@ -111,7 +112,7 @@ export default function StockLedger() {
   }
 
   return (
-    <div className="mx-auto max-w-[1400px] px-6 py-8 sm:px-8 lg:px-10">
+    <div>
       <header className="flex items-center gap-3">
         <span className="flex size-10 items-center justify-center rounded-sm bg-secondary/10 text-secondary"><LuBookOpen className="size-5" /></span>
         <div>
@@ -238,6 +239,30 @@ export default function StockLedger() {
           </div>
         )}
       </section>
+    </div>
+  )
+}
+
+// Two ledgers, one page: what was sold at menu level (a pizza), and what that
+// did to stock (flour, oil, cheese).
+export default function StockLedger() {
+  const [view, setView] = useState<'STOCK' | 'MENU'>('STOCK')
+  return (
+    <div className="mx-auto max-w-[1400px] px-6 py-8 sm:px-8 lg:px-10">
+      <div className="mb-6 inline-flex rounded-sm border p-0.5">
+        {([['STOCK', 'Stock Ledger'], ['MENU', 'Menu Ledger']] as const).map(([key, label]) => (
+          <button key={key} onClick={() => setView(key)} className={cn('rounded-sm px-4 py-2 text-sm font-semibold transition', view === key ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}>{label}</button>
+        ))}
+      </div>
+      {view === 'STOCK' ? <StockMovementsPanel /> : (
+        <div>
+          <header className="flex items-center gap-3">
+            <span className="flex size-10 items-center justify-center rounded-sm bg-secondary/10 text-secondary"><LuBookOpen className="size-5" /></span>
+            <h1 className="font-display text-3xl font-semibold">Menu Ledger</h1>
+          </header>
+          <MenuLedgerPanel />
+        </div>
+      )}
     </div>
   )
 }
