@@ -14,6 +14,7 @@ import {
 } from 'react-icons/lu'
 
 import Button from '@/components/ui/Button'
+import ConfirmModal from '@/components/ui/ConfirmModal'
 import StatCard from '@/components/ui/StatCard'
 import { useToast } from '@/components/ui/Toast'
 import { api } from '@/lib/api'
@@ -56,6 +57,7 @@ type Salary = {
   basicSalary: string | number
   totalAllowances: string | number
   totalDeductions: string | number
+  carriedOverAmount?: string | number
   grossPay: string | number
   netPay: string | number
   paymentMethod: PaymentMethod | null
@@ -76,7 +78,7 @@ type Summary = {
   byStatus: { status: SalaryStatus; count: number; netPay: number }[]
 }
 
-type LineDraft = { label: string; amount: string }
+type LineDraft = { id?: string; label: string; amount: string }
 type ProcessForm = {
   employeeId: string
   payPeriod: string
@@ -134,6 +136,9 @@ export default function EmployeeSalaries() {
   const [detail, setDetail] = useState<Salary | null>(null)
   const [advanceForm, setAdvanceForm] = useState({ employeeId: '', payPeriod: monthValue(), deductions: [{ label: `Advance - ${todayLabel()}`, amount: '' }], notes: '' })
   const [processForm, setProcessForm] = useState<ProcessForm>(emptyProcess())
+  // Completing a salary whose deductions exceed its gross pay: ask before
+  // pushing the excess onto next month.
+  const [carryPrompt, setCarryPrompt] = useState<{ excess: number; gross: number; deductions: number; monthName: string; retry: () => Promise<void> } | null>(null)
   const [newItem, setNewItem] = useState<{ type: ItemType; label: string; amount: string }>({ type: 'DEDUCTION', label: '', amount: '' })
   const [completeForm, setCompleteForm] = useState<{ paymentMethod: PaymentMethod | ''; reference: string; notes: string }>({ paymentMethod: '', reference: '', notes: '' })
 
@@ -188,8 +193,8 @@ export default function EmployeeSalaries() {
       setProcessForm({
         ...merged,
         basicSalary: String(Number(draft.basicSalary) || ''),
-        allowances: draft.items.filter((item) => item.type === 'ALLOWANCE').map((item) => ({ label: item.label, amount: String(item.amount) })),
-        deductions: draft.items.filter((item) => item.type === 'DEDUCTION').map((item) => ({ label: item.label, amount: String(item.amount) })),
+        allowances: draft.items.filter((item) => item.type === 'ALLOWANCE').map((item) => ({ id: item.id, label: item.label, amount: String(item.amount) })),
+        deductions: draft.items.filter((item) => item.type === 'DEDUCTION').map((item) => ({ id: item.id, label: item.label, amount: String(item.amount) })),
         paymentMethod: draft.paymentMethod ?? merged.paymentMethod,
         reference: draft.reference ?? merged.reference,
         notes: draft.notes ?? merged.notes,
@@ -217,8 +222,8 @@ export default function EmployeeSalaries() {
           employeeId: salary.employeeId,
           payPeriod: salary.payPeriod.slice(0, 7),
           basicSalary: String(Number(salary.basicSalary) || ''),
-          allowances: salary.items.filter((item) => item.type === 'ALLOWANCE').map((item) => ({ label: item.label, amount: String(item.amount) })),
-          deductions: salary.items.filter((item) => item.type === 'DEDUCTION').map((item) => ({ label: item.label, amount: String(item.amount) })),
+          allowances: salary.items.filter((item) => item.type === 'ALLOWANCE').map((item) => ({ id: item.id, label: item.label, amount: String(item.amount) })),
+          deductions: salary.items.filter((item) => item.type === 'DEDUCTION').map((item) => ({ id: item.id, label: item.label, amount: String(item.amount) })),
           paymentMethod: salary.paymentMethod ?? salary.employee.paymentMethod ?? '',
           reference: salary.reference ?? '',
           notes: salary.notes ?? '',
@@ -257,7 +262,7 @@ export default function EmployeeSalaries() {
     }
   }
 
-  async function processSalary(complete: boolean) {
+  async function processSalary(complete: boolean, carryOverDeductions = false) {
     setSaving(true)
     setError('')
     setNotice('')
@@ -272,13 +277,15 @@ export default function EmployeeSalaries() {
           deductions: cleanLines(processForm.deductions),
           paymentMethod: processForm.paymentMethod || undefined,
           complete,
+          carryOverDeductions,
         }),
       })
-      setNotice(complete ? 'Salary completed and payment recorded.' : 'Salary draft saved.')
+      setNotice(complete ? (carryOverDeductions ? 'Salary completed; excess deductions carried to next month.' : 'Salary completed and payment recorded.') : 'Salary draft saved.')
       toast.success(complete ? 'Salary completed.' : 'Salary draft saved.')
       setProcessOpen(false)
       await loadSalaries()
     } catch (cause) {
+      if (askToCarryOver(cause, processForm.payPeriod, () => processSalary(true, true))) return
       const message = cause instanceof Error ? cause.message : 'Could not save salary'
       setError(message)
       toast.error(message)
@@ -317,16 +324,26 @@ export default function EmployeeSalaries() {
     }
   }
 
-  async function completeDraft(event: FormEvent) {
+  function askToCarryOver(cause: unknown, payPeriod: string, retry: () => Promise<void>) {
+    const failure = cause as { code?: string; data?: { excess: number; gross: number; deductions: number } }
+    if (failure.code !== 'DEDUCTIONS_EXCEED' || !failure.data) return false
+    const [year, month] = payPeriod.split('-').map(Number)
+    const monthName = new Date(year, month, 1).toLocaleDateString('en-KE', { month: 'long', year: 'numeric' })
+    setCarryPrompt({ excess: failure.data.excess, gross: failure.data.gross, deductions: failure.data.deductions, monthName, retry })
+    return true
+  }
+
+  async function completeDraft(event: FormEvent, carryOverDeductions = false) {
     event.preventDefault()
     if (!detail) return
     setSaving(true)
     try {
-      const response = await api<{ salary: Salary }>(`/employee-salaries/${detail.id}/complete`, { method: 'POST', body: JSON.stringify(completeForm) })
+      const response = await api<{ salary: Salary }>(`/employee-salaries/${detail.id}/complete`, { method: 'POST', body: JSON.stringify({ ...completeForm, carryOverDeductions }) })
       setDetail(response.salary)
-      toast.success('Salary completed.')
+      toast.success(carryOverDeductions ? 'Salary completed; excess deductions carried to next month.' : 'Salary completed.')
       await loadSalaries()
     } catch (cause) {
+      if (askToCarryOver(cause, detail.payPeriod.slice(0, 7), () => completeDraft(event, true))) return
       toast.error(cause instanceof Error ? cause.message : 'Could not complete salary')
     } finally {
       setSaving(false)
@@ -443,6 +460,18 @@ export default function EmployeeSalaries() {
         )}
       </section>
 
+      <ConfirmModal
+        open={carryPrompt !== null}
+        tone="warning"
+        title="Deductions exceed basic salary"
+        message={carryPrompt ? `Deductions (${money(carryPrompt.deductions)}) are ${money(carryPrompt.excess)} more than this month's pay (${money(carryPrompt.gross)}). Do you wish to carry the extra ${money(carryPrompt.excess)} over to ${carryPrompt.monthName}?` : undefined}
+        confirmLabel="Carry over deductions"
+        cancelLabel="Not now"
+        loading={saving}
+        onCancel={() => setCarryPrompt(null)}
+        onConfirm={() => { const prompt = carryPrompt; setCarryPrompt(null); if (prompt) void prompt.retry() }}
+      />
+
       {advanceOpen && (
         <Modal title="Record Salary Advance" subtitle="Opens a draft payslip with this as a deduction. Nothing is paid out from here, and the full payslip is completed later at month-end." onClose={() => setAdvanceOpen(false)}>
           <form onSubmit={recordAdvance} className="space-y-5">
@@ -512,6 +541,7 @@ export default function EmployeeSalaries() {
               <SummaryCell label="Allowances" value={money(detail.totalAllowances)} />
               <SummaryCell label="Deductions" value={money(detail.totalDeductions)} />
               <SummaryCell label="Net pay" value={money(detail.netPay)} strong />
+              {Number(detail.carriedOverAmount ?? 0) > 0 && <SummaryCell label="Carried to next month" value={money(detail.carriedOverAmount ?? 0)} />}
             </div>
             <div className="overflow-hidden rounded-sm border">
               <table className="w-full text-left text-sm">
@@ -578,7 +608,7 @@ export default function EmployeeSalaries() {
 }
 
 function cleanLines(lines: LineDraft[]) {
-  return lines.filter((line) => line.label.trim() && Number(line.amount) > 0).map((line) => ({ label: line.label.trim(), amount: Number(line.amount) }))
+  return lines.filter((line) => line.label.trim() && Number(line.amount) > 0).map((line) => ({ ...(line.id ? { id: line.id } : {}), label: line.label.trim(), amount: Number(line.amount) }))
 }
 
 function sumLines(lines: LineDraft[]) {

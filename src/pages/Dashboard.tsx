@@ -1522,20 +1522,23 @@ function ShiftControl({ onReady }: { onReady: (ready: boolean) => void }) {
           approval={selectedSummary.approval}
           busyKey={busyKey}
           onClose={() => setSelectedSummary(null)}
-          onApprove={(cashVariance) => setConfirmAction({
-            title: 'Are you sure you want to approve this shift end?',
-            message: `${selectedSummary.session.employee.firstName} ${selectedSummary.session.employee.lastName}'s shift will be marked cleared and ended.`,
-            confirmLabel: 'Mark cleared and end shift',
+          onChanged={() => void load()}
+          onApprove={(decision) => setConfirmAction({
+            title: decision.cashVariance ? 'End this shift with a discrepancy?' : 'Are you sure you want to approve this shift end?',
+            message: decision.cashVariance
+              ? `${selectedSummary.session.employee.firstName} ${selectedSummary.session.employee.lastName}'s shift will end, with ${formatKes(Math.abs(decision.cashVariance))} ${decision.cashVariance > 0 ? 'over' : 'short'} recorded on it.`
+              : `${selectedSummary.session.employee.firstName} ${selectedSummary.session.employee.lastName}'s shift will be marked cleared and ended.`,
+            confirmLabel: decision.cashVariance ? 'End shift with discrepancy' : 'Mark cleared and end shift',
             busyKey: `${selectedSummary.session.id}:approve-end`,
-            run: () => post(`/shifts/${selectedSummary.session.id}/end-approval`, { action: 'APPROVE', cashVariance }, `${selectedSummary.session.id}:approve-end`).then((ok) => { if (ok) setSelectedSummary(null); return ok }),
+            run: () => post(`/shifts/${selectedSummary.session.id}/end-approval`, { action: 'APPROVE', ...decision }, `${selectedSummary.session.id}:approve-end`).then((ok) => { if (ok) setSelectedSummary(null); return ok }),
           })}
-          onReject={(cashVariance) => setConfirmAction({
+          onReject={(decision) => setConfirmAction({
             title: 'Reject this shift end?',
             message: `${selectedSummary.session.employee.firstName} ${selectedSummary.session.employee.lastName}'s end request will be rejected.`,
             confirmLabel: 'Reject',
             tone: 'danger',
             busyKey: `${selectedSummary.session.id}:reject-end`,
-            run: () => post(`/shifts/${selectedSummary.session.id}/end-approval`, { action: 'REJECT', cashVariance }, `${selectedSummary.session.id}:reject-end`).then((ok) => { if (ok) setSelectedSummary(null); return ok }),
+            run: () => post(`/shifts/${selectedSummary.session.id}/end-approval`, { action: 'REJECT', ...decision }, `${selectedSummary.session.id}:reject-end`).then((ok) => { if (ok) setSelectedSummary(null); return ok }),
           })}
         />
       )}

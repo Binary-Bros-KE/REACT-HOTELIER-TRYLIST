@@ -246,6 +246,7 @@ export default function Attendance() {
           title={selectedSummary.title}
           session={selectedSummary.session}
           summary={selectedSummary.summary}
+          onChanged={() => { if (report) void openReport(report.employee) }}
           onClose={() => setSelectedSummary(null)}
         />
       )}

@@ -26,10 +26,12 @@ type Capability =
   | 'POS_APPROVE_CANCELLATION' | 'POS_APPROVE_COUNTER' | 'POS_VIEW_ALL_ORDERS'
   | 'SHIFT_MANAGE' | 'ATTENDANCE_MANAGE' | 'SHIFT_EXEMPT'
   | 'REQUISITION_CREATE' | 'REQUISITION_APPROVE'
+  | 'SHIFT_REVIEW' | 'SALARY_MANAGE'
 const capabilities: Capability[] = [
   'POS_APPROVE_CANCELLATION', 'POS_APPROVE_COUNTER', 'POS_VIEW_ALL_ORDERS',
   'SHIFT_MANAGE', 'ATTENDANCE_MANAGE', 'SHIFT_EXEMPT',
   'REQUISITION_CREATE', 'REQUISITION_APPROVE',
+  'SHIFT_REVIEW', 'SALARY_MANAGE',
 ]
 const capabilityLabels: Record<Capability, { label: string; hint: string }> = {
   POS_APPROVE_CANCELLATION: { label: 'Approve order cancellations', hint: 'Decide a waiter’s cancellation request (Sales ▸ Approvals) — approve or reject it.' },
@@ -40,6 +42,8 @@ const capabilityLabels: Record<Capability, { label: string; hint: string }> = {
   SHIFT_EXEMPT: { label: 'Sign in outside shift hours', hint: 'This role can use the system anytime, regardless of any employee’s assigned shift — for owners/managers/accountants who aren’t shift workers. A Super Admin always has this, implicitly.' },
   REQUISITION_CREATE: { label: 'Raise purchase requisitions', hint: 'Create, edit, submit, and cancel a purchase requisition (Inventory ▸ Purchase Requisitions) — product and quantity only, never cost.' },
   REQUISITION_APPROVE: { label: 'Approve requisitions & convert to purchase', hint: 'Set the estimated cost on a submitted requisition, approve or reject it, and convert an approved one into a Purchase order. Reaches Purchase Requisitions even without Inventory section access.' },
+  SHIFT_REVIEW: { label: 'Review & correct shift outcomes', hint: 'Change a finished shift from cleared to rejected (or back), and record or fix its cash discrepancy with a reason — for HR or whoever handles shift disputes.' },
+  SALARY_MANAGE: { label: 'Record salary deductions & allowances', hint: 'Add a deduction or allowance to an employee’s monthly salary — including from a shift discrepancy — creating the month’s draft if it doesn’t exist yet.' },
 }
 
 type Role = {

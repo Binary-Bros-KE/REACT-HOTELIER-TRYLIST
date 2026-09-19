@@ -30,7 +30,9 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (response.status === 204) return undefined as T
   const data = await response.json() as T & { error?: string; code?: string }
   if (!response.ok) {
-    throw new Error(data.error ?? 'The request failed')
+    // Keep the machine-readable code (and any extra fields) so a caller can
+    // react to a specific refusal — e.g. ask "carry over?" instead of just toasting.
+    throw Object.assign(new Error(data.error ?? 'The request failed'), { code: data.code, data })
   }
   return data
 }
