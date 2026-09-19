@@ -155,6 +155,10 @@ export default function Approvals() {
   const returnGroups = useMemo(() => {
     const byOrder = new Map<string, ReturnRequestGroup>()
     for (const request of returns) {
+      // An order with a whole-order return pending is decided ONCE, on its
+      // cancellation card — its item-level requests close automatically with
+      // that decision, so listing them again would show the order twice.
+      if (request.order.status === 'PENDING_CANCELLATION') continue
       const group = byOrder.get(request.order.id) ?? { order: request.order, requests: [] }
       group.requests.push(request)
       byOrder.set(request.order.id, group)
@@ -223,6 +227,15 @@ export default function Approvals() {
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Reason</p>
                 <p className="mt-0.5 text-sm">{order.cancelReason || <span className="italic text-muted-foreground">No reason given</span>}</p>
               </div>
+
+              {(() => {
+                const folded = returns.filter((request) => request.order.id === order.id).reduce((sum, request) => sum + request.quantity, 0)
+                return folded > 0 ? (
+                  <p className="mt-3 rounded-sm border border-warning/40 bg-warning/10 p-2.5 text-xs text-warning">
+                    This order also has {folded} item{folded === 1 ? '' : 's'} waiting on their own return requests. Deciding this closes those too — nothing else to approve for #{order.orderNumber}.
+                  </p>
+                ) : null
+              })()}
 
               {order.items.length > 0 && (
                 <p className="mt-3 text-xs text-muted-foreground">

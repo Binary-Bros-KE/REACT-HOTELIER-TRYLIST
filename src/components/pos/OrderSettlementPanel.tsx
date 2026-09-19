@@ -214,26 +214,22 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
     if (invalid) { const message = `Check the return quantity for ${invalid.item.menuItem?.name ?? 'one item'}`; setError(message); toast.error(message); return }
     const availableAfterPending = order.items.reduce((sum, item) => sum + Math.max(0, item.quantity - pendingReturnQty(item)), 0)
     const requestedTotal = lines.reduce((sum, line) => sum + line.quantity, 0)
+    // Returning everything that's left is a whole-order return, which has its
+    // own button — never silently converted here, so a slip in the quantities
+    // can't turn an item return into cancelling the whole bill.
+    if (requestedTotal >= availableAfterPending) { const message = 'That is every item left on the order — use "Return whole order" instead'; setError(message); toast.error(message); return }
     if (!returnReason.trim() || returnReason.trim().length < 3) { const message = 'Give a reason for the return'; setError(message); toast.error(message); return }
     setReturning(true)
     setError('')
     try {
-      if (requestedTotal >= availableAfterPending) {
-        await api(`/pos/orders/${order.id}/cancel`, { method: 'PATCH', body: JSON.stringify({ reason: returnReason.trim() }) })
-        toast.success('Return requested.')
-        onChanged()
-        onClose()
-        return
-      } else {
-        await api(`/pos/orders/${order.id}/return-request`, {
-          method: 'POST',
-          body: JSON.stringify({
-            reason: returnReason.trim(),
-            items: lines.map((line) => ({ orderItemId: line.item.id, quantity: line.quantity })),
-          }),
-        })
-        toast.success('Return requested.')
-      }
+      await api(`/pos/orders/${order.id}/return-request`, {
+        method: 'POST',
+        body: JSON.stringify({
+          reason: returnReason.trim(),
+          items: lines.map((line) => ({ orderItemId: line.item.id, quantity: line.quantity })),
+        }),
+      })
+      toast.success('Return requested.')
       setPartialReturnOpen(false)
       setReturnReason('')
       setReturnQty({})
@@ -363,15 +359,36 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
 
               {canRequestReturn && (
                 <div className="mt-2">
-                  {!partialReturnOpen ? (
-                    <button onClick={() => { setPartialReturnOpen(true); setCancelOpen(false) }} className="w-full rounded-sm border border-warning/40 py-2.5 text-sm font-semibold text-warning hover:bg-warning/10">
-                      Request return
-                    </button>
+                  {cancelOpen ? (
+                    <div className="space-y-2 rounded-sm border border-destructive/30 p-3">
+                      <label className="block text-xs font-semibold text-destructive">Reason for returning the whole order</label>
+                      {pendingReturnTotal > 0 && <p className="text-xs text-muted-foreground">This replaces the {pendingReturnTotal} item{pendingReturnTotal === 1 ? '' : 's'} already waiting for a return decision.</p>}
+                      <textarea
+                        autoFocus rows={2} value={cancelReason} onChange={(e) => setCancelReason(e.target.value)}
+                        placeholder="e.g. customer left, wrong order rung up…"
+                        className="w-full rounded-sm border bg-background px-2.5 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
+                      />
+                      <div className="flex gap-2">
+                        <button onClick={() => { setCancelOpen(false); setCancelReason('') }} className="flex-1 rounded-sm border py-2 text-xs font-semibold hover:bg-muted">Back</button>
+                        <button disabled={cancelling} onClick={() => void requestCancellation()} className="flex-1 rounded-sm bg-destructive py-2 text-xs font-bold text-destructive-foreground disabled:opacity-50">
+                          {cancelling ? 'Submitting…' : 'Submit for approval'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : !partialReturnOpen ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      <button onClick={() => { setCancelOpen(true); setPartialReturnOpen(false) }} className="rounded-sm border border-destructive/40 py-2.5 text-sm font-semibold text-destructive hover:bg-destructive/10">
+                        Return whole order
+                      </button>
+                      <button onClick={() => { setPartialReturnOpen(true); setCancelOpen(false) }} className="rounded-sm border border-warning/40 py-2.5 text-sm font-semibold text-warning hover:bg-warning/10">
+                        Return some items
+                      </button>
+                    </div>
                   ) : (
                     <div className="space-y-3 rounded-sm border border-warning/30 bg-warning/5 p-3">
                       <div>
-                        <p className="text-xs font-semibold uppercase tracking-wide text-warning">Request return</p>
-                        <p className="mt-0.5 text-xs text-muted-foreground">Enter the quantities being returned. Use full quantities when everything is coming back.</p>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-warning">Return some items</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">Enter the quantities coming back. To return everything, go back and choose "Return whole order".</p>
                       </div>
                       <div className="space-y-2">
                         {order.items.map((item) => {
