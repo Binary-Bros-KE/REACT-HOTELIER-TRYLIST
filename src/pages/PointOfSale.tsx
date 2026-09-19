@@ -101,7 +101,7 @@ type ActiveOrder = {
   createdBy: string | null
   customer: { firstName: string; lastName: string | null } | null
   table: { label: string } | null
-  items: { id: string; quantity: number; menuItem: { name: string } | null; variant: { name: string } | null; returnRequests?: { id: string; status: 'PENDING' | 'APPROVED' | 'REJECTED'; quantity: number }[] }[]
+  items: { id: string; quantity: number; addedAfterSend?: boolean; menuItem: { name: string } | null; variant: { name: string } | null; returnRequests?: { id: string; status: 'PENDING' | 'APPROVED' | 'REJECTED'; quantity: number }[] }[]
 }
 type CompletedOrder = ActiveOrder & { paid: number; paymentStatus: 'UNPAID' | 'PARTIAL' | 'PAID'; updatedAt: string }
 type CancelledOrder = ActiveOrder & {
@@ -286,6 +286,7 @@ export default function PointOfSale() {
   const [addItemsOrder, setAddItemsOrder] = useState<ActiveOrder | null>(null)
   const [receiptOrderId, setReceiptOrderId] = useState<string | null>(null)
   const [servingId, setServingId] = useState<string | null>(null)
+  const [ackingId, setAckingId] = useState<string | null>(null)
   const [revertOrder, setRevertOrder] = useState<ActiveOrder | null>(null)
   const [revertingId, setRevertingId] = useState<string | null>(null)
 
@@ -420,9 +421,18 @@ export default function PointOfSale() {
   // Orders waiting to be handed over — Kitchen tickets picked up at the pass,
   // or counter orders awaiting the approval-gated serve — get priority
   // placement in Active Orders ahead of everything still in progress.
-  const readyActiveOrders = activeOrders.filter((o) => o.status === 'READY')
-  const otherActiveOrders = activeOrders.filter((o) => o.status !== 'READY')
+  // Lines added after an order was already sent on (a round for a ticket the
+  // counter/kitchen has engaged with) — flagged server-side so whoever hands
+  // things over can't miss them, and the waiter can see they're waiting.
+  const updatedLines = (o: ActiveOrder) => o.items.filter((i) => i.addedAfterSend)
+  const updatedFirst = (a: ActiveOrder, b: ActiveOrder) => Number(updatedLines(b).length > 0) - Number(updatedLines(a).length > 0)
+  const readyActiveOrders = activeOrders.filter((o) => o.status === 'READY').sort(updatedFirst)
+  const otherActiveOrders = activeOrders.filter((o) => o.status !== 'READY').sort(updatedFirst)
   const readyCount = readyActiveOrders.length
+  const updatedCount = activeOrders.filter((o) => updatedLines(o).length > 0).length
+  // Mirrors the server's rule (counter locations need POS_APPROVE_COUNTER to
+  // confirm hand-over) purely to decide which button to show.
+  const canConfirmUpdates = user?.role?.name === 'Super Admin' || Boolean(user?.role?.permissions.includes('POS_APPROVE_COUNTER')) || serveMode !== 'COUNTER'
   const instantServe = serveMode === 'DIRECT'
   const sendsToCounter = serveMode === 'COUNTER'
 
@@ -552,6 +562,19 @@ export default function PointOfSale() {
     }
   }
 
+  async function confirmUpdates(orderId: string) {
+    setAckingId(orderId)
+    try {
+      await api(`/pos/orders/${orderId}/ack-updates`, { method: 'PATCH' })
+      toast.success('Added items confirmed as served.')
+      void loadActiveOrders(true)
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : 'Could not confirm the added items')
+    } finally {
+      setAckingId(null)
+    }
+  }
+
   async function serveOrder(orderId: string) {
     setServingId(orderId)
     try {
@@ -622,6 +645,7 @@ export default function PointOfSale() {
             <>
               Active Orders{activeOrders.length > 0 ? ` (${activeOrders.length})` : ''}
               {readyCount > 0 && <span className="ml-1.5 inline-flex items-center justify-center rounded-full bg-destructive px-1.5 py-0.5 text-[10px] font-bold text-destructive-foreground">{readyCount} to serve</span>}
+              {updatedCount > 0 && <span className="ml-1.5 inline-flex items-center justify-center rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white">{updatedCount} updated</span>}
             </>
           ), <LuClipboardList key="i" className="size-4" />],
           ['COMPLETED', <>Completed</>, <LuCircleCheck key="i" className="size-4" />],
@@ -768,7 +792,8 @@ export default function PointOfSale() {
                       const compBadge = complementaryBadge(order)
                       const pendingReturns = pendingReturnQuantity(order)
                       return (
-                        <div key={order.id} className="flex flex-wrap items-center gap-2 rounded-sm border bg-card p-2.5 shadow-sm sm:flex-nowrap">
+                        <div key={order.id} className={cn('rounded-sm border bg-card p-2.5 shadow-sm', updatedLines(order).length > 0 && 'ring-2 ring-amber-400')}>
+                         <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-sm font-bold text-foreground">#{order.orderNumber} · {order.customer ? `${order.customer.firstName} ${order.customer.lastName ?? ''}` : 'Walk-in'}</p>
                             <p className="mt-0.5 truncate text-xs text-muted-foreground">
@@ -789,6 +814,8 @@ export default function PointOfSale() {
                           >
                             {servingId === order.id ? <LuLoaderCircle className="size-3.5 animate-spin" /> : 'Serve Now'}
                           </button>
+                         </div>
+                         <UpdatedItemsStrip lines={updatedLines(order)} canConfirm={false} confirming={false} onConfirm={() => {}} note="Serving hands these over too." />
                         </div>
                       )
                     })}
@@ -802,7 +829,7 @@ export default function PointOfSale() {
                     const pendingReturns = pendingReturnQuantity(order)
                     const waiter = order.createdBy ? staffNames[order.createdBy] : undefined
                     return (
-                    <article key={order.id} className={cn('rounded-sm border bg-card p-5 shadow-sm', compBadge && 'border-secondary/30')}>
+                    <article key={order.id} className={cn('rounded-sm border bg-card p-5 shadow-sm', compBadge && 'border-secondary/30', updatedLines(order).length > 0 && 'ring-2 ring-amber-400')}>
                       <div className="flex items-start justify-between gap-2">
                         <h3 className="font-semibold">Order #{order.orderNumber}</h3>
                         <div className="flex flex-wrap justify-end gap-1.5">
@@ -816,6 +843,7 @@ export default function PointOfSale() {
                       <p className="mt-1 text-xs text-muted-foreground">{order.table?.label ?? 'Takeaway'}</p>
                       <p className="mt-3 text-lg font-bold">{formatKes(order.total)}</p>
                       {pendingReturns > 0 && <p className="mt-1 text-xs font-semibold text-warning">{pendingReturns} item{pendingReturns === 1 ? '' : 's'} waiting return approval</p>}
+                      <UpdatedItemsStrip lines={updatedLines(order)} canConfirm={canConfirmUpdates} confirming={ackingId === order.id} onConfirm={() => void confirmUpdates(order.id)} />
                       <div className="mt-4 flex flex-wrap gap-2">
                         <button onClick={() => setReceiptOrderId(order.id)} title="Receipt" className="inline-flex items-center justify-center rounded-sm border p-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"><LuPrinter className="size-3.5" /></button>
                         <button onClick={() => setAddItemsOrder(order)} className="inline-flex items-center gap-1.5 rounded-sm border px-3 py-1.5 text-xs font-semibold hover:bg-muted"><LuPencil className="size-3.5" /> Manage</button>
@@ -1735,6 +1763,33 @@ function AddItemsModal({ order, menuItems, allAddons, onClose, onRefresh, onAdde
           }}
         />
       )}
+    </div>
+  )
+}
+
+/** Lines added to an order after it had already been sent on. Shown to the
+ * waiter (so they know it's waiting) and to the counter (so they know there's
+ * something new to prepare); the counter confirms once it's been handed over. */
+function UpdatedItemsStrip({ lines, canConfirm, confirming, onConfirm, note }: {
+  lines: { id: string; quantity: number; menuItem: { name: string } | null; variant: { name: string } | null }[]
+  canConfirm: boolean
+  confirming: boolean
+  onConfirm: () => void
+  note?: string
+}) {
+  if (lines.length === 0) return null
+  const total = lines.reduce((sum, line) => sum + line.quantity, 0)
+  return (
+    <div className="mt-3 rounded-sm border border-amber-400/60 bg-amber-50 p-2.5 text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
+      <p className="text-[11px] font-bold uppercase tracking-wide">Updated — {total} added item{total === 1 ? '' : 's'} to serve</p>
+      <ul className="mt-1 space-y-0.5 text-xs">
+        {lines.map((line) => <li key={line.id}>+ {line.quantity} × {line.menuItem?.name ?? 'Item'}{line.variant ? ` (${line.variant.name})` : ''}</li>)}
+      </ul>
+      {note ? <p className="mt-1.5 text-[11px] opacity-80">{note}</p> : canConfirm ? (
+        <button type="button" disabled={confirming} onClick={onConfirm} className="mt-2 inline-flex items-center gap-1.5 rounded-sm bg-amber-500 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60">
+          {confirming && <LuLoaderCircle className="size-3.5 animate-spin" />} Served the added items
+        </button>
+      ) : <p className="mt-1.5 text-[11px] opacity-80">Waiting for the counter to serve these.</p>}
     </div>
   )
 }
