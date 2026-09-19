@@ -110,16 +110,34 @@ function stepAnchor(period: 'day' | 'week' | 'month', iso: string, dir: 1 | -1) 
   return toLocalIso(d)
 }
 
-function rangeLabel(period: Period, startIso: string, endIso: string) {
+// The trading day in progress right now, named by the calendar date it
+// started on — before the rollover hour (e.g. 8am with a 9am rollover) that's
+// still YESTERDAY's date, so the picker must not default to plain today.
+// Nairobi is a fixed UTC+3, same convention as the server.
+function currentBusinessDateIso(startHour: number) {
+  const shifted = new Date(Date.now() + 3 * 60 * 60 * 1000)
+  if (shifted.getUTCHours() < startHour) shifted.setUTCDate(shifted.getUTCDate() - 1)
+  return shifted.toISOString().slice(0, 10)
+}
+
+const hourLabel = (hour: number) => `${hour % 12 === 0 ? 12 : hour % 12}:00 ${hour < 12 ? 'AM' : 'PM'}`
+
+function rangeLabel(period: Period, startIso: string, endIso: string, startHour: number) {
   const s = new Date(startIso)
-  const e = new Date(endIso)
-  if (period === 'day') return s.toLocaleDateString('en-KE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+  // With a non-midnight rollover the range ends the next morning; label it by
+  // the last trading day it covers, not the calendar day it spills into.
+  const e = new Date(new Date(endIso).getTime() - startHour * 60 * 60 * 1000)
+  if (period === 'day') {
+    const day = s.toLocaleDateString('en-KE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+    return startHour === 0 ? day : `${day} · ${hourLabel(startHour)} → ${hourLabel(startHour)} next day`
+  }
   return `${s.toLocaleDateString('en-KE', { day: 'numeric', month: 'short' })} – ${e.toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric' })}`
 }
 
 export default function Reports() {
   const toast = useToast()
   const [period, setPeriod] = useState<Period>('day')
+  const [startHour, setStartHour] = useState<number | null>(null)
   const [anchor, setAnchor] = useState(todayIso())
   const [customFrom, setCustomFrom] = useState(todayIso())
   const [customTo, setCustomTo] = useState(todayIso())
@@ -147,7 +165,19 @@ export default function Reports() {
     }
   }, [period, anchor, customFrom, customTo, locationId, toast])
 
-  useEffect(() => { void load() }, [load])
+  useEffect(() => {
+    api<{ profile: { businessDayStartHour?: number } | null }>('/business-profile')
+      .then((r) => {
+        const hour = r.profile?.businessDayStartHour ?? 0
+        const businessToday = currentBusinessDateIso(hour)
+        setAnchor(businessToday); setCustomFrom(businessToday); setCustomTo(businessToday)
+        setStartHour(hour)
+      })
+      .catch(() => setStartHour(0))
+  }, [])
+
+  // Wait for the start hour so the first load already uses the right default day.
+  useEffect(() => { if (startHour !== null) void load() }, [load, startHour])
   useEffect(() => { api<{ locations: Location[] }>('/locations').then((r) => setLocations(r.locations)).catch(() => {}) }, [])
 
   const cogsNote = report && report.revenueBreakdown.unresolvedCostLines > 0
@@ -188,7 +218,7 @@ export default function Reports() {
               <button onClick={() => setAnchor((a) => stepAnchor(period, a, -1))} className="rounded-sm p-1.5 text-muted-foreground hover:bg-muted"><LuChevronLeft /></button>
               <input type="date" value={anchor} onChange={(e) => setAnchor(e.target.value)} className="rounded-sm border bg-background px-2.5 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring" />
               <button onClick={() => setAnchor((a) => stepAnchor(period, a, 1))} className="rounded-sm p-1.5 text-muted-foreground hover:bg-muted"><LuChevronRight /></button>
-              {report && <span className="ml-2 text-sm font-medium text-muted-foreground">{rangeLabel(period, report.range.start, report.range.end)}</span>}
+              {report && <span className="ml-2 text-sm font-medium text-muted-foreground">{rangeLabel(period, report.range.start, report.range.end, startHour ?? 0)}</span>}
             </div>
           )}
 
