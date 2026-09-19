@@ -122,7 +122,7 @@ const emptyForm: ProductForm = {
 }
 const emptyTransfer = { productId: '', productName: '', fromLocationId: '', toLocationId: '', quantity: '', stockByLocation: [] as StockByLocation[], packSize: 0, packLabel: '', unitName: '' }
 const emptyAdjust = {
-  productId: '', productName: '', type: 'PURCHASE' as ManualMovementType,
+  productId: '', productName: '', type: '' as ManualMovementType | '',
   locationId: '', quantity: '', unitCost: '', note: '', stockByLocation: [] as StockByLocation[],
   packSize: 0, packLabel: '', unitName: '',
 }
@@ -318,8 +318,8 @@ export default function Products() {
     setAdjust({
       productId: product.id,
       productName: product.name,
-      type: 'PURCHASE',
-      locationId: product.stockByLocation[0]?.locationId ?? (locations.length === 1 ? locations[0].id : ''),
+      type: '',
+      locationId: '',
       quantity: '',
       unitCost: product.unitCost ?? '',
       note: '',
@@ -340,7 +340,7 @@ export default function Products() {
       await api(`/products/${adjust.productId}/movements`, {
         method: 'POST',
         body: JSON.stringify({
-          type: adjust.type,
+          type: adjust.type || undefined,
           locationId: adjust.locationId,
           quantity: Number(adjust.quantity),
           unitCost: adjust.unitCost ? Number(adjust.unitCost) : undefined,
@@ -363,7 +363,7 @@ export default function Products() {
   const adjustCurrentQty = Number(adjust.stockByLocation.find((stock) => stock.locationId === adjust.locationId)?.quantity ?? 0)
   const adjustEnteredQty = Number(adjust.quantity)
   const hasAdjustQuantity = adjust.quantity.trim() !== '' && Number.isFinite(adjustEnteredQty)
-  const adjustDelta = hasAdjustQuantity ? manualMovementDelta(adjust.type, adjustEnteredQty) : 0
+  const adjustDelta = hasAdjustQuantity && adjust.type ? manualMovementDelta(adjust.type, adjustEnteredQty) : 0
   const adjustAfterQty = adjustCurrentQty + adjustDelta
   const adjustWouldGoNegative = hasAdjustQuantity && adjustAfterQty < 0
 
@@ -800,9 +800,10 @@ export default function Products() {
               <div className="mt-5 space-y-4">
                 <Field label="Action" required>
                   <select required className="input" value={adjust.type} onChange={(e) => setAdjust({ ...adjust, type: e.target.value as ManualMovementType })}>
+                    <option value="" disabled>Select action</option>
                     {MANUAL_MOVEMENT_TYPES.map((t) => <option key={t} value={t}>{MOVEMENT_LABELS[t]}</option>)}
                   </select>
-                  <span className="mt-1 block text-xs text-muted-foreground">{MANUAL_MOVEMENT_HINTS[adjust.type]}</span>
+                  {adjust.type && <span className="mt-1 block text-xs text-muted-foreground">{MANUAL_MOVEMENT_HINTS[adjust.type]}</span>}
                 </Field>
                 <Field label="Location" required>
                   <select required className="input" value={adjust.locationId} onChange={(e) => setAdjust({ ...adjust, locationId: e.target.value })}>
@@ -855,7 +856,7 @@ export default function Products() {
 
             <div className="flex shrink-0 justify-end gap-2 border-t bg-card p-5">
               <button type="button" onClick={() => setShowAdjust(false)} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Cancel</button>
-              <button disabled={adjusting} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+              <button disabled={adjusting || !adjust.type || !adjust.locationId} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
                 {adjusting && <LuLoaderCircle className="animate-spin" />}
                 Record
               </button>

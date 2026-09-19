@@ -793,10 +793,10 @@ export default function PointOfSale() {
                       const pendingReturns = pendingReturnQuantity(order)
                       return (
                         <div key={order.id} className={cn('rounded-sm border bg-card p-2.5 shadow-sm', updatedLines(order).length > 0 && 'ring-2 ring-amber-400')}>
-                         <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap">
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-bold text-foreground">#{order.orderNumber} · {order.customer ? `${order.customer.firstName} ${order.customer.lastName ?? ''}` : 'Walk-in'}</p>
-                            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                         <div className="flex flex-wrap items-center gap-x-2 gap-y-2.5 sm:flex-nowrap">
+                          <div className="w-full min-w-0 sm:w-auto sm:flex-1">
+                            <p className="break-words text-sm font-bold text-foreground sm:truncate">#{order.orderNumber} · {order.customer ? `${order.customer.firstName} ${order.customer.lastName ?? ''}` : 'Walk-in'}</p>
+                            <p className="mt-0.5 break-words text-xs text-muted-foreground sm:truncate">
                               {count} item{count === 1 ? '' : 's'} · {order.table?.label ?? 'Takeaway'}{waiter ? ` · rung up by ${waiter}` : ''}
                             </p>
                           </div>
@@ -1780,16 +1780,16 @@ function UpdatedItemsStrip({ lines, canConfirm, confirming, onConfirm, note }: {
   if (lines.length === 0) return null
   const total = lines.reduce((sum, line) => sum + line.quantity, 0)
   return (
-    <div className="mt-3 rounded-sm border border-amber-400/60 bg-amber-50 p-2.5 text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
+    <div className="mt-3 rounded-sm border border-amber-400/60 bg-amber-50 p-2.5 text-primary dark:bg-amber-500/10 dark:text-amber-100">
       <p className="text-[11px] font-bold uppercase tracking-wide">Updated — {total} added item{total === 1 ? '' : 's'} to serve</p>
-      <ul className="mt-1 space-y-0.5 text-xs">
+      <ul className="mt-1 space-y-0.5 text-xs font-medium">
         {lines.map((line) => <li key={line.id}>+ {line.quantity} × {line.menuItem?.name ?? 'Item'}{line.variant ? ` (${line.variant.name})` : ''}</li>)}
       </ul>
-      {note ? <p className="mt-1.5 text-[11px] opacity-80">{note}</p> : canConfirm ? (
+      {note ? <p className="mt-1.5 text-[11px]">{note}</p> : canConfirm ? (
         <button type="button" disabled={confirming} onClick={onConfirm} className="mt-2 inline-flex items-center gap-1.5 rounded-sm bg-amber-500 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60">
           {confirming && <LuLoaderCircle className="size-3.5 animate-spin" />} Served the added items
         </button>
-      ) : <p className="mt-1.5 text-[11px] opacity-80">Waiting for the counter to serve these.</p>}
+      ) : <p className="mt-1.5 text-[11px]">Waiting for the counter to serve these.</p>}
     </div>
   )
 }
