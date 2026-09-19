@@ -82,6 +82,7 @@ type SalesReport = {
   cards: Cards
   revenueBreakdown: RevenueBreakdown
   topItems: TopItem[]
+  soldItems: TopItem[]
   expensesByCategory: CountBucket[]
   purchasesBySupplier: CountBucket[]
   trend: TrendPoint[]
@@ -308,14 +309,14 @@ export default function Reports() {
                 </div>
               )}
 
-              {report.topItems.length > 0 && (
+              {report.soldItems.length > 0 && (
                 <div>
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Top items sold</p>
-                  <div className="overflow-hidden rounded-sm border">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">All items sold ({report.soldItems.length})</p>
+                  <div className="max-h-[32rem] overflow-auto rounded-sm border">
                     <table className="w-full text-left text-sm">
-                      <thead className="bg-primary text-xs uppercase text-primary-foreground"><tr><th className="px-4 py-2">Item</th><th className="px-4 py-2 text-right">Qty Sold</th><th className="px-4 py-2 text-right">Revenue</th></tr></thead>
-                      <tbody>{report.topItems.map((i, idx) => (
-                        <tr key={i.name} className="border-t"><td className="px-4 py-2">{idx + 1}. {i.name}</td><td className="px-4 py-2 text-right tabular-nums">{i.qty} sold</td><td className="px-4 py-2 text-right tabular-nums">{formatKes(i.revenue)}</td></tr>
+                      <thead className="sticky top-0 bg-primary text-xs uppercase text-primary-foreground"><tr><th className="px-4 py-2">Item</th><th className="px-4 py-2 text-right">Qty Sold</th><th className="px-4 py-2 text-right">Revenue</th></tr></thead>
+                      <tbody>{report.soldItems.map((i, idx) => (
+                        <tr key={`${i.name}-${idx}`} className="border-t"><td className="px-4 py-2">{idx + 1}. {i.name}</td><td className="px-4 py-2 text-right tabular-nums">{i.qty} sold</td><td className="px-4 py-2 text-right tabular-nums">{formatKes(i.revenue)}</td></tr>
                       ))}</tbody>
                     </table>
                   </div>
