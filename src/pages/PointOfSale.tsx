@@ -1780,7 +1780,7 @@ function UpdatedItemsStrip({ lines, canConfirm, confirming, onConfirm, note }: {
   if (lines.length === 0) return null
   const total = lines.reduce((sum, line) => sum + line.quantity, 0)
   return (
-    <div className="mt-3 rounded-sm border border-amber-400/60 bg-amber-50 p-2.5 text-primary dark:bg-amber-500/10 dark:text-amber-100">
+    <div className="mt-3 rounded-sm border border-amber-400/60 bg-amber-50 p-2.5 text-[#0b2545] dark:bg-amber-500/10 dark:text-amber-100">
       <p className="text-[11px] font-bold uppercase tracking-wide">Updated — {total} added item{total === 1 ? '' : 's'} to serve</p>
       <ul className="mt-1 space-y-0.5 text-xs font-medium">
         {lines.map((line) => <li key={line.id}>+ {line.quantity} × {line.menuItem?.name ?? 'Item'}{line.variant ? ` (${line.variant.name})` : ''}</li>)}
