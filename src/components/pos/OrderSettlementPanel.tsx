@@ -4,6 +4,7 @@ import { LuCircleAlert, LuLoaderCircle, LuUserPlus, LuX } from 'react-icons/lu'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/Toast'
+import { useAppSelector } from '@/store/hooks'
 import CustomerSelectModal, { type SaleParty } from '@/components/pos/CustomerSelectModal'
 import type { ReceiptOrder } from './OrderReceipt'
 
@@ -60,6 +61,9 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
   onChanged: () => void
 }) {
   const toast = useToast()
+  // Super Admin may return a bill past the waiters' one-hour window (the
+  // server enforces this; here it just stops the controls being hidden).
+  const isSuperAdmin = useAppSelector((s) => s.auth.user?.role?.name) === 'Super Admin'
   const [order, setOrder] = useState<Order | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -94,7 +98,7 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
   const remaining = order ? Math.max(0, order.total - order.paid) : 0
   const isComplementary = order?.saleType === 'COMPLIMENTARY'
   const isCreditOverdue = !!order?.creditExpectedAt && remaining > 0.01 && new Date(order.creditExpectedAt).getTime() < Date.now()
-  const canRequestReturn = !!order?.servedAt && ['SERVED', 'COMPLETED'].includes(order.status) && Date.now() - new Date(order.servedAt).getTime() <= RETURN_WINDOW_MS
+  const canRequestReturn = !!order?.servedAt && ['SERVED', 'COMPLETED'].includes(order.status) && (isSuperAdmin || Date.now() - new Date(order.servedAt).getTime() <= RETURN_WINDOW_MS)
   const pendingReturnTotal = order?.items.reduce((sum, item) => sum + pendingReturnQty(item), 0) ?? 0
 
   async function loadOrder() {
@@ -415,7 +419,7 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
                 </p>
               ) : order.status === 'CANCELLED' ? null : (() => {
                 const isReturn = order.status === 'SERVED' || order.status === 'COMPLETED'
-                const withinWindow = !order.servedAt || Date.now() - new Date(order.servedAt).getTime() <= RETURN_WINDOW_MS
+                const withinWindow = isSuperAdmin || !order.servedAt || Date.now() - new Date(order.servedAt).getTime() <= RETURN_WINDOW_MS
                 if (isReturn && !withinWindow) {
                   return (
                     <p className="mt-2 rounded-sm border border-dashed p-3 text-center text-xs text-muted-foreground">
