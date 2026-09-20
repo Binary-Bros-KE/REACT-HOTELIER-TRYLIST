@@ -95,14 +95,14 @@ export default function CustomerSelectModal({ party, onChange, onClose }: {
   const searching = search.trim().length > 0
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
-      <div className="flex max-h-[88vh] w-full max-w-md flex-col overflow-hidden rounded-sm border bg-card shadow-2xl">
-        <div className="flex items-start justify-between border-b p-5">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4">
+      <div className="flex max-h-[88vh] w-full max-w-md flex-col overflow-hidden border-2 border-foreground/25 bg-card shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+        <div className="flex items-start justify-between border-b-4 border-accent bg-muted/60 px-5 py-4">
           <div>
             <h2 className="font-display text-xl font-semibold">Choose Customer</h2>
             <p className="mt-0.5 text-xs text-muted-foreground">Search by name or phone — or keep it as a walk-in sale.</p>
           </div>
-          <button type="button" onClick={onClose} className="rounded-sm p-1.5 text-muted-foreground hover:bg-muted"><LuX className="size-4" /></button>
+          <button type="button" onClick={onClose} title="Close" className="bg-black p-2 text-white transition hover:bg-black/80"><LuX className="size-4" /></button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-5">

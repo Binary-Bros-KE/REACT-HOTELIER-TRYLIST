@@ -278,15 +278,15 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
 
   return (
     <>
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
-        <div className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-sm border bg-card p-6 shadow-2xl">
-          <div className="flex items-start justify-between">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+        <div className="max-h-[88vh] w-full max-w-lg overflow-y-auto border-2 border-foreground/25 bg-card p-6 shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+          <div className="-mx-6 -mt-6 flex items-start justify-between border-b-4 border-accent bg-muted/60 px-6 py-4">
             <div>
-              <p className="text-sm font-semibold text-secondary">{title}</p>
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">{title}</p>
               <h2 className="mt-1 font-display text-2xl font-semibold">{order ? `Order #${order.orderNumber}` : 'Loading…'}</h2>
               {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
             </div>
-            <button onClick={onClose} className="rounded-sm p-2 text-muted-foreground hover:bg-muted"><LuX /></button>
+            <button onClick={onClose} title="Close" className="bg-black p-2 text-white transition hover:bg-black/80"><LuX /></button>
           </div>
 
           {error && (

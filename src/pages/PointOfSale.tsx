@@ -120,8 +120,8 @@ const FETCH_LIMIT = 100
 const formatKes = (price: number) => `KSh ${price.toLocaleString('en-KE', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
 const toNumber = (value: string | number) => (typeof value === 'number' ? value : Number(value))
 const complementaryBadge = (order: ActiveOrder) => {
-  if (order.saleType === 'COMPLIMENTARY') return { label: 'Host comp', cls: 'border-warning/30 bg-warning/15 text-warning' }
-  if (order.complimentarySession) return { label: 'Guest spend', cls: 'border-secondary/30 bg-secondary/10 text-secondary' }
+  if (order.saleType === 'COMPLIMENTARY') return { label: 'Host comp', cls: 'border-warning/70 text-warning' }
+  if (order.complimentarySession) return { label: 'Guest spend', cls: 'border-secondary/70 text-secondary' }
   return null
 }
 const pendingReturnQuantity = (order: ActiveOrder) =>
@@ -605,7 +605,7 @@ export default function PointOfSale() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
+    <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
       <div className="relative">
         <div className="pointer-events-none absolute -bottom-2 left-3 right-1 top-2 rotate-[0.6deg] rounded-sm border border-black/10 bg-white/70" aria-hidden="true" />
         <div className="pointer-events-none absolute -left-2.5 -top-2.5 size-12 rotate-12 rounded-sm bg-[#f2921a] shadow-lg" aria-hidden="true" />
@@ -644,8 +644,8 @@ export default function PointOfSale() {
           ['ACTIVE', (
             <>
               Active Orders{activeOrders.length > 0 ? ` (${activeOrders.length})` : ''}
-              {readyCount > 0 && <span className="ml-1.5 inline-flex items-center justify-center rounded-full bg-destructive px-1.5 py-0.5 text-[10px] font-bold text-destructive-foreground">{readyCount} to serve</span>}
-              {updatedCount > 0 && <span className="ml-1.5 inline-flex items-center justify-center rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white">{updatedCount} updated</span>}
+              {readyCount > 0 && <span className="ml-1.5 keep-round inline-flex items-center justify-center rounded-full bg-destructive px-1.5 py-0.5 text-[10px] font-bold text-destructive-foreground">{readyCount} to serve</span>}
+              {updatedCount > 0 && <span className="ml-1.5 keep-round inline-flex items-center justify-center rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white">{updatedCount} updated</span>}
             </>
           ), <LuClipboardList key="i" className="size-4" />],
           ['COMPLETED', <>Completed</>, <LuCircleCheck key="i" className="size-4" />],
@@ -678,7 +678,7 @@ export default function PointOfSale() {
               <button
                 key={value}
                 onClick={() => setCompletedFilter(value)}
-                className={cn('rounded-full border px-3 py-1 text-xs font-semibold', completedFilter === value ? 'border-secondary bg-secondary text-secondary-foreground' : 'text-muted-foreground hover:bg-muted')}
+                className={cn('keep-round rounded-full border px-3 py-1 text-xs font-semibold', completedFilter === value ? 'border-secondary bg-secondary text-secondary-foreground' : 'text-muted-foreground hover:bg-muted')}
               >
                 {label}
                 {value === 'OWING' && completedOrders.some((o) => o.paymentStatus !== 'PAID') && ` (${completedOrders.filter((o) => o.paymentStatus !== 'PAID').length})`}
@@ -699,26 +699,26 @@ export default function PointOfSale() {
                   const waiter = order.createdBy ? staffNames[order.createdBy] : undefined
                   const overdue = owed > 0.01 && order.creditExpectedAt && new Date(order.creditExpectedAt).getTime() < Date.now()
                   const badge = order.saleType === 'COMPLIMENTARY'
-                    ? { label: 'Completed', cls: 'bg-success/10 text-success' }
+                    ? { label: 'Completed', cls: 'border-success/70 text-success' }
                     : overdue
-                      ? { label: 'Overdue', cls: 'bg-destructive/10 text-destructive' }
+                      ? { label: 'Overdue', cls: 'border-destructive/70 text-destructive' }
                       : order.paymentStatus === 'PAID'
-                    ? { label: 'Paid', cls: 'bg-success/10 text-success' }
+                    ? { label: 'Paid', cls: 'border-success/70 text-success' }
                     : order.paymentStatus === 'PARTIAL'
-                      ? { label: 'Part-paid', cls: 'bg-warning/15 text-warning' }
-                      : { label: 'On credit', cls: 'bg-destructive/10 text-destructive' }
+                      ? { label: 'Part-paid', cls: 'border-warning/70 text-warning' }
+                      : { label: 'On credit', cls: 'border-destructive/70 text-destructive' }
                   return (
                     <article key={order.id} className="rounded-sm border bg-card p-5 shadow-sm">
                       <div className="flex items-start justify-between gap-2">
                         <h3 className="font-semibold">Order #{order.orderNumber}</h3>
                         <div className="flex flex-wrap justify-end gap-1.5">
-                          {pendingReturns > 0 && <span className="rounded-full bg-warning/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-warning">Return pending</span>}
-                          <span className={cn('rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide', badge.cls)}>{badge.label}</span>
+                          {pendingReturns > 0 && <span className="keep-round border border-dashed border-warning/70 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-warning">Return pending</span>}
+                          <span className={cn('keep-round border border-dashed px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide', badge.cls)}>{badge.label}</span>
                         </div>
                       </div>
                       {waiter && <p className="mt-1.5 flex items-center gap-1.5 text-xs font-bold text-amber-600"><LuUserRound className="size-3.5" /> Waiter: {waiter}</p>}
                       <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground"><LuUserRound className="size-3.5" /> {order.customer ? `${order.customer.firstName} ${order.customer.lastName ?? ''}` : 'Walk-in'} · {order.table?.label ?? 'Takeaway'}</p>
-                      {compBadge && <p className={cn('mt-2 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', compBadge.cls)}>{compBadge.label}{order.complimentarySession ? ` - ${order.complimentarySession.title}` : ''}</p>}
+                      {compBadge && <p className={cn('mt-2 inline-flex keep-round border border-dashed px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', compBadge.cls)}>{compBadge.label}{order.complimentarySession ? ` - ${order.complimentarySession.title}` : ''}</p>}
                       <p className="mt-1 text-[11px] text-muted-foreground">{new Date(order.updatedAt).toLocaleString()}</p>
                       <p className="mt-2 text-lg font-bold">{formatKes(order.total)}</p>
                       {pendingReturns > 0 && <p className="mt-1 text-xs font-semibold text-warning">{pendingReturns} item{pendingReturns === 1 ? '' : 's'} waiting return approval</p>}
@@ -752,7 +752,7 @@ export default function PointOfSale() {
                   <article key={order.id} className="rounded-sm border bg-card p-5 shadow-sm">
                     <div className="flex items-start justify-between gap-2">
                       <h3 className="font-semibold">Order #{order.orderNumber}</h3>
-                      <span className={cn('rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide', pending ? 'bg-warning/15 text-warning' : 'bg-destructive/10 text-destructive')}>
+                      <span className={cn('keep-round border border-dashed px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide', pending ? 'border-warning/70 text-warning' : 'border-destructive/70 text-destructive')}>
                         {pending ? 'Awaiting approval' : 'Cancelled'}
                       </span>
                     </div>
@@ -800,11 +800,11 @@ export default function PointOfSale() {
                               {count} item{count === 1 ? '' : 's'} · {order.table?.label ?? 'Takeaway'}{waiter ? ` · rung up by ${waiter}` : ''}
                             </p>
                           </div>
-                          {compBadge && <span className={cn('shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', compBadge.cls)}>{compBadge.label}</span>}
-                          {pendingReturns > 0 && <span className="shrink-0 rounded-full border border-warning/40 bg-warning/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-warning">Return pending</span>}
+                          {compBadge && <span className={cn('shrink-0 keep-round border border-dashed px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', compBadge.cls)}>{compBadge.label}</span>}
+                          {pendingReturns > 0 && <span className="shrink-0 keep-round border border-dashed border-warning/70 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-warning">Return pending</span>}
                           <button type="button" onClick={() => setReceiptOrderId(order.id)} title="Preview receipt" className="shrink-0 rounded-sm p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"><LuPrinter className="size-4" /></button>
                           <button type="button" onClick={() => setRevertOrder(order)} title="Revert undeducted order" className="shrink-0 rounded-sm p-1.5 text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive"><LuTrash2 className="size-4" /></button>
-                          <span className="shrink-0 rounded-full bg-destructive px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-destructive-foreground">Pending</span>
+                          <span className="shrink-0 keep-round border border-dashed border-destructive/70 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-destructive">Pending</span>
                           <span className="shrink-0 text-sm font-bold tabular-nums text-foreground">{formatKes(order.total)}</span>
                           <button
                             type="button"
@@ -833,13 +833,13 @@ export default function PointOfSale() {
                       <div className="flex items-start justify-between gap-2">
                         <h3 className="font-semibold">Order #{order.orderNumber}</h3>
                         <div className="flex flex-wrap justify-end gap-1.5">
-                          {pendingReturns > 0 && <span className="rounded-full bg-warning/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-warning">Return pending</span>}
-                          <span className="rounded-full bg-warning/15 px-2.5 py-1 text-xs font-semibold text-warning">{order.status}</span>
+                          {pendingReturns > 0 && <span className="keep-round border border-dashed border-warning/70 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-warning">Return pending</span>}
+                          <span className="keep-round border border-dashed border-warning/70 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-warning">{order.status}</span>
                         </div>
                       </div>
                       {waiter && <p className="mt-1.5 flex items-center gap-1.5 text-xs font-bold text-amber-600"><LuUserRound className="size-3.5" /> Waiter: {waiter}</p>}
                       <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground"><LuUserRound className="size-3.5" /> {order.customer ? `${order.customer.firstName} ${order.customer.lastName ?? ''}` : 'Walk-in'}</p>
-                      {compBadge && <p className={cn('mt-2 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', compBadge.cls)}>{compBadge.label}{order.complimentarySession ? ` - ${order.complimentarySession.title}` : ''}</p>}
+                      {compBadge && <p className={cn('mt-2 inline-flex keep-round border border-dashed px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', compBadge.cls)}>{compBadge.label}{order.complimentarySession ? ` - ${order.complimentarySession.title}` : ''}</p>}
                       <p className="mt-1 text-xs text-muted-foreground">{order.table?.label ?? 'Takeaway'}</p>
                       <p className="mt-3 text-lg font-bold">{formatKes(order.total)}</p>
                       {pendingReturns > 0 && <p className="mt-1 text-xs font-semibold text-warning">{pendingReturns} item{pendingReturns === 1 ? '' : 's'} waiting return approval</p>}
@@ -927,7 +927,7 @@ export default function PointOfSale() {
                         </div>
                         <h2 className="mt-3 line-clamp-2 text-sm font-semibold text-foreground sm:mt-5 sm:text-base">{item.name}</h2>
                         {item.availableQuantity != null && (
-                          <span className={cn('mt-1.5 inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', outOfStock ? 'bg-destructive/15 text-destructive' : 'bg-success/15 text-success')}>
+                          <span className={cn('mt-1.5 inline-flex w-fit items-center keep-round border border-dashed px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', outOfStock ? 'border-destructive/70 text-destructive' : 'border-success/70 text-success')}>
                             {outOfStock ? 'Out of stock' : availabilityLabel(item.availableQuantity, item.availabilityUnitLabel)}
                           </span>
                         )}
@@ -991,7 +991,7 @@ export default function PointOfSale() {
                           <p className="mt-0.5 truncate text-xs text-muted-foreground">{count} item{count === 1 ? '' : 's'} · {held.label}</p>
                           <p className="mt-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-warning"><LuPause className="size-3" /> Tap to resume</p>
                         </button>
-                        <span className="shrink-0 rounded-full border border-warning/50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-warning">Held</span>
+                        <span className="shrink-0 keep-round border border-dashed border-warning/70 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-warning">Held</span>
                         <span className="shrink-0 text-sm font-bold tabular-nums text-foreground">{formatKes(heldTotal)}</span>
                         <button type="button" onClick={() => discardHeldSale(held.key)} title="Discard held sale" className="shrink-0 rounded-sm p-1.5 text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive"><LuTrash2 className="size-4" /></button>
                       </div>
@@ -1017,7 +1017,7 @@ export default function PointOfSale() {
                   )}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
-                  <span className="flex size-14 flex-col items-center justify-center rounded-full border-2 border-dashed border-secondary text-[9px] font-bold uppercase leading-none tracking-wide text-secondary">
+                  <span className="keep-round flex size-14 flex-col items-center justify-center rounded-full border-2 border-dashed border-secondary text-[9px] font-bold uppercase leading-none tracking-wide text-secondary">
                     <span>Open</span>
                     <span className="mt-0.5">Sale</span>
                   </span>
@@ -1217,14 +1217,14 @@ export default function PointOfSale() {
       )}
 
       {revertOrder && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-sm border bg-card p-6 shadow-2xl">
-            <div className="flex items-start justify-between gap-3">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-md border-2 border-foreground/25 bg-card p-6 shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+            <div className="-mx-6 -mt-6 flex items-start justify-between gap-3 border-b-4 border-accent bg-muted/60 px-6 py-4">
               <div>
-                <p className="text-sm font-semibold text-destructive">Revert order</p>
+                <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-destructive">Revert order</p>
                 <h2 className="mt-1 font-display text-xl font-semibold">Delete Order #{revertOrder.orderNumber}?</h2>
               </div>
-              <button type="button" onClick={() => setRevertOrder(null)} className="rounded-sm p-1 text-muted-foreground hover:bg-muted"><LuX className="size-4" /></button>
+              <button type="button" onClick={() => setRevertOrder(null)} title="Close" className="bg-black p-2 text-white transition hover:bg-black/80"><LuX className="size-4" /></button>
             </div>
             <p className="mt-4 text-sm text-muted-foreground">
               This removes the undeducted order from the counter/kitchen queue. It is only allowed before the order is served, so stock will not be changed.
@@ -1293,14 +1293,14 @@ function CustomizeModal({ item, allAddons, initial, onClose, onSubmit }: {
   const unitPrice = (variant?.price ?? item.price) + chosenAddons.reduce((sum, a) => sum + a.price, 0)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
-      <div className="grid max-h-[88vh] w-full max-w-lg grid-rows-[auto_1fr_auto] overflow-hidden rounded-sm border bg-card shadow-2xl">
-        <div className="flex items-center justify-between border-b p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="grid max-h-[88vh] w-full max-w-lg grid-rows-[auto_1fr_auto] overflow-hidden border-2 border-foreground/25 bg-card shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+        <div className="flex items-center justify-between border-b-4 border-accent bg-muted/60 px-5 py-4">
           <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{item.category.name}</p>
+            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">{item.category.name}</p>
             <h2 className="truncate font-display text-xl font-semibold">{item.name}</h2>
           </div>
-          <button onClick={onClose} className="rounded-sm p-2 text-muted-foreground hover:bg-muted"><LuX /></button>
+          <button onClick={onClose} title="Close" className="bg-black p-2 text-white transition hover:bg-black/80"><LuX /></button>
         </div>
 
         <div className="space-y-5 overflow-y-auto p-4">
@@ -1349,7 +1349,7 @@ function CustomizeModal({ item, allAddons, initial, onClose, onSubmit }: {
                       key={c.id}
                       type="button"
                       onClick={() => setCatFilter(c.id)}
-                      className={cn('rounded-full border px-2.5 py-1 text-xs font-medium', catFilter === c.id ? 'border-secondary bg-secondary text-secondary-foreground' : 'text-muted-foreground hover:bg-muted')}
+                      className={cn('keep-round rounded-full border px-2.5 py-1 text-xs font-medium', catFilter === c.id ? 'border-secondary bg-secondary text-secondary-foreground' : 'text-muted-foreground hover:bg-muted')}
                     >
                       {c.name}
                     </button>
@@ -1360,7 +1360,7 @@ function CustomizeModal({ item, allAddons, initial, onClose, onSubmit }: {
               {selected.length > 0 && (
                 <div className="mb-2.5 flex flex-wrap gap-1.5">
                   {selected.map((a) => (
-                    <button key={a.id} type="button" onClick={() => toggle(a.id)} className="inline-flex items-center gap-1.5 rounded-full border border-secondary bg-secondary/10 px-2.5 py-1 text-xs font-medium text-secondary">
+                    <button key={a.id} type="button" onClick={() => toggle(a.id)} className="keep-round inline-flex items-center gap-1.5 rounded-full border border-secondary bg-secondary/10 px-2.5 py-1 text-xs font-medium text-secondary">
                       {a.name}{a.price > 0 ? ` · ${formatKes(a.price)}` : ''}
                       <LuX className="size-3" />
                     </button>
@@ -1446,14 +1446,14 @@ function ComplimentarySessionModal({ onClose, onCreated }: { onClose: () => void
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-sm border bg-card p-6 shadow-2xl">
-        <div className="flex items-start justify-between gap-3">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-md border-2 border-foreground/25 bg-card p-6 shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+        <div className="-mx-6 -mt-6 flex items-start justify-between gap-3 border-b-4 border-accent bg-muted/60 px-6 py-4">
           <div>
-            <p className="text-sm font-semibold text-secondary">Complementary session</p>
+            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">Complementary session</p>
             <h2 className="mt-1 font-display text-xl font-semibold">New host/event</h2>
           </div>
-          <button type="button" onClick={onClose} className="rounded-sm p-1 text-muted-foreground hover:bg-muted"><LuX className="size-4" /></button>
+          <button type="button" onClick={onClose} title="Close" className="bg-black p-2 text-white transition hover:bg-black/80"><LuX className="size-4" /></button>
         </div>
         <div className="mt-5 grid gap-3">
           <label className="text-sm font-medium">Title <span className="text-destructive">*</span><input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. DJ Lexx Saturday" className="input mt-1.5" /></label>
@@ -1621,14 +1621,14 @@ function AddItemsModal({ order, menuItems, allAddons, onClose, onRefresh, onAdde
   const editingExistingItem = editingExisting?.menuItemId ? menuById.get(editingExisting.menuItemId) ?? null : null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
-      <div className="grid max-h-[88vh] w-full max-w-3xl grid-rows-[auto_1fr_auto] overflow-hidden rounded-sm border bg-card shadow-2xl">
-        <div className="flex items-center justify-between border-b p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="grid max-h-[88vh] w-full max-w-3xl grid-rows-[auto_1fr_auto] overflow-hidden border-2 border-foreground/25 bg-card shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+        <div className="flex items-center justify-between border-b-4 border-accent bg-muted/60 px-5 py-4">
           <div>
-            <p className="text-sm font-semibold text-secondary">Order #{order.orderNumber}</p>
+            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">Order #{order.orderNumber}</p>
             <h2 className="font-display text-xl font-semibold">{servedLocked ? 'Add to served order' : 'Manage order'}</h2>
           </div>
-          <button onClick={onClose} className="rounded-sm p-2 text-muted-foreground hover:bg-muted"><LuX /></button>
+          <button onClick={onClose} title="Close" className="bg-black p-2 text-white transition hover:bg-black/80"><LuX /></button>
         </div>
 
         {error && <div className="mx-4 mt-3 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert />{error}</div>}

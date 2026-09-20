@@ -72,11 +72,11 @@ export default function ReceiptPreviewModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
-      <div className="flex max-h-[88vh] w-full max-w-sm flex-col overflow-hidden rounded-sm bg-card shadow-2xl">
-        <div className="flex items-center justify-between border-b p-3 print:hidden">
-          <p className="text-sm font-semibold text-secondary">Receipt</p>
-          <button onClick={onClose} aria-label="Close" className="rounded-sm p-1.5 text-muted-foreground hover:bg-muted"><LuX className="size-4" /></button>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
+      <div className="flex max-h-[88vh] w-full max-w-sm flex-col overflow-hidden border-2 border-foreground/25 bg-card shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+        <div className="flex items-center justify-between border-b-4 border-accent bg-muted/60 px-4 py-3 print:hidden">
+          <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">Receipt</p>
+          <button onClick={onClose} aria-label="Close" className="bg-black p-2 text-white transition hover:bg-black/80"><LuX className="size-4" /></button>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto">
