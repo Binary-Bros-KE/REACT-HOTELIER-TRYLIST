@@ -14,6 +14,9 @@ import ConfirmModal from '@/components/ui/ConfirmModal'
 import { cn } from '@/lib/utils'
 import { packAndUnit } from '@/components/ui/PackQtyInput'
 import ShiftSummaryModal, { type ShiftSession, type ShiftSummary } from '@/components/shifts/ShiftSummaryModal'
+import ShiftTeamPanels from '@/components/shifts/ShiftTeamPanels'
+import { ShiftContext, useNow, useShift, type ConfirmAction, type ShiftCtx, type ShiftPayload, type ShiftRow } from '@/components/shifts/shiftContext'
+import DashboardSkeleton from '@/components/ui/DashboardSkeleton'
 
 function getGreeting() {
   const hour = new Date().getHours()
@@ -81,7 +84,6 @@ type TransactionRow = {
   customer: { firstName: string; lastName: string | null } | null
   supplier: { name: string } | null
 }
-type ShiftPayload = { serverNow: string; user: { isSupervisor: boolean; role: { name: string } | null }; session: ShiftSession | null; summary: ShiftSummary | null }
 
 const NON_FINAL_STATUSES = ['OPEN', 'PREPARING', 'READY', 'SERVED']
 const titleCase = (value: string) => value.charAt(0) + value.slice(1).toLowerCase().replaceAll('_', ' ')
@@ -141,7 +143,7 @@ function RevenueDashboard({ variant }: { variant: 'operations' | 'finance' }) {
   ) : null
 
   if (loading) {
-    return <div className="mt-7 flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><LuLoaderCircle className="animate-spin" /> Loading today's overview…</div>
+    return <DashboardSkeleton />
   }
   if (error || !report) {
     return <div className="mt-5 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert />{error || 'Could not load the dashboard'}</div>
@@ -172,7 +174,7 @@ function RevenueDashboard({ variant }: { variant: 'operations' | 'finance' }) {
           </header>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
+              <thead className="bg-primary text-xs uppercase tracking-wide text-primary-foreground">
                 <tr><th className="px-4 py-2">Event</th><th className="px-4 py-2 text-right">Comp Cost</th><th className="px-4 py-2 text-right">Guest Revenue</th><th className="px-4 py-2">Covered</th><th className="px-4 py-2 text-right">Net</th></tr>
               </thead>
               <tbody>{report.complimentarySessions.slice(0, 6).map((session) => {
@@ -438,7 +440,7 @@ function ReceptionDashboard() {
   }, [])
 
   if (loading) {
-    return <div className="mt-7 flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><LuLoaderCircle className="animate-spin" /> Loading today's front desk…</div>
+    return <DashboardSkeleton />
   }
   if (error) {
     return <div className="mt-5 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert />{error}</div>
@@ -593,7 +595,7 @@ function WaiterDashboard() {
   }
 
   if (loading) {
-    return <div className="mt-7 flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><LuLoaderCircle className="animate-spin" /> Loading your orders…</div>
+    return <DashboardSkeleton />
   }
 
   const readyOrders = activeOrders.filter((o) => o.status === 'READY')
@@ -724,7 +726,7 @@ function BarmanDashboard() {
   }
 
   if (loading) {
-    return <div className="mt-7 flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><LuLoaderCircle className="animate-spin" /> Loading bar counter...</div>
+    return <DashboardSkeleton />
   }
 
   const readyOrders = activeOrders.filter((order) => order.status === 'READY')
@@ -894,7 +896,7 @@ function StorekeeperDashboard() {
   }, [])
 
   if (loading) {
-    return <div className="mt-7 flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><LuLoaderCircle className="animate-spin" /> Loading stock overview…</div>
+    return <DashboardSkeleton />
   }
   if (error) {
     return <div className="mt-5 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert />{error}</div>
@@ -1058,7 +1060,7 @@ function ChefDashboard() {
   }
 
   if (loading) {
-    return <div className="mt-7 flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><LuLoaderCircle className="animate-spin" /> Loading the kitchen…</div>
+    return <DashboardSkeleton />
   }
 
   const newTickets = orders.filter((o) => o.status === 'OPEN')
@@ -1204,7 +1206,7 @@ function HousekeepingDashboard() {
   }
 
   if (loading) {
-    return <div className="mt-7 flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><LuLoaderCircle className="animate-spin" /> Loading housekeeping…</div>
+    return <DashboardSkeleton />
   }
 
   return (
@@ -1286,19 +1288,19 @@ function HousekeepingDashboard() {
   )
 }
 
-function ShiftControl({ onReady }: { onReady: (ready: boolean) => void }) {
+function ShiftProvider({ onReady, onLoaded, children }: { onReady: (ready: boolean) => void; onLoaded: () => void; children: ReactNode }) {
   const user = useAppSelector((s) => s.auth.user)
   const toast = useToast()
   const [state, setState] = useState<ShiftPayload | null>(null)
-  const [approvals, setApprovals] = useState<(ShiftSession & { summary: ShiftSummary | null })[]>([])
-  const [activeStaff, setActiveStaff] = useState<(ShiftSession & { summary: ShiftSummary | null })[]>([])
-  const [history, setHistory] = useState<(ShiftSession & { summary: ShiftSummary | null })[]>([])
+  const [loaded, setLoaded] = useState(false)
+  const [approvals, setApprovals] = useState<ShiftRow[]>([])
+  const [activeStaff, setActiveStaff] = useState<ShiftRow[]>([])
+  const [history, setHistory] = useState<ShiftRow[]>([])
   const [selectedSummary, setSelectedSummary] = useState<{ title: string; session: ShiftSession; summary: ShiftSummary; approval?: boolean } | null>(null)
-  const [now, setNow] = useState(new Date())
   const [busyKey, setBusyKey] = useState('')
   const [error, setError] = useState('')
   const [confirmEndShift, setConfirmEndShift] = useState(false)
-  const [confirmAction, setConfirmAction] = useState<{ title: string; message: string; confirmLabel: string; tone?: 'warning' | 'danger'; busyKey: string; run: () => Promise<boolean> } | null>(null)
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null)
   const isSuperAdmin = user?.role?.name === 'Super Admin'
   const isSupervisor = Boolean(user?.isSupervisor || isSuperAdmin)
 
@@ -1308,13 +1310,13 @@ function ShiftControl({ onReady }: { onReady: (ready: boolean) => void }) {
       setState(current)
       onReady(isSuperAdmin || current.session?.status === 'ACTIVE')
       const historyResponse = isSupervisor
-        ? await api<{ sessions: (ShiftSession & { summary: ShiftSummary | null })[] }>('/shifts/sessions?status=ENDED&status=REJECTED_START&status=REJECTED_END&take=32')
-        : await api<{ sessions: (ShiftSession & { summary: ShiftSummary | null })[] }>('/shifts/history')
+        ? await api<{ sessions: ShiftRow[] }>('/shifts/sessions?status=ENDED&status=REJECTED_START&status=REJECTED_END&take=32&withSummary=true')
+        : await api<{ sessions: ShiftRow[] }>('/shifts/history')
       setHistory(historyResponse.sessions)
       if (isSupervisor) {
         const [pending, active] = await Promise.all([
-          api<{ sessions: (ShiftSession & { summary: ShiftSummary | null })[] }>('/shifts/approvals'),
-          api<{ sessions: (ShiftSession & { summary: ShiftSummary | null })[] }>('/shifts/active-supervised'),
+          api<{ sessions: ShiftRow[] }>('/shifts/approvals'),
+          api<{ sessions: ShiftRow[] }>('/shifts/active-supervised'),
         ])
         setApprovals(pending.sessions)
         setActiveStaff(active.sessions)
@@ -1322,13 +1324,15 @@ function ShiftControl({ onReady }: { onReady: (ready: boolean) => void }) {
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not load shift status')
       onReady(false)
+    } finally {
+      setLoaded(true)
+      onLoaded()
     }
-  }, [isSuperAdmin, isSupervisor, onReady])
+  }, [isSuperAdmin, isSupervisor, onReady, onLoaded])
 
   useEffect(() => { void load() }, [load])
-  useEffect(() => { const id = window.setInterval(() => setNow(new Date()), 1000); return () => window.clearInterval(id) }, [])
 
-  async function post(path: string, body: object = {}, key = path) {
+  const post = useCallback(async (path: string, body: object = {}, key = path) => {
     setBusyKey(key)
     setError('')
     try {
@@ -1344,9 +1348,9 @@ function ShiftControl({ onReady }: { onReady: (ready: boolean) => void }) {
     } finally {
       setBusyKey('')
     }
-  }
+  }, [load, toast])
 
-  async function openShiftSummary(session: ShiftSession & { summary?: ShiftSummary | null }, title: string, approval = false) {
+  const openSummary = useCallback(async (session: ShiftSession & { summary?: ShiftSummary | null }, title: string, approval = false) => {
     setBusyKey(`${session.id}:summary`)
     setError('')
     try {
@@ -1367,16 +1371,21 @@ function ShiftControl({ onReady }: { onReady: (ready: boolean) => void }) {
     } finally {
       setBusyKey('')
     }
-  }
+  }, [toast])
 
-  const session = state?.session
-  const approvedAt = session?.approvedStartAt ? new Date(session.approvedStartAt) : null
-  const elapsed = approvedAt ? Math.max(0, now.getTime() - approvedAt.getTime()) : 0
-  const hours = Math.floor(elapsed / 36e5)
-  const minutes = Math.floor((elapsed % 36e5) / 6e4)
-  const seconds = Math.floor((elapsed % 6e4) / 1000)
-  const timeText = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
-  const startText = isSupervisor ? 'Start shift' : 'Request start shift'
+  const forceEnd = useCallback((s: ShiftRow) => setConfirmAction({
+    title: `End ${s.employee.firstName}'s shift?`,
+    message: `${s.employee.firstName} ${s.employee.lastName}'s shift closes right now, without waiting for them to request it. Any open sales must already be settled.`,
+    confirmLabel: 'End shift',
+    tone: 'danger',
+    busyKey: `${s.id}:force-end`,
+    run: () => post(`/shifts/${s.id}/force-end`, {}, `${s.id}:force-end`),
+  }), [post])
+
+  const ctx: ShiftCtx = {
+    loaded, state, approvals, activeStaff, history, busyKey, error, isSuperAdmin, isSupervisor,
+    post, ask: setConfirmAction, askEndOwnShift: () => setConfirmEndShift(true), openSummary: (s, t, a) => void openSummary(s, t, a), forceEnd,
+  }
   const endText = isSupervisor ? 'End shift' : 'Request end shift'
   const runConfirmedAction = () => {
     const action = confirmAction
@@ -1385,135 +1394,8 @@ function ShiftControl({ onReady }: { onReady: (ready: boolean) => void }) {
   }
 
   return (
-    <section className="mt-6 space-y-5">
-      {!isSuperAdmin && <div className="rounded-sm border bg-card p-5 shadow-sm">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-secondary">Shift</p>
-          <h2 className="mt-1 font-display text-xl font-semibold">{session?.status === 'ACTIVE' ? 'You are on shift' : session?.status === 'REQUESTED_START' ? 'Start request waiting approval' : session?.status === 'REQUESTED_END' ? 'End request waiting approval' : 'Request shift start'}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">{new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}</p>
-          {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
-        </div>
-        <div className="text-left lg:text-right">
-          <p className="font-display text-3xl font-semibold tabular-nums">{session?.status === 'ACTIVE' || session?.status === 'REQUESTED_END' ? timeText : '--:--:--'}</p>
-          <p className="text-xs text-muted-foreground">{approvedAt ? `Started ${approvedAt.toLocaleTimeString()}` : 'Supervisor approval starts the clock'}</p>
-        </div>
-      </div>
-      {state?.summary && (
-        <div className="mt-4 grid gap-3 sm:grid-cols-5">
-          <div className="rounded-sm border bg-muted/30 p-3"><p className="text-xs text-muted-foreground">Sales</p><p className="font-semibold">{formatKes(state.summary.totalSales)}</p></div>
-          <div className="rounded-sm border bg-muted/30 p-3"><p className="text-xs text-muted-foreground">Collected</p><p className="font-semibold">{formatKes(state.summary.totalPaid)}</p></div>
-          <div className="rounded-sm border bg-muted/30 p-3"><p className="text-xs text-muted-foreground">Credit</p><p className="font-semibold">{formatKes(state.summary.creditSales)}</p></div>
-          <div className="rounded-sm border bg-muted/30 p-3"><p className="text-xs text-muted-foreground">Complimentary</p><p className="font-semibold">{formatKes(state.summary.complimentaryTotal)}</p></div>
-          <div className="rounded-sm border bg-muted/30 p-3"><p className="text-xs text-muted-foreground">Pending</p><p className="font-semibold">{state.summary.pendingOrders}</p></div>
-        </div>
-      )}
-      {state?.summary?.byPaymentMethod.length ? (
-        <div className="mt-4 rounded-sm border">
-          {state.summary.byPaymentMethod.map((m) => (
-            <div key={m.name} className="flex items-center justify-between border-t px-3 py-2 text-sm first:border-t-0">
-              <span>{m.name}</span>
-              <span className="font-semibold tabular-nums">{formatKes(m.total)}</span>
-            </div>
-          ))}
-        </div>
-      ) : null}
-      <div className="mt-4 flex flex-wrap gap-2">
-        {!session && <ShiftButton loading={busyKey === 'start'} onClick={() => setConfirmAction({
-          title: isSupervisor ? 'Are you sure you want to start shift?' : 'Request shift start?',
-          message: isSupervisor ? 'Your shift will start immediately.' : 'Your supervisor will need to approve this request before you can work.',
-          confirmLabel: startText,
-          busyKey: 'start',
-          run: () => post('/shifts/start-request', {}, 'start'),
-        })} icon={<LuLogIn />}>{startText}</ShiftButton>}
-        {session?.status === 'ACTIVE' && <ShiftButton loading={busyKey === 'end'} onClick={() => setConfirmEndShift(true)} icon={<LuLogOut />}>{endText}</ShiftButton>}
-        {session?.status === 'REQUESTED_START' && <span className="rounded-sm border border-warning/40 bg-warning/10 px-3 py-2 text-sm font-semibold text-warning">Waiting for supervisor</span>}
-        {session?.status === 'REQUESTED_END' && <span className="rounded-sm border border-warning/40 bg-warning/10 px-3 py-2 text-sm font-semibold text-warning">Waiting for handover approval</span>}
-      </div>
-      </div>}
-      {approvals.length > 0 && (
-        <div className="overflow-hidden rounded-sm border bg-card">
-          <div className="bg-muted/40 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Supervisor approvals</div>
-          {approvals.map((a) => (
-            <div key={a.id} className="flex flex-col gap-2 border-t p-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="font-semibold">{a.employee.firstName} {a.employee.lastName}</p>
-                <p className="text-xs text-muted-foreground">{a.status === 'REQUESTED_END' ? `End shift · ${formatKes(a.summary?.totalPaid ?? 0)} collected` : 'Start shift'}</p>
-              </div>
-              <div className="flex gap-2">
-                {a.status === 'REQUESTED_END' && a.summary && <button onClick={() => void openShiftSummary(a, `${a.employee.firstName}'s handover`, true)} className="rounded-sm border px-3 py-1.5 text-xs font-semibold hover:bg-muted">Review</button>}
-                {a.status === 'REQUESTED_START' && <button disabled={busyKey === `${a.id}:approve`} onClick={() => setConfirmAction({
-                  title: 'Approve shift start?',
-                  message: `${a.employee.firstName} ${a.employee.lastName} will be marked active immediately.`,
-                  confirmLabel: 'Approve',
-                  busyKey: `${a.id}:approve`,
-                  run: () => post(`/shifts/${a.id}/start-approval`, { action: 'APPROVE' }, `${a.id}:approve`),
-                })} className="inline-flex items-center gap-1.5 rounded-sm bg-success px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60">{busyKey === `${a.id}:approve` && <LuLoaderCircle className="size-3 animate-spin" />}Approve</button>}
-                {a.status === 'REQUESTED_START' && <button disabled={busyKey === `${a.id}:reject`} onClick={() => setConfirmAction({
-                  title: 'Reject shift start?',
-                  message: `${a.employee.firstName} ${a.employee.lastName}'s start request will be rejected.`,
-                  confirmLabel: 'Reject',
-                  tone: 'danger',
-                  busyKey: `${a.id}:reject`,
-                  run: () => post(`/shifts/${a.id}/start-approval`, { action: 'REJECT' }, `${a.id}:reject`),
-                })} className="inline-flex items-center gap-1.5 rounded-sm border px-3 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-60">{busyKey === `${a.id}:reject` && <LuLoaderCircle className="size-3 animate-spin" />}Reject</button>}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-      {isSupervisor && activeStaff.length > 0 && (
-        <div className="overflow-hidden rounded-sm border bg-card">
-          <div className="bg-muted/40 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Currently on shift</div>
-          <div className="grid gap-0 sm:grid-cols-2 xl:grid-cols-3">
-            {activeStaff.map((s) => {
-              const started = s.approvedStartAt ? new Date(s.approvedStartAt) : null
-              const liveHours = started ? Math.max(0, (now.getTime() - started.getTime()) / 36e5) : 0
-              return (
-                <button key={s.id} type="button" onClick={() => void openShiftSummary(s, `${s.employee.firstName}'s active shift`)} className="border-t p-3 text-left text-sm transition hover:bg-muted/50 sm:border-r">
-                  <p className="font-semibold">{s.employee.firstName} {s.employee.lastName}</p>
-                  <p className="text-xs text-muted-foreground">{s.employee.jobTitle || 'Employee'} - {liveHours.toFixed(1)} hrs</p>
-                  <div className="mt-2 flex items-center justify-between text-xs"><span>Sales</span><span className="font-semibold">{formatKes(s.summary?.totalSales ?? 0)}</span></div>
-                  <div className="mt-1 flex items-center justify-between text-xs"><span>Credit</span><span className="font-semibold">{formatKes(s.summary?.creditSales ?? 0)}</span></div>
-                  <p className="mt-2 text-[11px] font-semibold text-secondary">{busyKey === `${s.id}:summary` ? 'Loading...' : 'View shift details'}</p>
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      )}
-      {history.length > 0 && (
-        <div className="overflow-hidden rounded-sm border bg-card">
-          <div className="bg-muted/40 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{isSupervisor ? 'Recent staff shifts' : 'My shift history'}</div>
-          <div className="max-h-80 overflow-y-auto">
-            {history.map((s) => {
-              const rejected = s.status === 'REJECTED_START' || s.status === 'REJECTED_END'
-              const hasSummary = s.status !== 'REJECTED_START'
-              return (
-                <div key={s.id} className="flex flex-col gap-2 border-t p-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="flex items-center gap-2 font-semibold">
-                      {isSupervisor ? `${s.employee.firstName} ${s.employee.lastName}` : s.approvedStartAt ? new Date(s.approvedStartAt).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) : 'Shift'}
-                      {rejected && <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-destructive">Rejected</span>}
-                    </p>
-                    <p className="text-xs text-muted-foreground">{s.approvedStartAt ? new Date(s.approvedStartAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--'} - {s.approvedEndAt ? new Date(s.approvedEndAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--'} - {(s.summary?.hours ?? 0).toFixed(1)} hrs</p>
-                    {rejected && <p className="mt-0.5 text-xs text-destructive">{s.rejectionReason || 'No reason given'}</p>}
-                  </div>
-                  <div className="flex items-center gap-3">
-                    {hasSummary && (
-                      <div className="text-right text-xs">
-                        <p className="font-semibold">{formatKes(s.summary?.totalSales ?? 0)}</p>
-                        <p className="text-muted-foreground">{formatKes(s.summary?.totalPaid ?? 0)} collected</p>
-                      </div>
-                    )}
-                    {hasSummary && <button onClick={() => void openShiftSummary(s, isSupervisor ? `${s.employee.firstName}'s shift summary` : 'Shift summary')} className="rounded-sm border px-3 py-1.5 text-xs font-semibold hover:bg-muted">{busyKey === `${s.id}:summary` ? 'Loading...' : 'View'}</button>}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
+    <ShiftContext.Provider value={ctx}>
+      {children}
       {selectedSummary && (
         <ShiftSummaryModal
           title={selectedSummary.title}
@@ -1562,13 +1444,81 @@ function ShiftControl({ onReady }: { onReady: (ready: boolean) => void }) {
         onCancel={() => setConfirmAction(null)}
         onConfirm={runConfirmedAction}
       />
+    </ShiftContext.Provider>
+  )
+}
+
+/** The signed-in employee's own shift card (start / end / live clock). */
+function ShiftControl() {
+  const { state, loaded, error, busyKey, isSuperAdmin, isSupervisor, ask, askEndOwnShift, post } = useShift()
+  const now = useNow()
+  if (isSuperAdmin) return null
+  if (!loaded) return null
+
+  const session = state?.session
+  const approvedAt = session?.approvedStartAt ? new Date(session.approvedStartAt) : null
+  const elapsed = approvedAt ? Math.max(0, now.getTime() - approvedAt.getTime()) : 0
+  const hours = Math.floor(elapsed / 36e5)
+  const minutes = Math.floor((elapsed % 36e5) / 6e4)
+  const seconds = Math.floor((elapsed % 6e4) / 1000)
+  const timeText = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+  const startText = isSupervisor ? 'Start shift' : 'Request start shift'
+  const endText = isSupervisor ? 'End shift' : 'Request end shift'
+
+  return (
+    <section className="mt-6">
+      <div className="border bg-card p-5 shadow-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-secondary">Shift</p>
+            <h2 className="mt-1 font-display text-xl font-semibold">{session?.status === 'ACTIVE' ? 'You are on shift' : session?.status === 'REQUESTED_START' ? 'Start request waiting approval' : session?.status === 'REQUESTED_END' ? 'End request waiting approval' : 'Request shift start'}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}</p>
+            {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
+          </div>
+          <div className="text-left lg:text-right">
+            <p className="font-display text-3xl font-semibold tabular-nums">{session?.status === 'ACTIVE' || session?.status === 'REQUESTED_END' ? timeText : '--:--:--'}</p>
+            <p className="text-xs text-muted-foreground">{approvedAt ? `Started ${approvedAt.toLocaleTimeString()}` : 'Supervisor approval starts the clock'}</p>
+          </div>
+        </div>
+        {state?.summary && (
+          <div className="mt-4 grid gap-3 sm:grid-cols-5">
+            <div className="border bg-muted/30 p-3"><p className="text-xs text-muted-foreground">Sales</p><p className="font-semibold">{formatKes(state.summary.totalSales)}</p></div>
+            <div className="border bg-muted/30 p-3"><p className="text-xs text-muted-foreground">Collected</p><p className="font-semibold">{formatKes(state.summary.totalPaid)}</p></div>
+            <div className="border bg-muted/30 p-3"><p className="text-xs text-muted-foreground">Credit</p><p className="font-semibold">{formatKes(state.summary.creditSales)}</p></div>
+            <div className="border bg-muted/30 p-3"><p className="text-xs text-muted-foreground">Complimentary</p><p className="font-semibold">{formatKes(state.summary.complimentaryTotal)}</p></div>
+            <div className="border bg-muted/30 p-3"><p className="text-xs text-muted-foreground">Pending</p><p className="font-semibold">{state.summary.pendingOrders}</p></div>
+          </div>
+        )}
+        {state?.summary?.byPaymentMethod.length ? (
+          <div className="mt-4 border">
+            {state.summary.byPaymentMethod.map((m) => (
+              <div key={m.name} className="flex items-center justify-between border-t px-3 py-2 text-sm first:border-t-0">
+                <span>{m.name}</span>
+                <span className="font-semibold tabular-nums">{formatKes(m.total)}</span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        <div className="mt-4 flex flex-wrap gap-2">
+          {!session && <ShiftButton loading={busyKey === 'start'} onClick={() => ask({
+            title: isSupervisor ? 'Are you sure you want to start shift?' : 'Request shift start?',
+            message: isSupervisor ? 'Your shift will start immediately.' : 'Your supervisor will need to approve this request before you can work.',
+            confirmLabel: startText,
+            busyKey: 'start',
+            run: () => post('/shifts/start-request', {}, 'start'),
+          })} icon={<LuLogIn />}>{startText}</ShiftButton>}
+          {session?.status === 'ACTIVE' && <ShiftButton loading={busyKey === 'end'} onClick={askEndOwnShift} icon={<LuLogOut />}>{endText}</ShiftButton>}
+          {session?.status === 'REQUESTED_START' && <span className="border border-warning/40 bg-warning/10 px-3 py-2 text-sm font-semibold text-warning">Waiting for supervisor</span>}
+          {session?.status === 'REQUESTED_END' && <span className="border border-warning/40 bg-warning/10 px-3 py-2 text-sm font-semibold text-warning">Waiting for handover approval</span>}
+        </div>
+      </div>
     </section>
   )
 }
 
 function ShiftButton({ loading, onClick, icon, children }: { loading: boolean; onClick: () => void; icon: ReactNode; children: string }) {
   return (
-    <button disabled={loading} onClick={onClick} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+    <button disabled={loading} onClick={onClick} className="inline-flex items-center gap-2 bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
       {loading ? <LuLoaderCircle className="size-4 animate-spin" /> : icon}
       {children}
     </button>
@@ -1580,6 +1530,8 @@ export default function Dashboard() {
   const user = useAppSelector((s) => s.auth.user)
   const moduleKeys = useAppSelector((s) => s.tenant.moduleKeys)
   const [shiftReady, setShiftReady] = useState(user?.role?.name === 'Super Admin')
+  const [shiftLoaded, setShiftLoaded] = useState(false)
+  const markShiftLoaded = useCallback(() => setShiftLoaded(true), [])
   const firstName = user?.firstName ?? 'there'
   // Revenue and every figure derived from it: Super Admin, Manager, and
   // Accountant — the three roles the user named as allowed to see money.
@@ -1595,7 +1547,7 @@ export default function Dashboard() {
   const isBarman = roleName === 'Barman'
 
   return (
-    <div className="mx-auto max-w-7xl px-6 py-8 sm:px-8 lg:px-10">
+    <div className="dashboard-square mx-auto max-w-7xl px-6 py-8 sm:px-8 lg:px-10">
       <header>
         <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-accent">
           01 &middot; Daily Focus
@@ -1608,7 +1560,9 @@ export default function Dashboard() {
         </p>
       </header>
 
-      <ShiftControl onReady={setShiftReady} />
+      <ShiftProvider onReady={setShiftReady} onLoaded={markShiftLoaded}>
+        <ShiftControl />
+        {!shiftLoaded && roleName !== 'Super Admin' && <DashboardSkeleton />}
 
       {shiftReady && revenueVariant && <RevenueDashboard variant={revenueVariant} />}
       {shiftReady && isReceptionist && <ReceptionDashboard />}
@@ -1617,6 +1571,9 @@ export default function Dashboard() {
       {shiftReady && isChef && <ChefDashboard />}
       {shiftReady && isHousekeeping && <HousekeepingDashboard />}
       {shiftReady && isBarman && <BarmanDashboard />}
+
+        <ShiftTeamPanels />
+      </ShiftProvider>
 
       <section className="mt-8 rounded-sm border border-border bg-card p-6 shadow-sm">
         <div className="mb-5 flex items-center justify-between">
