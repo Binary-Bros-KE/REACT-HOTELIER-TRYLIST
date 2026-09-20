@@ -160,7 +160,7 @@ export default function ProductsPointOfSale() {
   }
 
   return (
-    <div className="mx-auto grid min-h-full max-w-7xl grid-cols-1 gap-0 px-6 py-6 sm:px-8 sm:py-8 lg:grid-cols-[minmax(0,1fr)_24px_360px] lg:px-10">
+    <div className="dashboard-square mx-auto grid min-h-full max-w-7xl grid-cols-1 gap-0 px-6 py-6 sm:px-8 sm:py-8 lg:grid-cols-[minmax(0,1fr)_24px_360px] lg:px-10">
       <section className="min-w-0">
         <div className="relative">
           <div className="pointer-events-none absolute -bottom-2 left-3 right-1 top-2 rotate-[0.6deg] rounded-sm border border-black/10 bg-white/70" aria-hidden="true" />
@@ -243,7 +243,7 @@ export default function ProductsPointOfSale() {
                       <span className="max-w-[55%] truncate rounded-sm bg-muted px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{item.category?.name ?? 'Uncategorized'}</span>
                     </div>
                     <h2 className="mt-3 line-clamp-2 text-sm font-semibold text-foreground sm:mt-5 sm:text-base">{item.name}</h2>
-                    <span className={cn('mt-1.5 inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', soldOut ? 'bg-destructive/15 text-destructive' : 'bg-success/15 text-success')}>
+                    <span className={cn('mt-1.5 inline-flex w-fit items-center keep-round border border-dashed px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', soldOut ? 'border-destructive/70 text-destructive' : 'border-success/70 text-success')}>
                       {soldOut ? 'Out of stock' : `${stockLabel} left`}
                     </span>
                     <div className="mt-3 border-t pt-3 sm:mt-4 sm:pt-4">
@@ -267,7 +267,7 @@ export default function ProductsPointOfSale() {
       </div>
 
       <aside className="mt-8 flex h-fit min-w-0 flex-col gap-3 lg:mt-0">
-        <div className="flex flex-col rounded-sm border border-border bg-card shadow-sm">
+        <div className="flex flex-col border-2 border-secondary/40 bg-card shadow-md">
           <div className="flex items-center gap-3 border-b p-4">
             <span className="inline-flex shrink-0 items-center gap-1.5 rounded-sm border border-dashed border-accent px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-accent">
               <span className="size-1.5 rounded-full bg-accent" /> New Sale
