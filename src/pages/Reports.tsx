@@ -38,6 +38,8 @@ type Cards = {
 }
 type RevenueBreakdown = {
   posSalesCash: number
+  creditGiven?: number
+  creditRepaymentsCash?: number
   folioDepositsCash: number
   folioSettlementsCash: number
   serviceCenterCash: number
@@ -259,15 +261,16 @@ export default function Reports() {
             <header className="border-b p-4"><h2 className="font-semibold">Revenue &amp; Expense Breakdown</h2><p className="text-xs text-muted-foreground">Every figure above traces back to something real — here's exactly where it comes from.</p></header>
             <div className="space-y-5 p-4">
               <div className="rounded-sm border bg-muted/30 p-3 text-sm">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total Revenue — where the cash came from</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total Revenue — where it came from</p>
                 <p className="mt-1">
-                  <span className="font-semibold">{formatKes(report.revenueBreakdown.posSalesCash)}</span> POS sales
+                  <span className="font-semibold">{formatKes(report.revenueBreakdown.posSalesCash - (report.revenueBreakdown.creditRepaymentsCash ?? 0))}</span> POS sales paid
+                  {' + '}<span className="font-semibold">{formatKes(report.revenueBreakdown.creditGiven ?? 0)}</span> sold on credit
                   {' + '}<span className="font-semibold">{formatKes(report.revenueBreakdown.folioDepositsCash)}</span> room deposits
                   {' + '}<span className="font-semibold">{formatKes(report.revenueBreakdown.folioSettlementsCash)}</span> room checkouts
                   {' + '}<span className="font-semibold">{formatKes(report.revenueBreakdown.serviceCenterCash)}</span> service-center
                   {' = '}<span className="font-semibold text-secondary">{formatKes(report.revenueBreakdown.totalRevenue)}</span>
                 </p>
-                <p className="mt-1 text-xs text-muted-foreground">Only cash actually received counts — a credit sale's unpaid balance isn't revenue yet.{report.revenueBreakdown.serviceCenterExcludedByLocationFilter && ' Service-center bookings aren\'t location-tagged yet, so they\'re left out of this location-filtered view.'}</p>
+                <p className="mt-1 text-xs text-muted-foreground">Revenue is what was sold: money taken in for sales, plus sales given on credit. A customer later paying off credit isn't counted again{(report.revenueBreakdown.creditRepaymentsCash ?? 0) > 0 ? ` (${formatKes(report.revenueBreakdown.creditRepaymentsCash ?? 0)} of such repayments came in this period — shown in the payment-method table but not here)` : ''}.{report.revenueBreakdown.serviceCenterExcludedByLocationFilter && ' Service-center bookings aren\'t location-tagged yet, so they\'re left out of this location-filtered view.'}</p>
                 <div className="mt-3 grid gap-2 sm:grid-cols-2">
                   <div className="rounded-sm border bg-card p-2.5">
                     <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tax Collected</p>
@@ -330,7 +333,7 @@ export default function Reports() {
                   {' − '}<span className="font-semibold">{formatKes(report.revenueBreakdown.cogs)}</span> cost of goods sold
                   {' = '}<span className="font-semibold text-secondary">{formatKes(report.revenueBreakdown.netRevenue)}</span>
                 </p>
-                <p className="mt-1 text-xs text-muted-foreground">Based on everything completed/sold this period, whether paid in cash or settled on credit — a different base than the cash Total Revenue above.{cogsNote ? ` ${cogsNote}` : ''}</p>
+                <p className="mt-1 text-xs text-muted-foreground">Based on everything completed/sold this period, whether paid in cash or settled on credit — the same sales as Total Revenue above, less the cost of goods.{cogsNote ? ` ${cogsNote}` : ''}</p>
               </div>
 
               <div>

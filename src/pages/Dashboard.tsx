@@ -157,7 +157,7 @@ function RevenueDashboard({ variant }: { variant: 'operations' | 'finance' }) {
       <section className={locationPicker ? 'mt-3' : 'mt-7'}>
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Today's financial overview</p>
         <div className="mt-2.5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard index={0} label="Total Revenue" value={formatKes(report.cards.totalRevenue)} icon={<LuWallet className="size-4" />} hint="Cash actually received" />
+          <StatCard index={0} label="Total Revenue" value={formatKes(report.cards.totalRevenue)} icon={<LuWallet className="size-4" />} hint="Cash received + credit sales" />
           <StatCard index={1} label="Net Revenue" value={formatKes(report.cards.netRevenue)} icon={<LuTrendingUp className="size-4" />} hint="Sold − cost of goods" />
           <StatCard index={2} label="Total Expenses" value={formatKes(report.cards.totalExpenses)} icon={<LuReceiptText className="size-4" />} />
           <StatCard index={3} label="Net Profit" value={formatKes(report.cards.netProfit)} icon={<LuBanknote className="size-4" />} hint="Net revenue − expenses" />
