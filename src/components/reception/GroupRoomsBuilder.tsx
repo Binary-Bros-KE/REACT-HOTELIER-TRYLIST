@@ -2,22 +2,14 @@ import { useMemo, useState } from 'react'
 import { LuPlus, LuX } from 'react-icons/lu'
 import { cn } from '@/lib/utils'
 import SearchableSelect from '@/components/ui/SearchableSelect'
+import { hasVariants, isHourlyUnit, unitWord, type RoomRateOption } from '@/lib/roomRates'
 import RoomTermsFields, { defaultTerms, termsDiscount, termsPayload, type RoomTerms } from '@/components/reception/RoomTerms'
-
-export const MEAL_PLANS = ['ROOM_ONLY', 'BED_AND_BREAKFAST', 'HALF_BOARD', 'FULL_BOARD'] as const
-export type MealPlan = (typeof MEAL_PLANS)[number]
-export const MEAL_PLAN_LABELS: Record<MealPlan, string> = {
-  ROOM_ONLY: 'Room Only',
-  BED_AND_BREAKFAST: 'Bed & Breakfast',
-  HALF_BOARD: 'Half Board',
-  FULL_BOARD: 'Full Board',
-}
 
 export type PickRoom = {
   id: string
   number: string
   name: string | null
-  roomType: { id: string; name: string; rates: { mealPlan: MealPlan; price: string | number }[] }
+  roomType: { id: string; name: string; rates: RoomRateOption[]; priceUnit?: { id: string; name: string } | null }
   capacity: number
   nightlyRate: string | number
   status: string
@@ -32,18 +24,25 @@ export type RoomRow = {
   occupants: string
   adults: string
   children: string
-  mealPlan: MealPlan
+  rateId: string
   customerId: string
   ownTerms: boolean
   terms: RoomTerms
 }
 
-export const newRow = (roomId: string): RoomRow => ({ key: `${roomId}-${Math.random().toString(36).slice(2, 7)}`, roomId, occupants: '', adults: '1', children: '0', mealPlan: 'ROOM_ONLY', customerId: '', ownTerms: false, terms: defaultTerms() })
+export const newRow = (roomId: string): RoomRow => ({ key: `${roomId}-${Math.random().toString(36).slice(2, 7)}`, roomId, occupants: '', adults: '1', children: '0', rateId: '', customerId: '', ownTerms: false, terms: defaultTerms() })
 
-export function rateFor(room: PickRoom, mealPlan: MealPlan): number {
-  const tier = room.roomType.rates.find((r) => r.mealPlan === mealPlan)
-  return tier ? Number(tier.price) : Number(room.nightlyRate)
+/** Rooms of a variant type must be sold under a rate; hourly rates aren't offered for group bookings (they're priced by date). */
+export const rowMissingRate = (room: PickRoom | undefined, row: RoomRow) => Boolean(room) && hasVariants(room!) && !room!.roomType.rates.some((r) => r.id === row.rateId)
+export const rowsMissingRate = (rows: RoomRow[], rooms: PickRoom[]) => rows.some((row) => rowMissingRate(rooms.find((r) => r.id === row.roomId), row))
+export function groupRowGross(room: PickRoom, row: RoomRow, nights: number): number {
+  if (hasVariants(room)) {
+    const rate = room.roomType.rates.find((r) => r.id === row.rateId)
+    return rate ? Number(rate.price) * nights : 0
+  }
+  return Number(room.nightlyRate) * nights
 }
+export const rateLabel = (room: PickRoom, row: RoomRow) => room.roomType.rates.find((r) => r.id === row.rateId)?.name ?? 'Standard'
 
 export function parseOccupants(text: string): { name: string; idNumber?: string }[] {
   return text.split('\n').map((line) => line.trim()).filter(Boolean).map((line) => {
@@ -58,7 +57,7 @@ export function rowsToPayload(rows: RoomRow[]) {
   return rows.map((row) => ({
     roomId: row.roomId,
     customerId: row.customerId || undefined,
-    mealPlan: row.mealPlan,
+    rateId: row.rateId || undefined,
     adults: Math.max(1, Number(row.adults) || 1),
     children: Math.max(0, Number(row.children) || 0),
     guests: parseOccupants(row.occupants),
@@ -128,7 +127,7 @@ export default function GroupRoomsBuilder({ rooms, customers, rows, onChange, gr
           {rows.map((row) => {
             const room = roomById.get(row.roomId)
             if (!room) return null
-            const gross = rateFor(room, row.mealPlan) * nights
+            const gross = groupRowGross(room, row, nights)
             const terms = row.ownTerms ? row.terms : groupTerms
             const off = termsDiscount(terms, gross)
             return (
@@ -136,7 +135,7 @@ export default function GroupRoomsBuilder({ rooms, customers, rows, onChange, gr
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold">Room {room.number} · {room.roomType.name}</p>
-                    <p className="text-xs text-muted-foreground">Sleeps {room.capacity} · {MEAL_PLAN_LABELS[row.mealPlan]} · {nights > 0 ? `KSh ${(gross - off).toLocaleString('en-KE', { maximumFractionDigits: 2 })}` : '—'}{off > 0 ? ` (after KSh ${off.toLocaleString('en-KE', { maximumFractionDigits: 2 })} off)` : ''}</p>
+                    <p className="text-xs text-muted-foreground">Sleeps {room.capacity} · {hasVariants(room) ? (rowMissingRate(room, row) ? 'choose a rate' : rateLabel(room, row)) : 'Standard'} · {nights > 0 && !rowMissingRate(room, row) ? `KSh ${(gross - off).toLocaleString('en-KE', { maximumFractionDigits: 2 })}` : '—'}{off > 0 ? ` (after KSh ${off.toLocaleString('en-KE', { maximumFractionDigits: 2 })} off)` : ''}</p>
                   </div>
                   <button type="button" onClick={() => onChange(rows.filter((r) => r.key !== row.key))} title="Remove room" className="text-muted-foreground hover:text-destructive"><LuX className="size-4" /></button>
                 </div>
@@ -148,11 +147,14 @@ export default function GroupRoomsBuilder({ rooms, customers, rows, onChange, gr
                     <label className="block text-sm font-medium">Adults<input type="number" min="1" className="input mt-1.5" value={row.adults} onChange={(e) => update(row.key, { adults: e.target.value })} /></label>
                     <label className="block text-sm font-medium">Children<input type="number" min="0" className="input mt-1.5" value={row.children} onChange={(e) => update(row.key, { children: e.target.value })} /></label>
                   </div>
-                  <label className="block text-sm font-medium">Meal plan
-                    <select className="input mt-1.5" value={row.mealPlan} onChange={(e) => update(row.key, { mealPlan: e.target.value as MealPlan })}>
-                      {MEAL_PLANS.map((plan) => <option key={plan} value={plan}>{MEAL_PLAN_LABELS[plan]} — KSh {rateFor(room, plan).toLocaleString('en-KE')}</option>)}
-                    </select>
-                  </label>
+                  {hasVariants(room) && (
+                    <label className="block text-sm font-medium">Rate *
+                      <select className="input mt-1.5" value={row.rateId} onChange={(e) => update(row.key, { rateId: e.target.value })}>
+                        <option value="" disabled>Select a rate</option>
+                        {room.roomType.rates.filter((r) => !isHourlyUnit(r.unit?.name)).map((r) => <option key={r.id} value={r.id}>{r.name} — KSh {Number(r.price).toLocaleString('en-KE')}{r.unit ? ` / ${unitWord(r.unit.name)}` : ''}</option>)}
+                      </select>
+                    </label>
+                  )}
                   <div className="sm:col-span-2">
                     <p className="mb-1.5 text-sm font-medium">Registered to <span className="font-normal text-muted-foreground">(leave empty for the billing customer)</span></p>
                     <SearchableSelect

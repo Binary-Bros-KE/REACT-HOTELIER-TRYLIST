@@ -25,19 +25,13 @@ import { useWorkingLocation } from "@/lib/useWorkingLocation";
 import SharedStatCard from "@/components/ui/StatCard";
 import ActionButton from "@/components/ui/ActionButton";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import { hasVariants, roomPricing, roomPriceHint, toApiDate, unitWord, type RoomRateOption } from "@/lib/roomRates";
 import GroupCheckInModal from "@/components/reception/GroupCheckInModal";
 import GroupModal from "@/components/reception/GroupModal";
 import RoomTermsFields, { CreditFields, defaultTerms, termsDiscount, termsFromReservation, termsInvalid, termsPayload, type RoomTerms } from "@/components/reception/RoomTerms";
 
 const RESERVATION_SOURCES = ["WALK_IN", "PHONE", "WEBSITE", "BOOKING_ENGINE", "TRAVEL_AGENT", "OTA", "CORPORATE", "OTHER"] as const;
 const CANCELLATION_REASONS = ["CHANGED_MIND", "NO_SHOW", "FOUND_ALTERNATIVE", "DUPLICATE_BOOKING", "HOTEL_CANCELLED", "OTHER"] as const;
-const MEAL_PLANS = ["ROOM_ONLY", "BED_AND_BREAKFAST", "HALF_BOARD", "FULL_BOARD"] as const;
-const MEAL_PLAN_LABELS: Record<(typeof MEAL_PLANS)[number], string> = {
-  ROOM_ONLY: "Room Only",
-  BED_AND_BREAKFAST: "Bed & Breakfast",
-  HALF_BOARD: "Half Board",
-  FULL_BOARD: "Full Board",
-};
 const CUSTOMER_TYPES = ["PERSONAL", "BUSINESS"] as const;
 
 const titleCase = (value: string) => value.charAt(0) + value.slice(1).toLowerCase().replaceAll("_", " ");
@@ -47,7 +41,7 @@ type Room = {
   id: string;
   number: string;
   name: string | null;
-  roomType: { id: string; name: string; rates: { mealPlan: (typeof MEAL_PLANS)[number]; price: string | number }[] };
+  roomType: { id: string; name: string; rates: RoomRateOption[]; priceUnit: { id: string; name: string } | null };
   capacity: number;
   nightlyRate: string | number;
   status: string;
@@ -115,13 +109,6 @@ function folioTotals(folio: Folio | null) {
   const paid = folio.payments.reduce((sum, p) => sum + Number(p.amount), 0);
   return { charges, paid, balance: charges - paid };
 }
-// Mirrors the backend's fallback: a RoomType may not have every tier
-// configured, so an unpriced meal plan just bills at the room's own rate.
-function rateFor(room: Room, mealPlan: (typeof MEAL_PLANS)[number]): number {
-  const tier = room.roomType.rates.find((r) => r.mealPlan === mealPlan);
-  return tier ? Number(tier.price) : Number(room.nightlyRate);
-}
-const nightsBetween = (from: string, to: string) => Math.max(0, Math.round((new Date(to).getTime() - new Date(from).getTime()) / 86_400_000));
 
 /** api() that also tells the server which reception desk (location) this action is happening at. */
 function apiAt(locationId: string) {
@@ -523,7 +510,7 @@ function NewGuestModal({ customers, rooms, at, onClose, onDone, onCustomerCreate
   const [customerId, setCustomerId] = useState("");
   const [guest, setGuest] = useState({ firstName: "", lastName: "", phone: "", email: "", customerType: "PERSONAL" as (typeof CUSTOMER_TYPES)[number] });
   const [roomId, setRoomId] = useState("");
-  const [mealPlan, setMealPlan] = useState<(typeof MEAL_PLANS)[number]>("ROOM_ONLY");
+  const [rateId, setRateId] = useState("");
   const [checkIn, setCheckIn] = useState(date());
   const [checkOut, setCheckOut] = useState(date(1));
   const [adults, setAdults] = useState("1");
@@ -539,13 +526,39 @@ function NewGuestModal({ customers, rooms, at, onClose, onDone, onCustomerCreate
   const available = rooms.filter((r) => r.status === "VACANT" && r.cleanliness === "CLEAN");
   const room = rooms.find((r) => r.id === roomId);
   const chosenCustomer = customers.find((c) => c.id === customerId);
-  const nights = nightsBetween(checkIn, checkOut);
-  const roomGross = room ? rateFor(room, mealPlan) * nights : 0;
+  const pricing = room ? roomPricing(room, rateId, checkIn, checkOut) : null;
+  const hourly = Boolean(pricing?.hourly);
+  const qty = pricing?.quantity ?? 0;
+  const roomGross = pricing?.total ?? 0;
+  const needsRate = Boolean(room) && hasVariants(room!) && !rateId;
   const roomOff = termsDiscount(terms, roomGross);
   const guestValid = mode === "existing" ? Boolean(customerId) : Boolean(guest.firstName.trim()) && guest.phone.trim().length >= 5;
-  const stayValid = Boolean(roomId) && nights > 0 && Number(adults) >= 1 && !termsInvalid(terms);
+  const stayValid = Boolean(roomId) && !needsRate && new Date(checkOut) > new Date(checkIn) && Number(adults) >= 1 && !termsInvalid(terms);
   const valid = [guestValid, stayValid, true];
   const guestName = mode === "existing" ? (chosenCustomer ? `${chosenCustomer.firstName} ${chosenCustomer.lastName}` : "—") : `${guest.firstName} ${guest.lastName}`.trim() || "—";
+
+  function pickRoom(id: string) {
+    setRoomId(id);
+    setRateId("");
+    const dated = (v: string) => v.slice(0, 10);
+    setCheckIn((v) => dated(v));
+    setCheckOut((v) => dated(v));
+  }
+  function pickRate(id: string) {
+    setRateId(id);
+    const chosen = room?.roomType.rates.find((r) => r.id === id);
+    const wantsTime = chosen ? /\bhours?\b|\bhrs?\b/i.test(chosen.unit?.name ?? "") && !/\b24\b/.test(chosen.unit?.name ?? "") : false;
+    const stamp = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}T${String(d.getHours()).padStart(2, "0")}:00`;
+    if (wantsTime) {
+      const start = new Date();
+      start.setMinutes(0, 0, 0);
+      setCheckIn(stamp(start));
+      setCheckOut(stamp(new Date(start.getTime() + 3_600_000)));
+    } else {
+      setCheckIn((v) => v.slice(0, 10) || date());
+      setCheckOut((v) => (v.length > 10 || !v ? date(1) : v));
+    }
+  }
 
   async function complete() {
     setSaving(true);
@@ -568,11 +581,11 @@ function NewGuestModal({ customers, rooms, at, onClose, onDone, onCustomerCreate
         body: JSON.stringify({
           customerId: id,
           roomId,
-          checkIn,
-          checkOut,
+          rateId: rateId || undefined,
+          checkIn: toApiDate(checkIn),
+          checkOut: toApiDate(checkOut),
           adults: Number(adults),
           children: Number(children),
-          mealPlan,
           source,
           bookingDate,
           notes: notes.trim() || undefined,
@@ -669,9 +682,9 @@ function NewGuestModal({ customers, rooms, at, onClose, onDone, onCustomerCreate
             <Section title="Room">
               <div className="sm:col-span-2">
                 <SearchableSelect
-                  options={available.map((r) => ({ value: r.id, label: `Room ${r.number}${r.name ? ` — ${r.name}` : ""} · ${r.roomType.name}`, hint: `${r.capacity} guests · KSh ${Number(r.nightlyRate).toLocaleString("en-KE")}` }))}
+                  options={available.map((r) => ({ value: r.id, label: `Room ${r.number}${r.name ? ` — ${r.name}` : ""} · ${r.roomType.name}`, hint: `${r.capacity} guests · ${roomPriceHint(r)}` }))}
                   value={roomId}
-                  onChange={setRoomId}
+                  onChange={pickRoom}
                   placeholder={available.length ? "Select a clean, vacant room" : "No rooms are ready right now"}
                   searchPlaceholder="Search rooms…"
                   emptyText="No ready rooms match."
@@ -679,18 +692,24 @@ function NewGuestModal({ customers, rooms, at, onClose, onDone, onCustomerCreate
                 />
                 {rooms.length > available.length && <p className="mt-1.5 text-xs text-muted-foreground">{rooms.length - available.length} room(s) unavailable (occupied, dirty or out of service).</p>}
               </div>
-              <label className="text-sm font-medium sm:col-span-2">Meal plan
-                <select className="input mt-1.5" value={mealPlan} onChange={(e) => setMealPlan(e.target.value as (typeof MEAL_PLANS)[number])}>
-                  {MEAL_PLANS.map((plan) => <option key={plan} value={plan}>{MEAL_PLAN_LABELS[plan]}{room ? ` — KSh ${rateFor(room, plan).toLocaleString("en-KE")}` : ""}</option>)}
-                </select>
-              </label>
+              {room && hasVariants(room) && (
+                <label className="text-sm font-medium sm:col-span-2">Rate *
+                  <select className="input mt-1.5" value={rateId} onChange={(e) => pickRate(e.target.value)}>
+                    <option value="" disabled>Select a rate</option>
+                    {room.roomType.rates.map((r) => <option key={r.id} value={r.id}>{r.name} — KSh {Number(r.price).toLocaleString("en-KE")}{r.unit ? ` / ${unitWord(r.unit.name)}` : ""}</option>)}
+                  </select>
+                </label>
+              )}
+              {room && !hasVariants(room) && (
+                <p className="border bg-muted/40 p-3 text-xs text-muted-foreground sm:col-span-2">Price: <span className="font-semibold text-foreground">{roomPriceHint(room)}</span></p>
+              )}
             </Section>
             <Section title="Room terms">
               <div className="sm:col-span-2"><RoomTermsFields value={terms} onChange={setTerms} roomTotal={room ? roomGross : undefined} /></div>
             </Section>
             <Section title="Stay">
-              <label className="text-sm font-medium">Check-in date<input type="date" className="input mt-1.5" value={checkIn} onChange={(e) => setCheckIn(e.target.value)} /></label>
-              <label className="text-sm font-medium">Check-out date<input type="date" className="input mt-1.5" min={checkIn} value={checkOut} onChange={(e) => setCheckOut(e.target.value)} /></label>
+              <label className="text-sm font-medium">{hourly ? "Start" : "Check-in date"}<input type={hourly ? "datetime-local" : "date"} className="input mt-1.5" value={checkIn} onChange={(e) => setCheckIn(e.target.value)} /></label>
+              <label className="text-sm font-medium">{hourly ? "End" : "Check-out date"}<input type={hourly ? "datetime-local" : "date"} className="input mt-1.5" min={checkIn} value={checkOut} onChange={(e) => setCheckOut(e.target.value)} /></label>
               <label className="text-sm font-medium">Adults<input type="number" min="1" className="input mt-1.5" value={adults} onChange={(e) => setAdults(e.target.value)} /></label>
               <label className="text-sm font-medium">Children<input type="number" min="0" className="input mt-1.5" value={children} onChange={(e) => setChildren(e.target.value)} /></label>
             </Section>
@@ -698,12 +717,13 @@ function NewGuestModal({ customers, rooms, at, onClose, onDone, onCustomerCreate
               <div className="flex items-start justify-between gap-3 border border-l-4 border-l-secondary bg-secondary/5 p-3">
                 <div>
                   <p className="text-sm font-semibold">Room {room.number} · {room.roomType.name}</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">{nights} night{nights === 1 ? "" : "s"} · {MEAL_PLAN_LABELS[mealPlan]} · sleeps {room.capacity}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{needsRate ? "Choose a rate to see the price" : `${qty} ${unitWord(pricing?.unitName)}${qty === 1 ? "" : "s"}${pricing?.rateName ? ` · ${pricing.rateName}` : ""}`} · sleeps {room.capacity}</p>
                 </div>
-                <p className="text-right text-sm font-bold text-secondary">{formatKes(roomGross - roomOff)}<span className="block text-[11px] font-normal text-muted-foreground">{roomOff > 0 ? `${formatKes(roomGross)} less ${formatKes(roomOff)}` : `${formatKes(rateFor(room, mealPlan))} / night`}</span></p>
+                <p className="text-right text-sm font-bold text-secondary">{formatKes(roomGross - roomOff)}<span className="block text-[11px] font-normal text-muted-foreground">{roomOff > 0 ? `${formatKes(roomGross)} less ${formatKes(roomOff)}` : `${formatKes(pricing?.unitPrice ?? 0)} / ${unitWord(pricing?.unitName)}`}</span></p>
               </div>
             )}
-            {nights <= 0 && <p className="text-xs font-semibold text-destructive">Check-out must be after check-in.</p>}
+            {new Date(checkOut) <= new Date(checkIn) && <p className="text-xs font-semibold text-destructive">{hourly ? "End must be after start." : "Check-out must be after check-in."}</p>}
+            {needsRate && <p className="text-xs font-semibold text-destructive">This room is sold by rate — pick one to continue.</p>}
           </>
         )}
 
@@ -731,7 +751,8 @@ function NewGuestModal({ customers, rooms, at, onClose, onDone, onCustomerCreate
               {([
                 ["Guest", guestName],
                 ["Room", room ? `Room ${room.number} · ${room.roomType.name}` : "—"],
-                ["Stay", `${new Date(checkIn).toLocaleDateString()} – ${new Date(checkOut).toLocaleDateString()} (${nights} night${nights === 1 ? "" : "s"})`],
+                ["Stay", hourly ? `${new Date(checkIn).toLocaleString()} – ${new Date(checkOut).toLocaleTimeString()} (${qty} ${unitWord(pricing?.unitName)}${qty === 1 ? "" : "s"})` : `${new Date(checkIn).toLocaleDateString()} – ${new Date(checkOut).toLocaleDateString()} (${qty} ${unitWord(pricing?.unitName)}${qty === 1 ? "" : "s"})`],
+                ["Rate", pricing?.rateName ?? "Standard"],
                 ["Guests", `${adults} adult${Number(adults) === 1 ? "" : "s"}${Number(children) > 0 ? `, ${children} child${Number(children) === 1 ? "" : "ren"}` : ""}`],
                 ["Room sale", terms.roomSaleType === "COMPLIMENTARY" ? "Complimentary" : roomOff > 0 ? `Paid — ${formatKes(roomOff)} discount` : "Paid"],
                 ["Room total", room ? formatKes(roomGross - roomOff) : "—"],

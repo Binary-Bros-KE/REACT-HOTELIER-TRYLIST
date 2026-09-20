@@ -5,7 +5,7 @@ import { useToast } from '@/components/ui/Toast'
 import ModalShell from '@/components/ui/ModalShell'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import RoomTermsFields, { defaultTerms, termsDiscount, termsInvalid, termsPayload, type RoomTerms } from '@/components/reception/RoomTerms'
-import GroupRoomsBuilder, { MEAL_PLAN_LABELS, parseOccupants, rateFor, rowsToPayload, type PickCustomer, type PickRoom, type RoomRow } from '@/components/reception/GroupRoomsBuilder'
+import GroupRoomsBuilder, { groupRowGross, parseOccupants, rateLabel, rowMissingRate, rowsToPayload, type PickCustomer, type PickRoom, type RoomRow } from '@/components/reception/GroupRoomsBuilder'
 
 type Api = <T>(path: string, init?: RequestInit) => Promise<T>
 
@@ -44,7 +44,7 @@ export default function GroupCheckInModal({ customers, rooms, at, onClose, onDon
   const roomById = useMemo(() => new Map(rooms.map((r) => [r.id, r])), [rooms])
   const billing = customers.find((c) => c.id === customerId)
   const partyValid = Boolean(name.trim()) && (mode === 'existing' ? Boolean(customerId) : Boolean(company.firstName.trim()) && company.phone.trim().length >= 5)
-  const roomsValid = rows.length > 0 && nights > 0 && !termsInvalid(groupTerms) && rows.every((r) => !(r.ownTerms && termsInvalid(r.terms)))
+  const roomsValid = rows.length > 0 && nights > 0 && rows.every((r) => !rowMissingRate(roomById.get(r.roomId), r)) && !termsInvalid(groupTerms) && rows.every((r) => !(r.ownTerms && termsInvalid(r.terms)))
   const valid = [partyValid, roomsValid, true]
 
   const review = useMemo(() => {
@@ -54,7 +54,7 @@ export default function GroupCheckInModal({ customers, rooms, at, onClose, onDon
     for (const row of rows) {
       const room = roomById.get(row.roomId)
       if (!room) continue
-      const rowGross = rateFor(room, row.mealPlan) * nights
+      const rowGross = groupRowGross(room, row, nights)
       gross += rowGross
       off += termsDiscount(row.ownTerms ? row.terms : groupTerms, rowGross)
       people += Math.max(parseOccupants(row.occupants).length, Number(row.adults) + Number(row.children) || 1)
@@ -222,14 +222,14 @@ export default function GroupCheckInModal({ customers, rooms, at, onClose, onDon
                   {rows.map((row) => {
                     const room = roomById.get(row.roomId)
                     if (!room) return null
-                    const gross = rateFor(room, row.mealPlan) * nights
+                    const gross = groupRowGross(room, row, nights)
                     const total = gross - termsDiscount(row.ownTerms ? row.terms : groupTerms, gross)
                     const people = parseOccupants(row.occupants)
                     return (
                       <tr key={row.key}>
                         <td className="px-3 py-2 font-semibold">{room.number}<span className="block text-xs font-normal text-muted-foreground">{room.roomType.name}</span></td>
                         <td className="px-3 py-2 text-xs">{people.length ? people.map((p) => p.name).join(', ') : <span className="text-muted-foreground">{row.adults} adult{Number(row.adults) === 1 ? '' : 's'} (names not entered)</span>}</td>
-                        <td className="px-3 py-2 text-xs">{MEAL_PLAN_LABELS[row.mealPlan]}</td>
+                        <td className="px-3 py-2 text-xs">{rateLabel(room, row)}</td>
                         <td className="px-3 py-2 text-right tabular-nums">{kes(total)}{(row.ownTerms ? row.terms.roomSaleType === 'COMPLIMENTARY' : groupTerms.roomSaleType === 'COMPLIMENTARY') && <span className="block text-[11px] text-accent">complimentary</span>}</td>
                       </tr>
                     )

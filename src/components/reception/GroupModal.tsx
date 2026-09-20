@@ -8,7 +8,7 @@ import type { DocProfile } from '@/components/documents/pdf'
 import type { GroupInvoiceDocData } from '@/components/documents/pdf/GroupInvoiceDocument'
 import { CreditFields, defaultTerms, termsInvalid, termsPayload, type RoomTerms } from '@/components/reception/RoomTerms'
 import RoomTermsFields from '@/components/reception/RoomTerms'
-import GroupRoomsBuilder, { rowsToPayload, type PickCustomer, type PickRoom, type RoomRow } from '@/components/reception/GroupRoomsBuilder'
+import GroupRoomsBuilder, { rowsMissingRate, rowsToPayload, type PickCustomer, type PickRoom, type RoomRow } from '@/components/reception/GroupRoomsBuilder'
 
 // The PDF renderer is heavy — only load it when an invoice is actually opened.
 const DocumentViewer = lazy(() => import('@/components/documents/DocumentViewer'))
@@ -321,7 +321,7 @@ export default function GroupModal({ groupId, at, rooms, customers, onClose, onC
                 <RoomTermsFields value={addTerms} onChange={setAddTerms} />
               </div>
               <GroupRoomsBuilder rooms={rooms} customers={customers} rows={addRows} onChange={setAddRows} groupTerms={addTerms} nights={nightsBetween(addIn, addOut)} />
-              <button type="button" disabled={busy === 'add' || addRows.length === 0 || nightsBetween(addIn, addOut) <= 0} onClick={() => void addRooms()} className="inline-flex items-center gap-2 bg-success px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-white disabled:opacity-50">
+              <button type="button" disabled={busy === 'add' || addRows.length === 0 || nightsBetween(addIn, addOut) <= 0 || rowsMissingRate(addRows, rooms)} onClick={() => void addRooms()} className="inline-flex items-center gap-2 bg-success px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-white disabled:opacity-50">
                 {busy === 'add' && <LuLoaderCircle className="size-4 animate-spin" />} Add {addRows.length || ''} room{addRows.length === 1 ? '' : 's'} to the group
               </button>
             </div>

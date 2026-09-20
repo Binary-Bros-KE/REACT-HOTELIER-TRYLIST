@@ -36,20 +36,14 @@ type Stay = {
   customer: { firstName: string; lastName: string | null };
   folio: Folio | null;
 };
-const MEAL_PLANS = ["ROOM_ONLY", "BED_AND_BREAKFAST", "HALF_BOARD", "FULL_BOARD"] as const;
-type MealPlan = (typeof MEAL_PLANS)[number];
-const mealPlanLabels: Record<MealPlan, string> = {
-  ROOM_ONLY: "Room Only",
-  BED_AND_BREAKFAST: "Bed & Breakfast",
-  HALF_BOARD: "Half Board",
-  FULL_BOARD: "Full Board",
-};
+type UnitOption = { id: string; name: string };
+type RateOption = { id: string; name: string; price: string | number; unit: UnitOption | null };
 type AuditEmployee = { id: string; firstName: string; lastName: string } | null;
 type Room = {
   id: string;
   number: string;
   name: string | null;
-  roomType: { id: string; name: string; baseRate: string | number };
+  roomType: { id: string; name: string; baseRate: string | number; rates?: RateOption[]; priceUnit?: UnitOption | null };
   floor: string | null;
   wing: string | null;
   notes: string | null;
@@ -79,43 +73,37 @@ type RoomType = {
   baseRate: string | number;
   amenities: string[];
   isActive: boolean;
-  rates: { mealPlan: MealPlan; price: string | number }[];
+  priceUnit: UnitOption | null;
+  rates: RateOption[];
   createdAt: string;
   updatedAt: string;
   createdByEmployee: AuditEmployee;
   updatedByEmployee: AuditEmployee;
 };
+type VariantRow = { name: string; price: string; unitId: string };
 type TypeForm = {
   name: string;
   description: string;
   capacity: string;
-  baseRate: string;
+  price: string;
+  unitId: string;
   amenities: string;
   isActive: boolean;
-  rateRoomOnly: string;
-  rateBedAndBreakfast: string;
-  rateHalfBoard: string;
-  rateFullBoard: string;
+  variants: VariantRow[];
 };
+// No default values — the inputs carry placeholders instead, so nothing gets
+// saved by accident.
 const emptyTypeForm: TypeForm = {
   name: "",
   description: "",
-  capacity: "2",
-  baseRate: "8500",
+  capacity: "",
+  price: "",
+  unitId: "",
   amenities: "",
   isActive: true,
-  rateRoomOnly: "",
-  rateBedAndBreakfast: "",
-  rateHalfBoard: "",
-  rateFullBoard: "",
+  variants: [],
 };
-type RateFormKey = "rateRoomOnly" | "rateBedAndBreakfast" | "rateHalfBoard" | "rateFullBoard";
-const mealPlanFormKey: Record<MealPlan, RateFormKey> = {
-  ROOM_ONLY: "rateRoomOnly",
-  BED_AND_BREAKFAST: "rateBedAndBreakfast",
-  HALF_BOARD: "rateHalfBoard",
-  FULL_BOARD: "rateFullBoard",
-};
+const emptyVariant: VariantRow = { name: "", price: "", unitId: "" };
 type RoomForm = {
   number: string;
   name: string;
@@ -135,13 +123,20 @@ const emptyForm: RoomForm = {
   floor: "",
   wing: "",
   notes: "",
-  capacity: "2",
-  nightlyRate: "8500",
+  capacity: "",
+  nightlyRate: "",
   status: "VACANT",
   cleanliness: "CLEAN",
 };
 const formatKes = (value: number) =>
   `KSh ${value.toLocaleString("en-KE", { maximumFractionDigits: 2 })}`;
+const unitLabel = (name?: string | null) => (name ? name.toLowerCase().replace(/^per\s+/, "") : "");
+/** "3 rates · from KSh 3,500" or "KSh 8,500 / night". */
+function typePriceSummary(type: { baseRate: string | number; priceUnit?: UnitOption | null; rates?: RateOption[] }) {
+  const rates = type.rates ?? [];
+  if (rates.length > 0) return `${rates.length} rate${rates.length === 1 ? "" : "s"} · from ${formatKes(Math.min(...rates.map((r) => Number(r.price))))}`;
+  return `${formatKes(Number(type.baseRate))}${type.priceUnit ? ` / ${unitLabel(type.priceUnit.name)}` : ""}`;
+}
 // The real folio (room charges + services + ad-hoc + any POS orders billed
 // to this stay), not a hand-rolled approximation — replaces the old
 // POS-orders-only sum, which never included room charges and ignored
@@ -172,6 +167,7 @@ export default function Rooms() {
   const [showTypes, setShowTypes] = useState(false);
   const [editingType, setEditingType] = useState<RoomType | null>(null);
   const [typeForm, setTypeForm] = useState<TypeForm>(emptyTypeForm);
+  const [units, setUnits] = useState<UnitOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -180,10 +176,12 @@ export default function Rooms() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [response, typeResponse] = await Promise.all([
+      const [response, typeResponse, unitResponse] = await Promise.all([
         api<{ rooms: Room[]; summary: Summary }>("/rooms/rooms"),
         api<{ types: RoomType[] }>("/rooms/types"),
+        api<{ units: UnitOption[] }>("/units-of-measure"),
       ]);
+      setUnits(unitResponse.units);
       setRooms(response.rooms);
       setSummary(response.summary);
       setRoomTypes(typeResponse.types);
@@ -210,18 +208,11 @@ export default function Rooms() {
       ),
     [filter, rooms, search],
   );
-  function rateFor(type: RoomType, mealPlan: MealPlan) {
-    return type.rates.find((r) => r.mealPlan === mealPlan)?.price;
-  }
+  const formType = roomTypes.find((type) => type.id === form.roomTypeId);
+  const formTypeHasRates = (formType?.rates.length ?? 0) > 0;
   function openCreate() {
-    const selected = roomTypes.find((type) => type.isActive);
     setEditing(null);
-    setForm({
-      ...emptyForm,
-      roomTypeId: selected?.id ?? "",
-      capacity: String(selected?.capacity ?? 2),
-      nightlyRate: String(selected ? (rateFor(selected, "ROOM_ONLY") ?? selected.baseRate) : 0),
-    });
+    setForm({ ...emptyForm });
     setShowForm(true);
     setError("");
   }
@@ -252,10 +243,16 @@ export default function Rooms() {
       await api(editing ? `/rooms/rooms/${editing.id}` : "/rooms/rooms", {
         method: editing ? "PATCH" : "POST",
         body: JSON.stringify({
-          ...form,
+          number: form.number,
           name: form.name.trim() || undefined,
+          roomTypeId: form.roomTypeId,
+          floor: form.floor,
+          wing: form.wing,
+          notes: form.notes,
+          status: form.status,
+          cleanliness: form.cleanliness,
           capacity: Number(form.capacity),
-          nightlyRate: Number(form.nightlyRate),
+          ...(formTypeHasRates ? {} : { nightlyRate: Number(form.nightlyRate) }),
         }),
       });
       setNotice(
@@ -310,8 +307,8 @@ export default function Rooms() {
     setForm({
       ...form,
       roomTypeId: id,
-      capacity: String(selected?.capacity ?? form.capacity),
-      nightlyRate: String(selected ? (rateFor(selected, "ROOM_ONLY") ?? selected.baseRate) : form.nightlyRate),
+      capacity: selected ? String(selected.capacity) : "",
+      nightlyRate: selected && selected.rates.length === 0 && Number(selected.baseRate) > 0 ? String(Number(selected.baseRate)) : "",
     });
   }
   function editRoomType(type: RoomType) {
@@ -320,14 +317,15 @@ export default function Rooms() {
       name: type.name,
       description: type.description ?? "",
       capacity: String(type.capacity),
-      baseRate: String(type.baseRate),
+      price: type.rates.length === 0 ? String(Number(type.baseRate)) : "",
+      unitId: type.priceUnit?.id ?? "",
       amenities: type.amenities.join(", "),
       isActive: type.isActive,
-      rateRoomOnly: String(rateFor(type, "ROOM_ONLY") ?? ""),
-      rateBedAndBreakfast: String(rateFor(type, "BED_AND_BREAKFAST") ?? ""),
-      rateHalfBoard: String(rateFor(type, "HALF_BOARD") ?? ""),
-      rateFullBoard: String(rateFor(type, "FULL_BOARD") ?? ""),
+      variants: type.rates.map((r) => ({ name: r.name, price: String(Number(r.price)), unitId: r.unit?.id ?? "" })),
     });
+  }
+  function setVariant(index: number, patch: Partial<VariantRow>) {
+    setTypeForm((current) => ({ ...current, variants: current.variants.map((v, i) => (i === index ? { ...v, ...patch } : v)) }));
   }
   function resetTypeForm() {
     setEditingType(null);
@@ -335,13 +333,18 @@ export default function Rooms() {
   }
   async function saveRoomType(event: FormEvent) {
     event.preventDefault();
-    setSaving(true);
     setError("");
+    const hasVariants = typeForm.variants.length > 0;
+    if (hasVariants && typeForm.variants.some((v) => !v.name.trim() || v.price.trim() === "" || !v.unitId)) {
+      setError("Every variant needs a name, a price and a unit of measure.");
+      return;
+    }
+    if (!hasVariants && (typeForm.price.trim() === "" || !typeForm.unitId)) {
+      setError("Set a price and its unit of measure, or add at least one variant.");
+      return;
+    }
+    setSaving(true);
     try {
-      const rates = MEAL_PLANS.filter((plan) => typeForm[mealPlanFormKey[plan]].trim() !== "").map((plan) => ({
-        mealPlan: plan,
-        price: Number(typeForm[mealPlanFormKey[plan]]),
-      }));
       await api(
         editingType ? `/rooms/types/${editingType.id}` : "/rooms/types",
         {
@@ -350,13 +353,13 @@ export default function Rooms() {
             name: typeForm.name,
             description: typeForm.description,
             capacity: Number(typeForm.capacity),
-            baseRate: Number(typeForm.baseRate),
             isActive: typeForm.isActive,
             amenities: typeForm.amenities
               .split(",")
               .map((item) => item.trim())
               .filter(Boolean),
-            rates,
+            rates: typeForm.variants.map((v) => ({ name: v.name.trim(), price: Number(v.price), unitId: v.unitId })),
+            ...(hasVariants ? {} : { baseRate: Number(typeForm.price), priceUnitId: typeForm.unitId }),
           }),
         },
       );
@@ -413,27 +416,12 @@ export default function Rooms() {
             <h2 className="font-display text-xl font-semibold leading-tight">Room board</h2>
             <p className="text-xs text-muted-foreground">Live occupancy, housekeeping status and folio balances.</p>
           </div>
-          <div className="flex flex-wrap border">
-            {(
-              [
-                ["ALL", "All"],
-                ["VACANT", "Vacant"],
-                ["OCCUPIED", "Occupied"],
-                ["OUT_OF_SERVICE", "Out of service"],
-              ] as const
-            ).map(([value, label]) => (
-              <button
-                key={value}
-                onClick={() => setFilter(value)}
-                className={cn(
-                  "px-3.5 py-2 text-xs font-bold uppercase tracking-wider transition",
-                  filter === value ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:bg-muted",
-                )}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+          <select value={filter} onChange={(e) => setFilter(e.target.value as "ALL" | RoomStatus)} className="border bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring">
+            <option value="ALL">All statuses</option>
+            <option value="VACANT">Vacant</option>
+            <option value="OCCUPIED">Occupied</option>
+            <option value="OUT_OF_SERVICE">Out of service</option>
+          </select>
           <label className="relative">
             <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input
@@ -478,7 +466,7 @@ export default function Rooms() {
           footer={
             <>
               <button type="button" onClick={() => setShowForm(false)} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted">Cancel</button>
-              <button form="room-form" disabled={saving} className="inline-flex items-center gap-2 bg-primary px-5 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground transition hover:brightness-110 disabled:opacity-60">
+              <button form="room-form" disabled={saving || !form.roomTypeId} className="inline-flex items-center gap-2 bg-primary px-5 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground transition hover:brightness-110 disabled:opacity-60">
                 {saving && <LuLoaderCircle className="animate-spin" />}
                 {editing ? "Save changes" : "Create room"}
               </button>
@@ -496,12 +484,12 @@ export default function Rooms() {
               <div className="sm:col-span-2">
                 <Field label="Room type">
                   <select required value={form.roomTypeId} onChange={(event) => selectRoomType(event.target.value)} className="input">
-                    <option value="">Select a room type</option>
+                    <option value="" disabled>Select room type</option>
                     {roomTypes
                       .filter((type) => type.isActive || type.id === form.roomTypeId)
                       .map((type) => (
                         <option key={type.id} value={type.id}>
-                          {type.name} · {type.capacity} guests · {formatKes(Number(type.baseRate))}
+                          {type.name} · {type.capacity} guests · {typePriceSummary(type)}
                         </option>
                       ))}
                   </select>
@@ -522,11 +510,15 @@ export default function Rooms() {
                 <input value={form.wing} onChange={(e) => setForm({ ...form, wing: e.target.value })} placeholder="e.g. East Wing" className="input" />
               </Field>
               <Field label="Guest capacity">
-                <input required min="1" max="20" type="number" value={form.capacity} onChange={(e) => setForm({ ...form, capacity: e.target.value })} className="input" />
+                <input required min="1" type="number" value={form.capacity} onChange={(e) => setForm({ ...form, capacity: e.target.value })} placeholder="e.g. 2" className="input" />
               </Field>
-              <Field label="Nightly rate">
-                <input required min="0" type="number" value={form.nightlyRate} onChange={(e) => setForm({ ...form, nightlyRate: e.target.value })} className="input" />
-              </Field>
+              {formTypeHasRates ? (
+                <p className="border border-dashed p-3 text-xs text-muted-foreground">This room type is sold by rate — each variant carries its own price, chosen at check-in.</p>
+              ) : (
+                <Field label={`Price${formType?.priceUnit ? ` (per ${unitLabel(formType.priceUnit.name)})` : ""}`}>
+                  <input required min="0" type="number" value={form.nightlyRate} onChange={(e) => setForm({ ...form, nightlyRate: e.target.value })} placeholder="e.g. 8500" className="input" />
+                </Field>
+              )}
               <Field label="Room status">
                 <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as RoomStatus })} className="input">
                   <option value="VACANT">Vacant</option>
@@ -572,29 +564,46 @@ export default function Rooms() {
                 {editingType ? "Edit room type" : "New room type"}
               </p>
               <div className="space-y-3">
-                <input required value={typeForm.name} onChange={(e) => setTypeForm({ ...typeForm, name: e.target.value })} placeholder="Type name" className="input" />
+                <input required value={typeForm.name} onChange={(e) => setTypeForm({ ...typeForm, name: e.target.value })} placeholder="Type name, e.g. Boardroom" className="input" />
                 <textarea value={typeForm.description} onChange={(e) => setTypeForm({ ...typeForm, description: e.target.value })} placeholder="Description" className="input" />
-                <div className="grid grid-cols-2 gap-2">
-                  <input required min="1" max="20" type="number" value={typeForm.capacity} onChange={(e) => setTypeForm({ ...typeForm, capacity: e.target.value })} placeholder="Capacity" className="input" />
-                  <input required min="0" type="number" value={typeForm.baseRate} onChange={(e) => setTypeForm({ ...typeForm, baseRate: e.target.value })} placeholder="Base rate" className="input" />
-                </div>
+                <input required min="1" type="number" value={typeForm.capacity} onChange={(e) => setTypeForm({ ...typeForm, capacity: e.target.value })} placeholder="Guest capacity, e.g. 20" className="input" />
                 <input value={typeForm.amenities} onChange={(e) => setTypeForm({ ...typeForm, amenities: e.target.value })} placeholder="Amenities, comma separated" className="input" />
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Rate tiers (leave blank to skip)</p>
-                  <div className="mt-2 grid grid-cols-2 gap-2">
-                    {MEAL_PLANS.map((plan) => (
-                      <input
-                        key={plan}
-                        type="number"
-                        min="0"
-                        value={typeForm[mealPlanFormKey[plan]]}
-                        onChange={(e) => setTypeForm({ ...typeForm, [mealPlanFormKey[plan]]: e.target.value })}
-                        placeholder={mealPlanLabels[plan]}
-                        className="input"
-                      />
+                  <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Rate variants</p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">e.g. Bed only · KSh 3,500 · Night. With variants, guests are sold one of them and the single price below is not used.</p>
+                  <div className="mt-2 space-y-2">
+                    {typeForm.variants.map((v, i) => (
+                      <div key={i} className="space-y-1.5 border bg-card p-2">
+                        <div className="flex gap-1.5">
+                          <input value={v.name} onChange={(e) => setVariant(i, { name: e.target.value })} placeholder="Variant name" className="input flex-1" />
+                          <ActionButton tone="neutral" icon={<LuTrash2 />} title="Remove variant" onClick={() => setTypeForm({ ...typeForm, variants: typeForm.variants.filter((_, x) => x !== i) })} />
+                        </div>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <input type="number" min="0" value={v.price} onChange={(e) => setVariant(i, { price: e.target.value })} placeholder="Price" className="input" />
+                          <select value={v.unitId} onChange={(e) => setVariant(i, { unitId: e.target.value })} className="input">
+                            <option value="" disabled>Unit</option>
+                            {units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                          </select>
+                        </div>
+                      </div>
                     ))}
                   </div>
+                  <button type="button" onClick={() => setTypeForm({ ...typeForm, variants: [...typeForm.variants, { ...emptyVariant }] })} className="mt-2 inline-flex items-center gap-1.5 border-2 border-dashed px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-secondary hover:bg-secondary/5">
+                    <LuPlus className="size-3.5" /> Add variant
+                  </button>
                 </div>
+                {typeForm.variants.length === 0 && (
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Price (no variants)</p>
+                    <div className="mt-2 grid grid-cols-2 gap-1.5">
+                      <input required type="number" min="0" value={typeForm.price} onChange={(e) => setTypeForm({ ...typeForm, price: e.target.value })} placeholder="Price, e.g. 8500" className="input" />
+                      <select required value={typeForm.unitId} onChange={(e) => setTypeForm({ ...typeForm, unitId: e.target.value })} className="input">
+                        <option value="" disabled>Unit</option>
+                        {units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                )}
                 <label className="flex items-center gap-2 text-sm">
                   <input type="checkbox" checked={typeForm.isActive} onChange={(e) => setTypeForm({ ...typeForm, isActive: e.target.checked })} /> Active for new rooms
                 </label>
@@ -628,7 +637,7 @@ export default function Rooms() {
                           {!type.isActive && <StatusPill tone="muted">Inactive</StatusPill>}
                         </div>
                         <p className="mt-1 text-xs text-muted-foreground">
-                          {type.description || "No description"} · {type.capacity} guests · {formatKes(Number(type.baseRate))}
+                          {type.description || "No description"} · {type.capacity} guests · {typePriceSummary(type)}
                         </p>
                         {type.amenities.length > 0 && (
                           <div className="mt-2 flex flex-wrap gap-1">
@@ -640,7 +649,7 @@ export default function Rooms() {
                         {type.rates.length > 0 && (
                           <div className="mt-2 flex flex-wrap gap-1.5">
                             {type.rates.map((rate) => (
-                              <StatusPill key={rate.mealPlan} tone="secondary">{mealPlanLabels[rate.mealPlan]}: {formatKes(Number(rate.price))}</StatusPill>
+                              <StatusPill key={rate.id} tone="secondary">{rate.name}: {formatKes(Number(rate.price))}{rate.unit ? ` / ${unitLabel(rate.unit.name)}` : ""}</StatusPill>
                             ))}
                           </div>
                         )}
@@ -708,8 +717,8 @@ function RoomCard({
           <div className="flex border bg-background">
             <span className="w-1.5 shrink-0 bg-secondary" />
             <div className="p-2.5">
-              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Nightly rate</p>
-              <p className="mt-0.5 text-sm font-bold tabular-nums">{formatKes(Number(room.nightlyRate))}</p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">{(room.roomType.rates?.length ?? 0) > 0 ? "Rates" : "Price"}</p>
+              <p className="mt-0.5 text-sm font-bold tabular-nums">{typePriceSummary({ baseRate: room.nightlyRate, priceUnit: room.roomType.priceUnit, rates: room.roomType.rates })}</p>
             </div>
           </div>
           <div className="flex border bg-background">
