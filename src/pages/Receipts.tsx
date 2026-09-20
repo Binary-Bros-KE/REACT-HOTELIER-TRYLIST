@@ -8,6 +8,9 @@ import StatCard from '@/components/ui/StatCard'
 import { type ReceiptOrder, type ReceiptProfile } from '@/components/pos/OrderReceipt'
 import OrderSettlementPanel from '@/components/pos/OrderSettlementPanel'
 import ReceiptPreviewModal from '@/components/pos/ReceiptPreviewModal'
+import PageBanner from '@/components/ui/PageBanner'
+import ActionButton from '@/components/ui/ActionButton'
+import StatusPill, { type PillTone } from '@/components/ui/StatusPill'
 
 type PaymentStatus = 'UNPAID' | 'PARTIAL' | 'PAID'
 type ReceiptRow = ReceiptOrder & { total: number; paid: number; paymentStatus?: PaymentStatus; createdBy: string | null; customer?: { firstName: string; lastName: string | null; phone: string | null } | null }
@@ -28,15 +31,17 @@ const FETCH_LIMIT = 100
 
 const formatKes = (value: number | string) => `KSh ${Number(value).toLocaleString()}`
 
-const badgeFor = (row: ReceiptRow) => {
-  if (row.status === 'CANCELLED') return { label: 'Cancelled', cls: 'bg-destructive/10 text-destructive' }
-  if (row.saleType === 'COMPLIMENTARY') return { label: 'Complementary', cls: 'bg-warning/15 text-warning' }
+const badgeFor = (row: ReceiptRow): { label: string; tone: PillTone } => {
+  if (row.status === 'CANCELLED') return { label: 'Cancelled', tone: 'danger' }
+  if (row.saleType === 'COMPLIMENTARY') return { label: 'Complementary', tone: 'warning' }
   const owed = Math.max(0, row.total - row.paid)
-  if (owed > 0.01 && row.creditExpectedAt && new Date(row.creditExpectedAt).getTime() < Date.now()) return { label: 'Overdue', cls: 'bg-destructive/10 text-destructive' }
-  if (row.paymentStatus === 'PAID' || owed <= 0.01) return { label: 'Paid', cls: 'bg-success/10 text-success' }
-  if (row.paymentStatus === 'PARTIAL' || row.paid > 0.01) return { label: 'Part-paid', cls: 'bg-warning/15 text-warning' }
-  return { label: 'On credit', cls: 'bg-destructive/10 text-destructive' }
+  if (owed > 0.01 && row.creditExpectedAt && new Date(row.creditExpectedAt).getTime() < Date.now()) return { label: 'Overdue', tone: 'danger' }
+  if (row.paymentStatus === 'PAID' || owed <= 0.01) return { label: 'Paid', tone: 'success' }
+  if (row.paymentStatus === 'PARTIAL' || row.paid > 0.01) return { label: 'Part-paid', tone: 'warning' }
+  return { label: 'On credit', tone: 'danger' }
 }
+
+const TH = 'px-5 py-3 text-xs font-bold uppercase tracking-wider'
 
 const paymentStatusOf = (row: ReceiptRow): PaymentStatus => {
   if (row.paymentStatus) return row.paymentStatus
@@ -125,12 +130,8 @@ export default function Receipts() {
   const totalOutstanding = completedVisible.reduce((s, o) => s + Math.max(0, o.total - o.paid), 0)
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-8 sm:px-8 lg:px-10">
-      <header>
-        <p className="text-sm font-semibold text-secondary">Sales</p>
-        <h1 className="mt-1 font-display text-3xl font-semibold">Receipts</h1>
-        <p className="mt-2 text-sm text-muted-foreground">Every completed sale — plus cancelled orders, kept here for the record — with the full itemized breakdown and payment history.</p>
-      </header>
+    <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
+      <PageBanner kicker="Sales" title="Receipts" />
 
       <section className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatCard index={0} icon={<LuReceiptText className="size-4" />} label="Sales" value={formatKes(totalSales)} hint={`${completedVisible.length} order${completedVisible.length === 1 ? '' : 's'}`} />
@@ -139,114 +140,120 @@ export default function Receipts() {
         <StatCard tone="danger" icon={<LuBan className="size-4" />} label="Cancelled" value={String(cancelledVisible.length)} hint={formatKes(cancelledVisible.reduce((s, o) => s + o.total, 0))} />
       </section>
 
-      <div className="mt-7 flex flex-wrap items-end gap-3">
-        <label className="flex min-w-[200px] flex-1 flex-col gap-1 text-xs font-medium text-muted-foreground">
-          Search
-          <span className="relative">
-            <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Order #, table, or customer…" className="input pl-9" />
-          </span>
-        </label>
-
-        <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
-          Payment status
-          <select aria-label="Filter by payment status" value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value as PaymentFilter)} className="input">
-            <option value="ALL">All payment statuses</option>
-            <option value="UNPAID">Unpaid</option>
-            <option value="PARTIAL">Partially paid</option>
-            <option value="PAID">Fully paid</option>
-          </select>
-        </label>
-
-        <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
-          Status
-          <select aria-label="Filter by order status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StatusFilter)} className="input">
-            <option value="ALL">All statuses</option>
-            <option value="COMPLETED">Completed</option>
-            <option value="CANCELLED">Cancelled</option>
-          </select>
-        </label>
-
-        <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
-          Employee
-          <select aria-label="Filter by employee" value={employeeFilter} onChange={(e) => setEmployeeFilter(e.target.value)} className="input">
-            <option value="">All employees</option>
-            {employees.map((e) => <option key={e.id} value={e.id}>{e.firstName} {e.lastName ?? ''}</option>)}
-          </select>
-        </label>
-
-        {fixedLocation ? (
-          <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
-            Location
-            <span className="input flex items-center gap-1.5 text-muted-foreground"><LuMapPin className="size-3.5" /> {fixedLocation.name}</span>
-          </label>
-        ) : pickableLocations.length > 0 && (
-          <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
-            Location
-            <select aria-label="Filter by location" value={selectedLocationId} onChange={(e) => setLocation(e.target.value)} className="input">
-              <option value="">All locations</option>
-              {pickableLocations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-            </select>
-          </label>
-        )}
-
-        <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
-          From
-          <span className="relative">
-            <LuCalendarDays className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input type="date" value={dateFrom} max={dateTo || undefined} onChange={(e) => setDateFrom(e.target.value)} className="input pl-9" />
-          </span>
-        </label>
-        <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
-          To
-          <span className="relative">
-            <LuCalendarDays className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input type="date" value={dateTo} min={dateFrom || undefined} onChange={(e) => setDateTo(e.target.value)} className="input pl-9" />
-          </span>
-        </label>
-      </div>
-
       {error && (
-        <div className="mt-5 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive">
+        <div className="mt-5 flex items-center gap-2 border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive">
           <LuCircleAlert />
           {error}
         </div>
       )}
 
-      {loading ? (
-        <div className="mt-7 flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><LuLoaderCircle className="animate-spin" /> Loading receipts…</div>
-      ) : visible.length === 0 ? (
-        <div className="mt-7 min-h-64 rounded-sm border bg-card p-16 text-center text-sm text-muted-foreground">No sales {search.trim() || paymentFilter !== 'ALL' || statusFilter !== 'ALL' || employeeFilter || dateFrom || dateTo ? 'match this view' : 'yet'}.</div>
-      ) : (
-        <section className="mt-7 overflow-hidden rounded-sm border bg-card">
+      <section className="mt-6 overflow-hidden border bg-card shadow-sm">
+        <div className="border-b p-4">
+          <div className="border-l-4 border-accent pl-3">
+            <h2 className="font-display text-xl font-semibold leading-tight">Sales register</h2>
+            <p className="text-xs text-muted-foreground">Every completed sale — plus cancelled orders, kept for the record — with the full breakdown and payment history.</p>
+          </div>
+          <div className="mt-4 flex flex-wrap items-end gap-3">
+            <label className="flex min-w-[200px] flex-1 flex-col gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              Search
+              <span className="relative">
+                <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Order #, table, or customer…" className="input pl-9 font-normal normal-case tracking-normal" />
+              </span>
+            </label>
+
+            <label className="flex flex-col gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              Payment
+              <select aria-label="Filter by payment status" value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value as PaymentFilter)} className="input font-normal normal-case tracking-normal">
+                <option value="ALL">All payment statuses</option>
+                <option value="UNPAID">Unpaid</option>
+                <option value="PARTIAL">Partially paid</option>
+                <option value="PAID">Fully paid</option>
+              </select>
+            </label>
+
+            <label className="flex flex-col gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              Status
+              <select aria-label="Filter by order status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StatusFilter)} className="input font-normal normal-case tracking-normal">
+                <option value="ALL">All statuses</option>
+                <option value="COMPLETED">Completed</option>
+                <option value="CANCELLED">Cancelled</option>
+              </select>
+            </label>
+
+            <label className="flex flex-col gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              Employee
+              <select aria-label="Filter by employee" value={employeeFilter} onChange={(e) => setEmployeeFilter(e.target.value)} className="input font-normal normal-case tracking-normal">
+                <option value="">All employees</option>
+                {employees.map((e) => <option key={e.id} value={e.id}>{e.firstName} {e.lastName ?? ''}</option>)}
+              </select>
+            </label>
+
+            {fixedLocation ? (
+              <label className="flex flex-col gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                Location
+                <span className="input flex items-center gap-1.5 font-normal normal-case tracking-normal text-muted-foreground"><LuMapPin className="size-3.5" /> {fixedLocation.name}</span>
+              </label>
+            ) : pickableLocations.length > 0 && (
+              <label className="flex flex-col gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                Location
+                <select aria-label="Filter by location" value={selectedLocationId} onChange={(e) => setLocation(e.target.value)} className="input font-normal normal-case tracking-normal">
+                  <option value="">All locations</option>
+                  {pickableLocations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+                </select>
+              </label>
+            )}
+
+            <label className="flex flex-col gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              From
+              <span className="relative">
+                <LuCalendarDays className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <input type="date" value={dateFrom} max={dateTo || undefined} onChange={(e) => setDateFrom(e.target.value)} className="input pl-9 font-normal normal-case tracking-normal" />
+              </span>
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              To
+              <span className="relative">
+                <LuCalendarDays className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <input type="date" value={dateTo} min={dateFrom || undefined} onChange={(e) => setDateTo(e.target.value)} className="input pl-9 font-normal normal-case tracking-normal" />
+              </span>
+            </label>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><LuLoaderCircle className="animate-spin" /> Loading receipts…</div>
+        ) : visible.length === 0 ? (
+          <div className="min-h-64 p-16 text-center text-sm text-muted-foreground">No sales {search.trim() || paymentFilter !== 'ALL' || statusFilter !== 'ALL' || employeeFilter || dateFrom || dateTo ? 'match this view' : 'yet'}.</div>
+        ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-primary text-xs uppercase tracking-wide text-primary-foreground">
+            <table className="w-full min-w-[960px] text-left text-sm">
+              <thead className="bg-primary text-primary-foreground">
                 <tr>
-                  <th className="px-5 py-3">Order</th>
-                  <th className="px-5 py-3">Table</th>
-                  <th className="px-5 py-3">Customer</th>
-                  <th className="px-5 py-3">Date</th>
-                  <th className="px-5 py-3">Status</th>
-                  <th className="px-5 py-3 text-right">Paid</th>
-                  <th className="px-5 py-3 text-right">Total</th>
-                  <th className="px-5 py-3" />
+                  <th className={TH}>Order</th>
+                  <th className={TH}>Table</th>
+                  <th className={TH}>Customer</th>
+                  <th className={TH}>Date</th>
+                  <th className={TH}>Status</th>
+                  <th className={cn(TH, 'text-right')}>Paid</th>
+                  <th className={cn(TH, 'text-right')}>Total</th>
+                  <th className={cn(TH, 'text-right')}>Actions</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y">
                 {visible.map((order) => {
                   const badge = badgeFor(order)
                   const owed = Math.max(0, order.total - order.paid)
                   return (
-                    <tr key={order.id} className="cursor-pointer border-t transition hover:bg-muted/30" onClick={() => setManageId(order.id)}>
-                      <td className="px-5 py-4 font-semibold">#{order.orderNumber}</td>
-                      <td className="px-5 py-4 text-muted-foreground">
+                    <tr key={order.id} className="cursor-pointer align-middle transition even:bg-muted/30 hover:bg-muted/60" onClick={() => setManageId(order.id)}>
+                      <td className="px-5 py-3.5 font-semibold">#{order.orderNumber}</td>
+                      <td className="px-5 py-3.5 text-muted-foreground">
                         {order.table?.label ?? 'Takeaway'}
                         {order.createdBy && staffNames[order.createdBy] && (
                           <span className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground/80"><LuUserRound className="size-3" /> {staffNames[order.createdBy]}</span>
                         )}
                       </td>
-                      <td className="px-5 py-4 text-muted-foreground">
+                      <td className="px-5 py-3.5 text-muted-foreground">
                         {order.customer ? (
                           <>
                             {order.customer.firstName} {order.customer.lastName ?? ''}
@@ -254,20 +261,20 @@ export default function Receipts() {
                           </>
                         ) : '—'}
                       </td>
-                      <td className="px-5 py-4 text-muted-foreground">{new Date(order.updatedAt).toLocaleString()}</td>
-                      <td className="px-5 py-4">
-                        <span className={cn('inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide', badge.cls)}>{badge.label}</span>
+                      <td className="whitespace-nowrap px-5 py-3.5 text-muted-foreground">{new Date(order.updatedAt).toLocaleString()}</td>
+                      <td className="px-5 py-3.5">
+                        <StatusPill tone={badge.tone}>{badge.label}</StatusPill>
                         <span className="ml-2 text-xs text-muted-foreground">{order.saleType === 'COMPLIMENTARY' ? (order.complimentaryRecipientName || order.complimentarySession?.title || 'No payment') : [...new Set(order.payments.map((p) => p.paymentMethod.name))].join(', ') || '—'}</span>
                       </td>
-                      <td className="px-5 py-4 text-right tabular-nums text-muted-foreground">{order.status === 'CANCELLED' ? '—' : <>{formatKes(order.paid)}{owed > 0.01 && <span className="block text-[11px] font-semibold text-warning">owing {formatKes(owed)}</span>}</>}</td>
-                      <td className="px-5 py-4 text-right font-semibold">{formatKes(order.total)}</td>
-                      <td className="px-5 py-4">
-                        <div className="flex justify-end gap-1">
+                      <td className="px-5 py-3.5 text-right tabular-nums text-muted-foreground">{order.status === 'CANCELLED' ? '—' : <>{formatKes(order.paid)}{owed > 0.01 && <span className="block text-[11px] font-semibold text-warning">owing {formatKes(owed)}</span>}</>}</td>
+                      <td className="px-5 py-3.5 text-right font-semibold tabular-nums">{formatKes(order.total)}</td>
+                      <td className="px-5 py-3.5">
+                        <div className="flex justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
                           {order.status !== 'CANCELLED' && owed > 0.01 && (
-                            <button onClick={(e) => { e.stopPropagation(); setManageId(order.id) }} title="Take payment" className="rounded-sm p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuWallet /></button>
+                            <ActionButton tone="warning" icon={<LuWallet />} title="Take payment" onClick={() => setManageId(order.id)} />
                           )}
-                          <button onClick={(e) => { e.stopPropagation(); setReceiptOrderId(order.id) }} title="View / print receipt" className="rounded-sm p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuPrinter /></button>
-                          <button onClick={(e) => { e.stopPropagation(); setManageId(order.id) }} title="Manage / request a return" className="rounded-sm p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuReceiptText /></button>
+                          <ActionButton tone="neutral" icon={<LuPrinter />} title="View / print receipt" onClick={() => setReceiptOrderId(order.id)} />
+                          <ActionButton tone="neutral" icon={<LuReceiptText />} title="Manage / request a return" onClick={() => setManageId(order.id)} />
                         </div>
                       </td>
                     </tr>
@@ -276,8 +283,8 @@ export default function Receipts() {
               </tbody>
             </table>
           </div>
-        </section>
-      )}
+        )}
+      </section>
 
       {manageId && (
         <OrderSettlementPanel
