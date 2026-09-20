@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { LuCheck, LuClipboardCheck, LuEye, LuPower, LuTriangleAlert, LuX } from 'react-icons/lu'
+import { LuCheck, LuClipboardCheck, LuClock3, LuEye, LuPower, LuTriangleAlert, LuX } from 'react-icons/lu'
 import SlantButton from '@/components/ui/SlantButton'
 import { TablePanelSkeleton } from '@/components/ui/DashboardSkeleton'
 import { cn } from '@/lib/utils'
@@ -18,7 +18,7 @@ function Panel({ title, count, hint, children }: { title: string; count?: number
           <h2 className="font-display text-lg font-semibold leading-tight">{title}</h2>
           {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
         </div>
-        {count != null && <span className="bg-primary px-2.5 py-1 text-xs font-bold tabular-nums text-primary-foreground">{count}</span>}
+        {count != null && <span className="bg-secondary px-2.5 py-1 text-xs font-bold tabular-nums text-secondary-foreground">{count}</span>}
       </div>
       {children}
     </section>
@@ -27,45 +27,19 @@ function Panel({ title, count, hint, children }: { title: string; count?: number
 
 const TH = 'px-4 py-2.5 text-xs font-bold uppercase tracking-wider'
 
-/** Live HH:MM:SS drawn as three segmented digit blocks. */
+/** Small, quiet elapsed-time readout. */
 function LiveClock({ since }: { since: string | null }) {
   const now = useNow()
   const elapsed = since ? Math.max(0, now.getTime() - new Date(since).getTime()) : 0
-  const parts = [
-    { v: Math.floor(elapsed / 36e5), l: 'hrs' },
-    { v: Math.floor((elapsed % 36e5) / 6e4), l: 'min' },
-    { v: Math.floor((elapsed % 6e4) / 1000), l: 'sec' },
-  ]
+  const h = Math.floor(elapsed / 36e5)
+  const m = Math.floor((elapsed % 36e5) / 6e4)
+  const s = Math.floor((elapsed % 6e4) / 1000)
+  const p = (n: number) => String(n).padStart(2, '0')
   return (
-    <div
-      className="flex items-center justify-between gap-2 bg-primary px-3 py-2.5 text-primary-foreground"
-      style={{ backgroundImage: 'repeating-linear-gradient(90deg, rgba(255,255,255,0.05) 0 1px, transparent 1px 6px)' }}
-    >
-      <div className="flex items-start gap-1">
-        {parts.map((p, i) => (
-          <div key={p.l} className="flex items-start gap-1">
-            <div className="text-center">
-              <div className="min-w-11 border border-white/20 bg-black/30 px-1.5 py-1 font-mono text-2xl font-bold tabular-nums leading-none">{String(p.v).padStart(2, '0')}</div>
-              <div className="mt-1 text-[9px] font-bold uppercase tracking-[0.2em] text-primary-foreground/60">{p.l}</div>
-            </div>
-            {i < 2 && <span className="shift-blink pt-0.5 font-mono text-2xl font-bold leading-none">:</span>}
-          </div>
-        ))}
-      </div>
-      <div className="text-right">
-        <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-primary-foreground/60">Clocked in</p>
-        <p className="font-mono text-sm font-bold tabular-nums">{clock(since)}</p>
-      </div>
-    </div>
-  )
-}
-
-function Stat({ label, value, tone }: { label: string; value: string; tone: string }) {
-  return (
-    <div className={cn('border border-t-[3px] bg-background px-2.5 py-2', tone)}>
-      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</p>
-      <p className="mt-0.5 truncate text-sm font-bold tabular-nums">{value}</p>
-    </div>
+    <span className="inline-flex items-center gap-1.5 bg-muted px-2 py-1 font-mono text-xs font-semibold tabular-nums text-primary/60" title={`Clocked in ${clock(since)}`}>
+      <LuClock3 className="size-3.5" />
+      {p(h)}<span className="shift-blink">:</span>{p(m)}<span className="shift-blink">:</span>{p(s)}
+    </span>
   )
 }
 
@@ -73,33 +47,22 @@ function OnShiftCard({ s }: { s: ShiftRow }) {
   const { openSummary, busyKey, forceEnd } = useShift()
   const open = s.summary?.pendingOrders ?? 0
   return (
-    <article className="relative overflow-hidden border-2 border-primary/80 bg-card shadow-[5px_5px_0_0_rgba(11,30,61,0.18)]">
-      <div className="shift-stripes h-1.5 bg-success" aria-hidden />
-      <div className="flex items-start gap-3 p-4 pb-3">
-        <div className="flex size-12 shrink-0 items-center justify-center bg-primary font-display text-lg font-bold text-primary-foreground">{initials(s)}</div>
-        <div className="min-w-0 flex-1">
-          <p className="truncate font-display text-base font-semibold leading-tight">{fullName(s)}</p>
-          <p className="truncate text-xs text-muted-foreground">{s.employee.jobTitle || 'Employee'}</p>
-        </div>
-        <span className="inline-flex shrink-0 items-center gap-1.5 border border-success/40 bg-success/10 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-success">
-          <span className="relative flex size-2"><span className="absolute inline-flex size-full animate-ping bg-success opacity-75" /><span className="relative inline-flex size-2 bg-success" /></span>
-          At work
-        </span>
-      </div>
-      <div className="px-4"><LiveClock since={s.approvedStartAt} /></div>
-      <div className="grid grid-cols-3 gap-2 p-4 pb-3">
-        <Stat label="Sales" value={formatKes(s.summary?.totalSales ?? 0)} tone="border-t-secondary" />
-        <Stat label="Collected" value={formatKes(s.summary?.totalPaid ?? 0)} tone="border-t-success" />
-        <Stat label="Credit" value={formatKes(s.summary?.creditSales ?? 0)} tone="border-t-warning" />
-      </div>
-      {open > 0 && (
-        <p className="mx-4 mb-3 flex items-center gap-1.5 border border-warning/40 bg-warning/10 px-2.5 py-1.5 text-xs font-semibold text-warning">
-          <LuTriangleAlert className="size-3.5 shrink-0" /> {open} open sale{open === 1 ? '' : 's'} — must be settled before this shift can end
+    <article className="flex items-center gap-3 border border-l-4 border-l-success bg-card px-3 py-2.5 shadow-sm">
+      <div className="flex size-10 shrink-0 items-center justify-center bg-secondary/15 font-display text-sm font-bold text-secondary">{initials(s)}</div>
+      <div className="min-w-0 flex-1">
+        <p className="flex items-center gap-2 text-sm font-semibold leading-tight">
+          <span className="truncate">{fullName(s)}</span>
+          <span className="relative flex size-2 shrink-0" title="At work"><span className="absolute inline-flex size-full animate-ping bg-success opacity-75" /><span className="relative inline-flex size-2 bg-success" /></span>
         </p>
-      )}
-      <div className="flex flex-wrap items-center gap-3 border-t bg-muted/40 px-4 py-3">
-        <SlantButton tone="primary" icon={<LuEye />} loading={busyKey === `${s.id}:summary`} onClick={() => openSummary(s, `${s.employee.firstName}'s active shift`)}>View details</SlantButton>
-        <SlantButton tone="danger" icon={<LuPower />} loading={busyKey === `${s.id}:force-end`} onClick={() => forceEnd(s)}>End shift</SlantButton>
+        <p className="truncate text-xs text-muted-foreground">{s.employee.jobTitle || 'Employee'}</p>
+        <div className="mt-1 flex flex-wrap items-center gap-2">
+          <LiveClock since={s.approvedStartAt} />
+          {open > 0 && <span className="inline-flex items-center gap-1 bg-warning/15 px-1.5 py-1 text-[10px] font-bold uppercase tracking-wide text-warning"><LuTriangleAlert className="size-3" />{open} open</span>}
+        </div>
+      </div>
+      <div className="flex shrink-0 flex-col items-end gap-1.5">
+        <SlantButton tone="secondary" icon={<LuEye />} loading={busyKey === `${s.id}:summary`} onClick={() => openSummary(s, `${s.employee.firstName}'s active shift`)}>View</SlantButton>
+        <SlantButton tone="danger" icon={<LuPower />} loading={busyKey === `${s.id}:force-end`} onClick={() => forceEnd(s)}>End</SlantButton>
       </div>
     </article>
   )
@@ -135,7 +98,7 @@ export default function ShiftTeamPanels() {
                   <tr key={a.id} className="align-middle even:bg-muted/30">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
-                        <span className="flex size-9 shrink-0 items-center justify-center bg-primary text-xs font-bold text-primary-foreground">{initials(a)}</span>
+                        <span className="flex size-9 shrink-0 items-center justify-center bg-secondary/15 text-xs font-bold text-secondary">{initials(a)}</span>
                         <div className="min-w-0"><p className="truncate font-semibold">{fullName(a)}</p><p className="truncate text-xs text-muted-foreground">{a.employee.jobTitle || 'Employee'}</p></div>
                       </div>
                     </td>
@@ -148,7 +111,7 @@ export default function ShiftTeamPanels() {
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap items-center justify-end gap-3">
                         {a.status === 'REQUESTED_END' && a.summary && (
-                          <SlantButton tone="primary" icon={<LuClipboardCheck />} loading={busyKey === `${a.id}:summary`} onClick={() => openSummary(a, `${a.employee.firstName}'s handover`, true)}>Review</SlantButton>
+                          <SlantButton tone="secondary" icon={<LuClipboardCheck />} loading={busyKey === `${a.id}:summary`} onClick={() => openSummary(a, `${a.employee.firstName}'s handover`, true)}>Review</SlantButton>
                         )}
                         {a.status === 'REQUESTED_START' && (
                           <>
@@ -181,7 +144,7 @@ export default function ShiftTeamPanels() {
 
       {isSupervisor && activeStaff.length > 0 && (
         <Panel title="Currently on shift" count={activeStaff.length} hint="Live — clocks run from the approved start">
-          <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {activeStaff.map((s) => <OnShiftCard key={s.id} s={s} />)}
           </div>
         </Panel>
@@ -212,7 +175,7 @@ export default function ShiftTeamPanels() {
                       {isSupervisor && (
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
-                            <span className="flex size-8 shrink-0 items-center justify-center bg-primary text-[11px] font-bold text-primary-foreground">{initials(s)}</span>
+                            <span className="flex size-8 shrink-0 items-center justify-center bg-secondary/15 text-[11px] font-bold text-secondary">{initials(s)}</span>
                             <span className="font-semibold">{fullName(s)}</span>
                           </div>
                         </td>
@@ -228,7 +191,7 @@ export default function ShiftTeamPanels() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         {hasSummary && (
-                          <SlantButton tone="primary" icon={<LuEye />} className="align-middle" loading={busyKey === `${s.id}:summary`} onClick={() => openSummary(s, isSupervisor ? `${s.employee.firstName}'s shift summary` : 'Shift summary')}>View</SlantButton>
+                          <SlantButton tone="secondary" icon={<LuEye />} className="align-middle" loading={busyKey === `${s.id}:summary`} onClick={() => openSummary(s, isSupervisor ? `${s.employee.firstName}'s shift summary` : 'Shift summary')}>View</SlantButton>
                         )}
                       </td>
                     </tr>

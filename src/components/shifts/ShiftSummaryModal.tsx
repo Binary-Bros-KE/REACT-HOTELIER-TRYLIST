@@ -116,22 +116,22 @@ export default function ShiftSummaryModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 px-4 py-8">
-      <div className="w-full max-w-4xl border-2 border-primary bg-card shadow-[8px_8px_0_0_rgba(0,0,0,0.3)]">
-        <div className="flex items-start justify-between gap-4 bg-primary px-5 py-4 text-primary-foreground">
+      <div className="w-full max-w-4xl border-2 border-foreground/25 bg-card shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+        <div className="flex items-start justify-between gap-4 border-b-4 border-accent bg-muted/60 px-5 py-4">
           <div className="flex min-w-0 items-start gap-4">
-            <div className="flex size-14 shrink-0 items-center justify-center border-2 border-white/30 bg-white/10 font-display text-xl font-bold">
+            <div className="flex size-14 shrink-0 items-center justify-center border-2 border-secondary/30 bg-secondary/15 font-display text-xl font-bold text-secondary">
               {(session.employee.firstName[0] ?? '') + (session.employee.lastName[0] ?? '')}
             </div>
             <div className="min-w-0">
-              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-accent">Shift handover</p>
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">Shift handover</p>
               <h2 className="mt-0.5 truncate font-display text-2xl font-semibold leading-tight">{title}</h2>
-              <p className="mt-0.5 text-sm text-primary-foreground/70">{session.employee.firstName} {session.employee.lastName} · {session.employee.jobTitle || 'Employee'}</p>
+              <p className="mt-0.5 text-sm text-muted-foreground">{session.employee.firstName} {session.employee.lastName} · {session.employee.jobTitle || 'Employee'}</p>
             </div>
           </div>
-          <button onClick={onClose} className="flex shrink-0 items-center gap-1.5 border border-white/30 px-3 py-1.5 text-xs font-bold uppercase tracking-wider transition hover:bg-white/10"><LuX className="size-4" /> Close</button>
+          <button onClick={onClose} className="flex shrink-0 items-center gap-1.5 border-2 border-foreground/20 bg-card px-3 py-1.5 text-xs font-bold uppercase tracking-wider transition hover:bg-muted"><LuX className="size-4" /> Close</button>
         </div>
 
-        <div className="grid grid-cols-2 border-b-2 border-primary bg-muted/50 text-sm sm:grid-cols-4">
+        <div className="grid grid-cols-2 border-b bg-card text-sm sm:grid-cols-4">
           <MetaCell label="Status"><span className={cn('inline-block px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider', statusTone)}>{statusLabel}</span></MetaCell>
           <MetaCell label="Started">{summary.from ? new Date(summary.from).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}</MetaCell>
           <MetaCell label={live.status === 'ACTIVE' ? 'Now' : 'Ended'}>{summary.to ? new Date(summary.to).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}</MetaCell>
@@ -159,7 +159,7 @@ export default function ShiftSummaryModal({
 
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
             <ShiftMiniStat label="Sales" value={formatKes(summary.totalSales)} hint={`${summary.sales.length} sale${summary.sales.length === 1 ? '' : 's'}`} bar="bg-secondary" />
-            <ShiftMiniStat label="Transactions" value={formatKes(transactionsNet)} hint={`${summary.transactions.length} transaction${summary.transactions.length === 1 ? '' : 's'}`} bar="bg-primary" />
+            <ShiftMiniStat label="Transactions" value={formatKes(transactionsNet)} hint={`${summary.transactions.length} transaction${summary.transactions.length === 1 ? '' : 's'}`} bar="bg-secondary" />
             <ShiftMiniStat label="Collected" value={formatKes(summary.totalPaid)} bar="bg-success" />
             <ShiftMiniStat label="Credit" value={formatKes(summary.creditSales)} bar="bg-warning" />
             <ShiftMiniStat label="Complimentary" value={formatKes(summary.complimentaryTotal)} bar="bg-accent" />
@@ -186,8 +186,8 @@ export default function ShiftSummaryModal({
           </ShiftSummaryTable>
         </div>
         {approval && (onApprove || onReject) && (
-          <div className="border-t-2 border-primary bg-muted/40 p-5">
-            <p className="text-xs font-bold uppercase tracking-wider text-primary">Outcome</p>
+          <div className="border-t-2 border-foreground/15 bg-muted/40 p-5">
+            <p className="text-xs font-bold uppercase tracking-wider text-secondary">Outcome</p>
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
               <button type="button" onClick={() => setSomethingOff(false)} className={cn('border-2 p-3 text-left text-sm transition', !somethingOff ? 'border-success bg-success/10' : 'bg-card hover:bg-muted')}>
                 <span className="font-bold">Cleared</span>
