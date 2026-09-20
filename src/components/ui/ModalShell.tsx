@@ -9,14 +9,14 @@ export default function ModalShell({ kicker, title, subtitle, onClose, footer, s
   subtitle?: string
   onClose: () => void
   footer?: ReactNode
-  size?: 'sm' | 'md' | 'lg'
+  size?: 'sm' | 'md' | 'lg' | 'xl'
   children: ReactNode
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
       <div className={cn(
         'flex max-h-[92vh] w-full flex-col overflow-hidden border-2 border-foreground/25 bg-card shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]',
-        size === 'sm' ? 'max-w-md' : size === 'md' ? 'max-w-xl' : 'max-w-2xl',
+        size === 'sm' ? 'max-w-md' : size === 'md' ? 'max-w-xl' : size === 'lg' ? 'max-w-2xl' : 'max-w-4xl',
       )}>
         <div className="flex items-start justify-between gap-4 border-b-4 border-accent bg-muted/60 px-5 py-4">
           <div className="min-w-0">

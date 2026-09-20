@@ -18,7 +18,11 @@ import {
 
 import { api } from "@/lib/api";
 import SharedStatCard from "@/components/ui/StatCard";
-import Button from "@/components/ui/Button";
+import ActionButton from "@/components/ui/ActionButton";
+import PageBanner from "@/components/ui/PageBanner";
+import ModalShell from "@/components/ui/ModalShell";
+import StatusPill from "@/components/ui/StatusPill";
+import { cn } from "@/lib/utils";
 
 type RoomStatus = "VACANT" | "OCCUPIED" | "OUT_OF_SERVICE";
 type Cleanliness = "CLEAN" | "DIRTY" | "INSPECTING";
@@ -381,260 +385,157 @@ export default function Rooms() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-6 py-8 sm:px-8 lg:px-10">
-      <header className="relative overflow-hidden rounded-sm bg-linear-to-br from-[#112947] via-primary to-secondary p-7 text-white shadow-xl shadow-primary/15">
-        <div className="absolute -right-14 -top-20 size-64 rounded-full bg-white/10 blur-3xl" />
-        <div className="relative flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-white/60">
-              <LuBedDouble /> Room operations
-            </div>
-            <h1 className="mt-3 font-display text-3xl font-semibold">
-              Your property, at a glance.
-            </h1>
-            <p className="mt-2 max-w-xl text-sm text-white/65">
-              Live occupancy, housekeeping status, guest stays, and café charges
-              in one room board.
-            </p>
-          </div>
-          <Button onClick={openCreate} className="shrink-0">
-            <LuPlus /> Add room
-          </Button>
-        </div>
-      </header>
+    <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
+      <PageBanner kicker="Room operations" title="Room Management" />
       {error && (
-        <div className="mt-5 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive">
+        <div className="mt-5 flex items-center gap-2 border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive">
           <LuCircleAlert />
           {error}
         </div>
       )}
       {notice && (
-        <div className="mt-5 flex items-center gap-2 rounded-sm border border-success/25 bg-success/10 p-3 text-sm text-success">
+        <div className="mt-5 flex items-center gap-2 border border-success/25 bg-success/10 p-3 text-sm text-success">
           <LuCircleCheck />
           {notice}
         </div>
       )}
       <section className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <SummaryCard
-          index={0}
-          label="All rooms"
-          value={summary.total}
-          icon={<LuBedDouble />}
-          tone="secondary"
-        />
-        <SummaryCard
-          index={1}
-          label="Vacant"
-          value={summary.vacant}
-          icon={<LuDoorOpen />}
-          tone="success"
-        />
-        <SummaryCard
-          index={2}
-          label="Occupied"
-          value={summary.occupied}
-          icon={<LuUsers />}
-          tone="secondary"
-        />
-        <SummaryCard
-          index={3}
-          label="Out of service"
-          value={summary.outOfService}
-          icon={<LuCircleAlert />}
-          tone="warning"
-        />
-        <SummaryCard
-          index={4}
-          label="Need cleaning"
-          value={summary.dirty}
-          icon={<LuSparkles />}
-          tone="warning"
-        />
+        <SummaryCard index={0} label="All rooms" value={summary.total} icon={<LuBedDouble />} tone="secondary" />
+        <SummaryCard index={1} label="Vacant" value={summary.vacant} icon={<LuDoorOpen />} tone="success" />
+        <SummaryCard index={2} label="Occupied" value={summary.occupied} icon={<LuUsers />} tone="secondary" />
+        <SummaryCard index={3} label="Out of service" value={summary.outOfService} icon={<LuCircleAlert />} tone="warning" />
+        <SummaryCard index={4} label="Need cleaning" value={summary.dirty} icon={<LuSparkles />} tone="warning" />
       </section>
-      <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap rounded-sm border bg-card p-1 shadow-sm">
-          {(
-            [
-              ["ALL", "All rooms"],
-              ["VACANT", "Vacant"],
-              ["OCCUPIED", "Occupied"],
-              ["OUT_OF_SERVICE", "Out of service"],
-            ] as const
-          ).map(([value, label]) => (
-            <button
-              key={value}
-              onClick={() => setFilter(value)}
-              className={`rounded-sm px-4 py-2 text-sm font-semibold ${filter === value ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted"}`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <label className="relative">
-          <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search rooms…"
-            className="w-full rounded-sm border bg-card py-2.5 pl-9 pr-3 text-sm shadow-sm outline-none focus:ring-2 focus:ring-ring sm:w-64"
-          />
-        </label>
-      </div>
-      {loading ? (
-        <div className="mt-5 flex min-h-72 items-center justify-center gap-2 rounded-sm border bg-card text-sm text-muted-foreground">
-          <LuLoaderCircle className="animate-spin" /> Loading rooms…
-        </div>
-      ) : visibleRooms.length === 0 ? (
-        <div className="mt-5 rounded-sm border border-dashed bg-card p-16 text-center text-sm text-muted-foreground">
-          No rooms match this view.
-        </div>
-      ) : (
-        <section className="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {visibleRooms.map((room) => (
-            <RoomCard
-              key={room.id}
-              room={room}
-              onEdit={() => openEdit(room)}
-              onDelete={() => void removeRoom(room)}
-              onStatus={(status) => void quickUpdate(room, { status })}
-              onCleanliness={(cleanliness) =>
-                void quickUpdate(room, { cleanliness })
-              }
+
+      <section className="mt-6 overflow-hidden border bg-card shadow-sm">
+        <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center">
+          <div className="border-l-4 border-accent pl-3 lg:mr-auto">
+            <h2 className="font-display text-xl font-semibold leading-tight">Room board</h2>
+            <p className="text-xs text-muted-foreground">Live occupancy, housekeeping status and folio balances.</p>
+          </div>
+          <div className="flex flex-wrap border">
+            {(
+              [
+                ["ALL", "All"],
+                ["VACANT", "Vacant"],
+                ["OCCUPIED", "Occupied"],
+                ["OUT_OF_SERVICE", "Out of service"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                onClick={() => setFilter(value)}
+                className={cn(
+                  "px-3.5 py-2 text-xs font-bold uppercase tracking-wider transition",
+                  filter === value ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground hover:bg-muted",
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <label className="relative">
+            <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search rooms…"
+              className="w-full border bg-background py-2.5 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring lg:w-56"
             />
-          ))}
-        </section>
-      )}
+          </label>
+          <div className="flex gap-2">
+            <ActionButton tone="neutral" icon={<LuSettings2 />} onClick={() => setShowTypes(true)}>Room types</ActionButton>
+            <ActionButton tone="primary" icon={<LuPlus />} onClick={openCreate}>Add room</ActionButton>
+          </div>
+        </div>
+        {loading ? (
+          <div className="flex min-h-72 items-center justify-center gap-2 text-sm text-muted-foreground">
+            <LuLoaderCircle className="animate-spin" /> Loading rooms…
+          </div>
+        ) : visibleRooms.length === 0 ? (
+          <div className="p-16 text-center text-sm text-muted-foreground">No rooms match this view.</div>
+        ) : (
+          <div className="grid gap-4 bg-muted/30 p-4 md:grid-cols-2 xl:grid-cols-3">
+            {visibleRooms.map((room) => (
+              <RoomCard
+                key={room.id}
+                room={room}
+                onEdit={() => openEdit(room)}
+                onDelete={() => void removeRoom(room)}
+                onStatus={(status) => void quickUpdate(room, { status })}
+                onCleanliness={(cleanliness) => void quickUpdate(room, { cleanliness })}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+
       {showForm && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm"
+        <ModalShell
+          kicker={editing ? "Edit room" : "New room"}
+          title={editing ? `Room ${editing.number}` : "Add room inventory"}
+          onClose={() => setShowForm(false)}
+          footer={
+            <>
+              <button type="button" onClick={() => setShowForm(false)} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted">Cancel</button>
+              <button form="room-form" disabled={saving} className="inline-flex items-center gap-2 bg-primary px-5 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground transition hover:brightness-110 disabled:opacity-60">
+                {saving && <LuLoaderCircle className="animate-spin" />}
+                {editing ? "Save changes" : "Create room"}
+              </button>
+            </>
+          }
         >
-          <form
-            onSubmit={saveRoom}
-            className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-sm border bg-card p-6 shadow-2xl"
-          >
-            <p className="text-sm font-semibold text-secondary">
-              {editing ? "Edit room" : "New room"}
-            </p>
-            <h2 className="mt-1 font-display text-2xl font-semibold">
-              {editing ? `Room ${editing.number}` : "Add room inventory"}
-            </h2>
-            <div className="mt-6 grid gap-4 sm:grid-cols-2">
+          <form id="room-form" onSubmit={saveRoom} className="p-5">
+            <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Room number">
-                <input
-                  required
-                  value={form.number}
-                  onChange={(e) => setForm({ ...form, number: e.target.value })}
-                  className="input"
-                />
+                <input required value={form.number} onChange={(e) => setForm({ ...form, number: e.target.value })} className="input" />
               </Field>
               <Field label="Room name">
-                <input
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder="Optional"
-                  className="input"
-                />
+                <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Optional" className="input" />
               </Field>
               <div className="sm:col-span-2">
                 <Field label="Room type">
-                  <select
-                    required
-                    value={form.roomTypeId}
-                    onChange={(event) => selectRoomType(event.target.value)}
-                    className="input"
-                  >
+                  <select required value={form.roomTypeId} onChange={(event) => selectRoomType(event.target.value)} className="input">
                     <option value="">Select a room type</option>
                     {roomTypes
-                      .filter(
-                        (type) => type.isActive || type.id === form.roomTypeId,
-                      )
+                      .filter((type) => type.isActive || type.id === form.roomTypeId)
                       .map((type) => (
                         <option key={type.id} value={type.id}>
-                          {type.name} · {type.capacity} guests ·{" "}
-                          {formatKes(Number(type.baseRate))}
+                          {type.name} · {type.capacity} guests · {formatKes(Number(type.baseRate))}
                         </option>
                       ))}
                   </select>
                 </Field>
                 {roomTypes.find((type) => type.id === form.roomTypeId) && (
-                  <div className="mt-2 rounded-sm bg-secondary/5 p-3 text-xs text-muted-foreground">
-                    <p>
-                      {roomTypes.find((type) => type.id === form.roomTypeId)
-                        ?.description || "No description"}
-                    </p>
+                  <div className="mt-2 border border-l-4 border-l-secondary bg-secondary/5 p-3 text-xs text-muted-foreground">
+                    <p>{roomTypes.find((type) => type.id === form.roomTypeId)?.description || "No description"}</p>
                     <p className="mt-1 font-medium text-secondary">
-                      {roomTypes
-                        .find((type) => type.id === form.roomTypeId)
-                        ?.amenities.join(" · ") || "No amenities configured"}
+                      {roomTypes.find((type) => type.id === form.roomTypeId)?.amenities.join(" · ") || "No amenities configured"}
                     </p>
                   </div>
                 )}
               </div>
               <Field label="Floor">
-                <input
-                  value={form.floor}
-                  onChange={(e) => setForm({ ...form, floor: e.target.value })}
-                  placeholder="e.g. 2"
-                  className="input"
-                />
+                <input value={form.floor} onChange={(e) => setForm({ ...form, floor: e.target.value })} placeholder="e.g. 2" className="input" />
               </Field>
               <Field label="Wing">
-                <input
-                  value={form.wing}
-                  onChange={(e) => setForm({ ...form, wing: e.target.value })}
-                  placeholder="e.g. East Wing"
-                  className="input"
-                />
+                <input value={form.wing} onChange={(e) => setForm({ ...form, wing: e.target.value })} placeholder="e.g. East Wing" className="input" />
               </Field>
               <Field label="Guest capacity">
-                <input
-                  required
-                  min="1"
-                  max="20"
-                  type="number"
-                  value={form.capacity}
-                  onChange={(e) =>
-                    setForm({ ...form, capacity: e.target.value })
-                  }
-                  className="input"
-                />
+                <input required min="1" max="20" type="number" value={form.capacity} onChange={(e) => setForm({ ...form, capacity: e.target.value })} className="input" />
               </Field>
               <Field label="Nightly rate">
-                <input
-                  required
-                  min="0"
-                  type="number"
-                  value={form.nightlyRate}
-                  onChange={(e) =>
-                    setForm({ ...form, nightlyRate: e.target.value })
-                  }
-                  className="input"
-                />
+                <input required min="0" type="number" value={form.nightlyRate} onChange={(e) => setForm({ ...form, nightlyRate: e.target.value })} className="input" />
               </Field>
               <Field label="Room status">
-                <select
-                  value={form.status}
-                  onChange={(e) =>
-                    setForm({ ...form, status: e.target.value as RoomStatus })
-                  }
-                  className="input"
-                >
+                <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as RoomStatus })} className="input">
                   <option value="VACANT">Vacant</option>
                   <option value="OCCUPIED">Occupied</option>
                   <option value="OUT_OF_SERVICE">Out of service</option>
                 </select>
               </Field>
               <Field label="Housekeeping">
-                <select
-                  value={form.cleanliness}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      cleanliness: e.target.value as Cleanliness,
-                    })
-                  }
-                  className="input"
-                >
+                <select value={form.cleanliness} onChange={(e) => setForm({ ...form, cleanliness: e.target.value as Cleanliness })} className="input">
                   <option value="CLEAN">Clean</option>
                   <option value="DIRTY">Dirty</option>
                   <option value="INSPECTING">Inspecting</option>
@@ -642,13 +543,7 @@ export default function Rooms() {
               </Field>
               <div className="sm:col-span-2">
                 <Field label="Notes">
-                  <textarea
-                    value={form.notes}
-                    onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                    placeholder="Anything worth remembering about this room"
-                    className="input"
-                    rows={2}
-                  />
+                  <textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Anything worth remembering about this room" className="input" rows={2} />
                 </Field>
               </div>
             </div>
@@ -659,98 +554,33 @@ export default function Rooms() {
                 {editing.updatedByEmployee && <>Last updated by {editing.updatedByEmployee.firstName} {editing.updatedByEmployee.lastName} on {new Date(editing.updatedAt).toLocaleDateString()}</>}
               </p>
             )}
-            <div className="mt-6 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setShowForm(false)}
-                className="rounded-sm border px-4 py-2.5 text-sm font-semibold"
-              >
-                Cancel
-              </button>
-              <button
-                disabled={saving}
-                className="flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60"
-              >
-                {saving && <LuLoaderCircle className="animate-spin" />}
-                {editing ? "Save changes" : "Create room"}
-              </button>
-            </div>
           </form>
-        </div>
+        </ModalShell>
       )}
-      <button
-        onClick={() => setShowTypes(true)}
-        className="fixed bottom-6 right-6 z-30 flex items-center gap-2 rounded-sm bg-primary px-4 py-3 text-sm font-bold text-primary-foreground shadow-xl"
-      >
-        <LuSettings2 /> Manage room types
-      </button>
+
       {showTypes && (
-        <div
-          className="fixed inset-0 z-70 flex items-center justify-center bg-primary/60 p-4 backdrop-blur-sm"
+        <ModalShell
+          size="xl"
+          kicker="Admin customization"
+          title="Room types"
+          subtitle="Capacity, rates and amenities used when adding rooms."
+          onClose={() => { setShowTypes(false); resetTypeForm(); }}
         >
-          <div className="grid max-h-[90vh] w-full max-w-4xl gap-5 overflow-y-auto rounded-sm bg-card p-6 shadow-2xl lg:grid-cols-[320px_1fr]">
-            <form onSubmit={saveRoomType}>
-              <p className="text-sm font-semibold text-secondary">
-                Admin customization
-              </p>
-              <h2 className="mt-1 font-display text-2xl font-semibold">
+          <div className="grid gap-0 lg:grid-cols-[320px_1fr]">
+            <form onSubmit={saveRoomType} className="border-b bg-muted/30 p-5 lg:border-b-0 lg:border-r">
+              <p className="mb-3 border-l-4 border-accent pl-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
                 {editingType ? "Edit room type" : "New room type"}
-              </h2>
-              <div className="mt-5 space-y-3">
-                <input
-                  required
-                  value={typeForm.name}
-                  onChange={(e) =>
-                    setTypeForm({ ...typeForm, name: e.target.value })
-                  }
-                  placeholder="Type name"
-                  className="input"
-                />
-                <textarea
-                  value={typeForm.description}
-                  onChange={(e) =>
-                    setTypeForm({ ...typeForm, description: e.target.value })
-                  }
-                  placeholder="Description"
-                  className="input"
-                />
+              </p>
+              <div className="space-y-3">
+                <input required value={typeForm.name} onChange={(e) => setTypeForm({ ...typeForm, name: e.target.value })} placeholder="Type name" className="input" />
+                <textarea value={typeForm.description} onChange={(e) => setTypeForm({ ...typeForm, description: e.target.value })} placeholder="Description" className="input" />
                 <div className="grid grid-cols-2 gap-2">
-                  <input
-                    required
-                    min="1"
-                    max="20"
-                    type="number"
-                    value={typeForm.capacity}
-                    onChange={(e) =>
-                      setTypeForm({ ...typeForm, capacity: e.target.value })
-                    }
-                    placeholder="Capacity"
-                    className="input"
-                  />
-                  <input
-                    required
-                    min="0"
-                    type="number"
-                    value={typeForm.baseRate}
-                    onChange={(e) =>
-                      setTypeForm({ ...typeForm, baseRate: e.target.value })
-                    }
-                    placeholder="Base rate"
-                    className="input"
-                  />
+                  <input required min="1" max="20" type="number" value={typeForm.capacity} onChange={(e) => setTypeForm({ ...typeForm, capacity: e.target.value })} placeholder="Capacity" className="input" />
+                  <input required min="0" type="number" value={typeForm.baseRate} onChange={(e) => setTypeForm({ ...typeForm, baseRate: e.target.value })} placeholder="Base rate" className="input" />
                 </div>
-                <input
-                  value={typeForm.amenities}
-                  onChange={(e) =>
-                    setTypeForm({ ...typeForm, amenities: e.target.value })
-                  }
-                  placeholder="Amenities, comma separated"
-                  className="input"
-                />
+                <input value={typeForm.amenities} onChange={(e) => setTypeForm({ ...typeForm, amenities: e.target.value })} placeholder="Amenities, comma separated" className="input" />
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Rate tiers (leave blank to skip)
-                  </p>
+                  <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Rate tiers (leave blank to skip)</p>
                   <div className="mt-2 grid grid-cols-2 gap-2">
                     {MEAL_PLANS.map((plan) => (
                       <input
@@ -758,9 +588,7 @@ export default function Rooms() {
                         type="number"
                         min="0"
                         value={typeForm[mealPlanFormKey[plan]]}
-                        onChange={(e) =>
-                          setTypeForm({ ...typeForm, [mealPlanFormKey[plan]]: e.target.value })
-                        }
+                        onChange={(e) => setTypeForm({ ...typeForm, [mealPlanFormKey[plan]]: e.target.value })}
                         placeholder={mealPlanLabels[plan]}
                         className="input"
                       />
@@ -768,14 +596,7 @@ export default function Rooms() {
                   </div>
                 </div>
                 <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={typeForm.isActive}
-                    onChange={(e) =>
-                      setTypeForm({ ...typeForm, isActive: e.target.checked })
-                    }
-                  />{" "}
-                  Active for new rooms
+                  <input type="checkbox" checked={typeForm.isActive} onChange={(e) => setTypeForm({ ...typeForm, isActive: e.target.checked })} /> Active for new rooms
                 </label>
               </div>
               {editingType && (editingType.createdByEmployee || editingType.updatedByEmployee) && (
@@ -786,95 +607,56 @@ export default function Rooms() {
                 </p>
               )}
               <div className="mt-5 flex gap-2">
-                <button
-                  disabled={saving}
-                  className="rounded-sm bg-primary px-4 py-2 text-sm font-bold text-white"
-                >
+                <button disabled={saving} className="inline-flex items-center gap-2 bg-primary px-4 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground transition hover:brightness-110 disabled:opacity-60">
+                  {saving && <LuLoaderCircle className="animate-spin" />}
                   {editingType ? "Save type" : "Create type"}
                 </button>
                 {editingType && (
-                  <button
-                    type="button"
-                    onClick={resetTypeForm}
-                    className="rounded-sm border px-4 py-2 text-sm"
-                  >
-                    Cancel edit
-                  </button>
+                  <button type="button" onClick={resetTypeForm} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted">Cancel edit</button>
                 )}
               </div>
             </form>
-            <section>
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold">Property room types</h3>
-                <button
-                  onClick={() => setShowTypes(false)}
-                  className="text-sm font-semibold text-secondary"
-                >
-                  Done
-                </button>
-              </div>
-              <div className="mt-4 space-y-2">
+            <section className="p-5">
+              <p className="mb-3 border-l-4 border-accent pl-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">Property room types</p>
+              <div className="space-y-3">
                 {roomTypes.map((type) => (
-                  <article key={type.id} className="rounded-sm border p-4">
+                  <article key={type.id} className="border border-l-4 border-l-secondary bg-card p-4">
                     <div className="flex justify-between gap-3">
-                      <div>
+                      <div className="min-w-0">
                         <div className="flex items-center gap-2">
                           <h4 className="font-semibold">{type.name}</h4>
-                          {!type.isActive && (
-                            <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
-                              Inactive
-                            </span>
-                          )}
+                          {!type.isActive && <StatusPill tone="muted">Inactive</StatusPill>}
                         </div>
                         <p className="mt-1 text-xs text-muted-foreground">
-                          {type.description || "No description"} ·{" "}
-                          {type.capacity} guests ·{" "}
-                          {formatKes(Number(type.baseRate))}
+                          {type.description || "No description"} · {type.capacity} guests · {formatKes(Number(type.baseRate))}
                         </p>
-                        <div className="mt-2 flex flex-wrap gap-1">
-                          {type.amenities.map((amenity) => (
-                            <span
-                              key={amenity}
-                              className="rounded bg-muted px-2 py-0.5 text-[10px] text-muted-foreground"
-                            >
-                              {amenity}
-                            </span>
-                          ))}
-                        </div>
-                        {type.rates.length > 0 && (
+                        {type.amenities.length > 0 && (
                           <div className="mt-2 flex flex-wrap gap-1">
+                            {type.amenities.map((amenity) => (
+                              <span key={amenity} className="bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">{amenity}</span>
+                            ))}
+                          </div>
+                        )}
+                        {type.rates.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-1.5">
                             {type.rates.map((rate) => (
-                              <span
-                                key={rate.mealPlan}
-                                className="rounded bg-secondary/10 px-2 py-0.5 text-[10px] font-semibold text-secondary"
-                              >
-                                {mealPlanLabels[rate.mealPlan]}: {formatKes(Number(rate.price))}
-                              </span>
+                              <StatusPill key={rate.mealPlan} tone="secondary">{mealPlanLabels[rate.mealPlan]}: {formatKes(Number(rate.price))}</StatusPill>
                             ))}
                           </div>
                         )}
                       </div>
-                      <div className="flex gap-1">
-                        <button
-                          onClick={() => editRoomType(type)}
-                          className="rounded-sm p-2 text-secondary"
-                        >
-                          <LuPencil />
-                        </button>
-                        <button
-                          onClick={() => void removeRoomType(type)}
-                          className="rounded-sm p-2 text-destructive"
-                        >
-                          <LuTrash2 />
-                        </button>
+                      <div className="flex shrink-0 gap-1.5">
+                        <ActionButton tone="neutral" icon={<LuPencil />} title="Edit type" onClick={() => editRoomType(type)} />
+                        <ActionButton tone="neutral" icon={<LuTrash2 />} title="Delete type" onClick={() => void removeRoomType(type)} />
                       </div>
                     </div>
                   </article>
                 ))}
+                {roomTypes.length === 0 && <p className="border border-dashed p-8 text-center text-sm text-muted-foreground">No room types yet.</p>}
               </div>
             </section>
           </div>
-        </div>
+        </ModalShell>
       )}
     </div>
   );
@@ -905,89 +687,61 @@ function RoomCard({
         ? "bg-destructive"
         : "bg-success";
   return (
-    <article className="group overflow-hidden rounded-sm border bg-card shadow-sm transition hover:-translate-y-0.5 hover:shadow-xl">
+    <article className="flex flex-col overflow-hidden border bg-card shadow-sm transition hover:shadow-md">
       <div className={`h-1.5 ${statusTone}`} />
-      <div className="p-5">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
-              {room.roomType.name}
-            </p>
-            <h2 className="mt-1 font-display text-3xl font-bold">
-              {room.number}
-            </h2>
-            {room.name && (
-              <p className="text-sm text-muted-foreground">{room.name}</p>
-            )}
+      <div className="flex flex-1 flex-col p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">{room.roomType.name}</p>
+            <h2 className="mt-0.5 font-display text-3xl font-bold leading-none">{room.number}</h2>
+            {room.name && <p className="mt-1 truncate text-sm text-muted-foreground">{room.name}</p>}
             {(room.floor || room.wing) && (
-              <p className="text-xs text-muted-foreground">
-                {[room.floor && `Floor ${room.floor}`, room.wing].filter(Boolean).join(" · ")}
-              </p>
+              <p className="text-xs text-muted-foreground">{[room.floor && `Floor ${room.floor}`, room.wing].filter(Boolean).join(" · ")}</p>
             )}
           </div>
-          <div className="flex gap-1">
-            <button
-              onClick={onEdit}
-              className="rounded-sm p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"
-            >
-              <LuPencil />
-            </button>
-            <button
-              onClick={onDelete}
-              className="rounded-sm p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-            >
-              <LuTrash2 />
-            </button>
+          <div className="flex shrink-0 gap-1.5">
+            <ActionButton tone="neutral" icon={<LuPencil />} title="Edit room" onClick={onEdit} />
+            <ActionButton tone="neutral" icon={<LuTrash2 />} title="Delete room" onClick={onDelete} />
           </div>
         </div>
-        <div className="mt-5 grid grid-cols-2 gap-2">
-          <div className="rounded-sm bg-muted/60 p-3">
-            <p className="text-[10px] font-bold uppercase text-muted-foreground">
-              Nightly rate
-            </p>
-            <p className="mt-1 text-sm font-bold">
-              {formatKes(Number(room.nightlyRate))}
-            </p>
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <div className="flex border bg-background">
+            <span className="w-1.5 shrink-0 bg-secondary" />
+            <div className="p-2.5">
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Nightly rate</p>
+              <p className="mt-0.5 text-sm font-bold tabular-nums">{formatKes(Number(room.nightlyRate))}</p>
+            </div>
           </div>
-          <div className="rounded-sm bg-muted/60 p-3">
-            <p className="text-[10px] font-bold uppercase text-muted-foreground">
-              Capacity
-            </p>
-            <p className="mt-1 text-sm font-bold">{room.capacity} guests</p>
+          <div className="flex border bg-background">
+            <span className="w-1.5 shrink-0 bg-muted-foreground" />
+            <div className="p-2.5">
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Capacity</p>
+              <p className="mt-0.5 text-sm font-bold">{room.capacity} guests</p>
+            </div>
           </div>
         </div>
         {stay ? (
-          <div className="mt-4 rounded-sm border border-secondary/20 bg-secondary/5 p-3">
+          <div className="mt-3 border border-l-4 border-l-secondary bg-secondary/5 p-3">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs text-muted-foreground">
-                  Checked-in guest
-                </p>
-                <p className="text-sm font-semibold">
-                  {stay.customer.firstName} {stay.customer.lastName ?? ''}
-                </p>
+                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Checked-in guest</p>
+                <p className="text-sm font-semibold">{stay.customer.firstName} {stay.customer.lastName ?? ""}</p>
               </div>
               <LuUsers className="text-secondary" />
             </div>
-            <div className="mt-3 flex items-center justify-between border-t pt-3">
-              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <LuReceiptText /> Folio balance
-              </span>
-              <strong className="text-sm text-secondary">
-                {formatKes(charge)}
-              </strong>
+            <div className="mt-2.5 flex items-center justify-between border-t pt-2.5">
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground"><LuReceiptText /> Folio balance</span>
+              <strong className="text-sm tabular-nums text-secondary">{formatKes(charge)}</strong>
             </div>
           </div>
         ) : (
-          <div className="mt-4 rounded-sm border border-dashed p-3 text-center text-xs text-muted-foreground">
-            No checked-in guest
-          </div>
+          <div className="mt-3 border border-dashed p-3 text-center text-xs text-muted-foreground">No checked-in guest</div>
         )}
-        <div className="mt-4 grid grid-cols-2 gap-2">
+        <div className="mt-auto grid grid-cols-2 gap-2 pt-3">
           <select
             value={room.status}
             onChange={(e) => onStatus(e.target.value as RoomStatus)}
-            className={`rounded-sm border px-2 py-2 text-xs font-semibold ${room.status === "OCCUPIED" ? "bg-destructive/10 text-destructive" : room.status === "OUT_OF_SERVICE" ? "bg-warning/15 text-warning" : "bg-success/10 text-success"}`}
+            className={cn("border-2 px-2 py-2 text-xs font-bold uppercase tracking-wide", room.status === "OCCUPIED" ? "border-destructive/50 bg-destructive/10 text-destructive" : room.status === "OUT_OF_SERVICE" ? "border-warning/50 bg-warning/15 text-warning" : "border-success/50 bg-success/10 text-success")}
           >
             <option value="VACANT">Vacant</option>
             <option value="OCCUPIED">Occupied</option>
@@ -996,7 +750,7 @@ function RoomCard({
           <select
             value={room.cleanliness}
             onChange={(e) => onCleanliness(e.target.value as Cleanliness)}
-            className={`rounded-sm border px-2 py-2 text-xs font-semibold ${room.cleanliness === "CLEAN" ? "bg-success/10 text-success" : room.cleanliness === "DIRTY" ? "bg-destructive/10 text-destructive" : "bg-secondary/10 text-secondary"}`}
+            className={cn("border-2 px-2 py-2 text-xs font-bold uppercase tracking-wide", room.cleanliness === "CLEAN" ? "border-success/50 bg-success/10 text-success" : room.cleanliness === "DIRTY" ? "border-destructive/50 bg-destructive/10 text-destructive" : "border-secondary/50 bg-secondary/10 text-secondary")}
           >
             <option value="CLEAN">Clean</option>
             <option value="DIRTY">Dirty</option>
