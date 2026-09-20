@@ -437,7 +437,13 @@ export default function Employees() {
 
             <FieldGroup title="Employment">
               <Field label="Department" required>
-                <select required value={form.departmentId} onChange={(e) => setForm({ ...form, departmentId: e.target.value })} className="input">
+                <select required value={form.departmentId} onChange={(e) => {
+                  const departmentId = e.target.value
+                  const isHousekeeping = departmentOptions.find((d) => d.id === departmentId)?.name.toLowerCase() === 'housekeeping'
+                  const housekeepingRole = roles.find((r) => r.name === 'Housekeeping')
+                  // Housekeeping staff normally get the Housekeeping role; only pre-fill when none is chosen yet.
+                  setForm({ ...form, departmentId, ...(isHousekeeping && housekeepingRole && !form.roleId ? { roleId: housekeepingRole.id } : {}) })
+                }} className="input">
                   <option value="" disabled>Select department</option>
                   {departmentOptions.map((d) => <option key={d.id} value={d.id}>{d.name}{d.isActive ? '' : ' (inactive)'}</option>)}
                 </select>
@@ -463,7 +469,9 @@ export default function Employees() {
               <Field label="Is supervisor">
                 <label className="flex items-center gap-2 rounded-sm border bg-muted/40 px-3 py-2 text-sm font-medium">
                   <input type="checkbox" checked={form.isSupervisor} onChange={(e) => setForm({ ...form, isSupervisor: e.target.checked })} className="size-4 accent-secondary" />
-                  Can approve shift starts and handovers
+                  {departmentOptions.find((d) => d.id === form.departmentId)?.name.toLowerCase() === 'housekeeping'
+                    ? 'Housekeeping supervisor: sees every task, assigns work, approves shifts'
+                    : 'Can approve shift starts and handovers'}
                 </label>
               </Field>
               <Field label="Role" required>

@@ -1153,15 +1153,15 @@ function ChefDashboard() {
 // ---- Housekeeping dashboard — room tasks, cleanliness, lost & found, no
 // hotel revenue. Last role in the rollout. ----
 
-type HkTaskStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED'
-type HkTaskType = 'CLEANING' | 'INSPECTION' | 'MAINTENANCE'
+type HkTaskStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED'
 type HkRoom = { id: string; number: string; status: RoomStatus; cleanliness: RoomCleanliness }
-type HkTask = { id: string; type: HkTaskType; status: HkTaskStatus; assignedTo: string | null; dueAt: string | null; room: HkRoom }
+type HkTask = { id: string; taskNo: string | null; type: string; status: HkTaskStatus; title: string | null; roomNumber: string | null; assigneeName: string | null; assignedToId: string | null; dueAt: string | null; overdue: boolean }
 type LostFoundRow = { id: string; itemNo: string; itemName: string; room: { number: string } | null; foundAt: string; status: 'UNCLAIMED' | 'COLLECTED' }
 
 function HousekeepingDashboard() {
   const [tasks, setTasks] = useState<HkTask[]>([])
-  const [taskSummary, setTaskSummary] = useState({ pending: 0, inProgress: 0, completed: 0 })
+  const [taskSummary, setTaskSummary] = useState({ pending: 0, inProgress: 0, unassigned: 0, overdue: 0 })
+  const [isManager, setIsManager] = useState(false)
   const [rooms, setRooms] = useState<HkRoom[]>([])
   const [roomSummary, setRoomSummary] = useState({ ready: 0, needsService: 0 })
   const [lostFound, setLostFound] = useState<LostFoundRow[]>([])
@@ -1171,15 +1171,16 @@ function HousekeepingDashboard() {
   const [workingId, setWorkingId] = useState('')
 
   const load = useCallback(async () => {
-    setError('')
     try {
       const [taskResponse, roomResponse, lostFoundResponse] = await Promise.all([
-        api<{ tasks: HkTask[]; summary: { pending: number; inProgress: number; completed: number } }>('/housekeeping/tasks'),
+        api<{ tasks: HkTask[]; summary: { pending: number; inProgress: number; unassigned: number; overdue: number }; isManager: boolean }>('/housekeeping/tasks'),
         api<{ rooms: HkRoom[]; summary: { ready: number; needsService: number } }>('/housekeeping/rooms'),
         api<{ items: LostFoundRow[]; summary: { unclaimed: number } }>('/lost-found'),
       ])
-      setTasks(taskResponse.tasks.filter((t) => t.status !== 'COMPLETED'))
+      setTasks(taskResponse.tasks)
       setTaskSummary(taskResponse.summary)
+      setIsManager(taskResponse.isManager)
+      setError('')
       setRooms(roomResponse.rooms)
       setRoomSummary(roomResponse.summary)
       setLostFound(lostFoundResponse.items.slice(0, 6))
@@ -1191,13 +1192,16 @@ function HousekeepingDashboard() {
     }
   }, [])
 
-  useEffect(() => { void load() }, [load])
+  useEffect(() => {
+    void load()
+    const timer = window.setInterval(() => { if (!document.hidden) void load() }, 10_000)
+    return () => window.clearInterval(timer)
+  }, [load])
 
   async function advance(task: HkTask) {
     setWorkingId(task.id)
     try {
-      const next = task.status === 'PENDING' ? 'IN_PROGRESS' : 'COMPLETED'
-      await api(`/housekeeping/tasks/${task.id}`, { method: 'PATCH', body: JSON.stringify({ status: next }) })
+      await api(`/housekeeping/tasks/${task.id}/${task.status === 'PENDING' ? 'start' : 'complete'}`, { method: 'POST', body: JSON.stringify({}) })
       void load()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not update the task')
@@ -1217,7 +1221,7 @@ function HousekeepingDashboard() {
       <section className="mt-7">
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Housekeeping right now</p>
         <div className="mt-2.5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard tone="warn" label="Pending Tasks" value={String(taskSummary.pending)} icon={<LuClipboardList className="size-4" />} />
+          <StatCard tone="warn" label={isManager ? 'Pending Tasks' : 'My Pending Tasks'} value={String(taskSummary.pending)} icon={<LuClipboardList className="size-4" />} hint={isManager ? `${taskSummary.unassigned} waiting for assignment` : undefined} />
           <StatCard index={0} label="In Progress" value={String(taskSummary.inProgress)} icon={<LuSparkles className="size-4" />} />
           <StatCard index={1} label="Rooms Ready" value={String(roomSummary.ready)} icon={<LuBedDouble className="size-4" />} hint={`${roomSummary.needsService} need service`} />
           <StatCard index={2} label="Lost & Found" value={String(unclaimedCount)} icon={<LuSearch className="size-4" />} hint="Unclaimed items" />
@@ -1226,7 +1230,7 @@ function HousekeepingDashboard() {
 
       <section className="mt-6 overflow-hidden rounded-sm border bg-card">
         <header className="flex items-center justify-between border-b p-4">
-          <h2 className="flex items-center gap-2 font-semibold"><LuClipboardList className="size-4 text-secondary" /> Task Queue</h2>
+          <h2 className="flex items-center gap-2 font-semibold"><LuClipboardList className="size-4 text-secondary" /> {isManager ? 'Task Queue' : 'My Tasks'}</h2>
           <Link to="/housekeeping" className="text-xs font-semibold text-secondary hover:underline">All tasks →</Link>
         </header>
         {tasks.length === 0 ? (
@@ -1236,17 +1240,19 @@ function HousekeepingDashboard() {
             {tasks.map((t) => (
               <div key={t.id} className="flex items-center gap-3 p-3.5 text-sm">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium">Room {t.room.number} · {titleCase(t.type)}</p>
-                  <p className="text-xs text-muted-foreground">{t.assignedTo ? `Assigned to ${t.assignedTo}` : 'Unassigned'}{t.dueAt ? ` · Due ${new Date(t.dueAt).toLocaleDateString()}` : ''}</p>
+                  <p className="truncate font-medium">{t.roomNumber ? `Room ${t.roomNumber} · ${titleCase(t.type)}` : t.title ?? titleCase(t.type)}</p>
+                  <p className="text-xs text-muted-foreground">{t.assigneeName ? `Assigned to ${t.assigneeName}` : 'Unassigned'}{t.dueAt ? ` · Due ${new Date(t.dueAt).toLocaleString()}` : ''}{t.overdue ? ' · Overdue' : ''}</p>
                 </div>
                 <span className={cn('shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide', t.status === 'PENDING' ? 'bg-warning/15 text-warning' : 'bg-secondary/10 text-secondary')}>{t.status.replace('_', ' ')}</span>
-                <button
-                  disabled={workingId === t.id}
-                  onClick={() => void advance(t)}
-                  className="shrink-0 rounded-sm bg-accent px-3 py-1.5 text-xs font-bold text-accent-foreground disabled:opacity-60"
-                >
-                  {workingId === t.id ? <LuLoaderCircle className="size-3.5 animate-spin" /> : t.status === 'PENDING' ? 'Start' : 'Mark Done'}
-                </button>
+                {(t.status === 'IN_PROGRESS' || t.assigneeName) && (
+                  <button
+                    disabled={workingId === t.id}
+                    onClick={() => void advance(t)}
+                    className="shrink-0 rounded-sm bg-accent px-3 py-1.5 text-xs font-bold text-accent-foreground disabled:opacity-60"
+                  >
+                    {workingId === t.id ? <LuLoaderCircle className="size-3.5 animate-spin" /> : t.status === 'PENDING' ? 'Start' : 'Mark Done'}
+                  </button>
+                )}
               </div>
             ))}
           </div>

@@ -61,6 +61,8 @@ export default function Attendance() {
   const [records, setRecords] = useState<Map<string, AttendanceRecord>>(new Map())
   const [shiftSessions, setShiftSessions] = useState<ShiftSession[]>([])
   const [report, setReport] = useState<EmployeeReport | null>(null)
+  // Housekeeping task output for the same month; null when the tenant has no housekeeping module or the viewer may not see it.
+  const [taskReport, setTaskReport] = useState<{ tasksCompleted: number; totalWorkMinutes: number; avgWorkMinutes: number | null; onTimeRate: number | null } | null>(null)
   const [selectedSummary, setSelectedSummary] = useState<{ title: string; session: FullShiftSession; summary: ShiftSummary } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -98,7 +100,14 @@ export default function Attendance() {
     const next = new Date(year, month, 1)
     const to = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-01`
     try {
-      setReport(await api<EmployeeReport>(`/shifts/employees/${employee.id}/report?from=${from}&to=${to}`))
+      setTaskReport(null)
+      const monthKey = `${year}-${String(month).padStart(2, '0')}`
+      const [shiftReport, tasks] = await Promise.all([
+        api<EmployeeReport>(`/shifts/employees/${employee.id}/report?from=${from}&to=${to}`),
+        api<{ employee: NonNullable<typeof taskReport> }>(`/housekeeping/reports/employees/${employee.id}?month=${monthKey}`).then((r) => r.employee).catch(() => null),
+      ])
+      setReport(shiftReport)
+      setTaskReport(tasks && tasks.tasksCompleted > 0 ? tasks : null)
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : 'Could not load employee report')
     }
@@ -211,6 +220,17 @@ export default function Attendance() {
               <Mini label="Sales" value={`KSh ${Math.round(report.totals.sales).toLocaleString()}`} />
               <Mini label="Credit" value={`KSh ${Math.round(report.totals.creditSales).toLocaleString()}`} />
             </div>
+            {taskReport && (
+              <>
+                <p className="mt-4 text-xs font-bold uppercase tracking-wider text-muted-foreground">Housekeeping tasks</p>
+                <div className="mt-2 grid gap-3 sm:grid-cols-4">
+                  <Mini label="Tasks done" value={String(taskReport.tasksCompleted)} />
+                  <Mini label="Avg time" value={taskReport.avgWorkMinutes === null ? '-' : `${taskReport.avgWorkMinutes} min`} />
+                  <Mini label="Task time" value={`${(taskReport.totalWorkMinutes / 60).toFixed(1)} h`} />
+                  <Mini label="On time" value={taskReport.onTimeRate === null ? '-' : `${taskReport.onTimeRate}%`} />
+                </div>
+              </>
+            )}
             <div className="mt-4 max-h-72 overflow-y-auto rounded-sm border">
               {report.sessions.length === 0 ? <p className="p-6 text-center text-sm text-muted-foreground">No shifts in this period.</p> : report.sessions.map((s) => {
                 const rejected = s.status === 'REJECTED_START' || s.status === 'REJECTED_END'

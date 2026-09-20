@@ -1,96 +1,283 @@
-import { useCallback, useEffect, useState } from 'react'
-import type { FormEvent } from 'react'
-import { LuBedDouble, LuCheck, LuCircleAlert, LuClipboardList, LuLoaderCircle, LuPencil, LuPlus, LuSparkles, LuTrash2 } from 'react-icons/lu'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { LuBan, LuCalendarClock, LuCircleAlert, LuLoaderCircle, LuPlay, LuPlus, LuCheck, LuUserRoundPlus } from 'react-icons/lu'
 import { api } from '@/lib/api'
-import StatCard from '@/components/ui/StatCard'
+import { cn } from '@/lib/utils'
+import { useToast } from '@/components/ui/Toast'
 import Button from '@/components/ui/Button'
+import ActionButton from '@/components/ui/ActionButton'
+import ModalShell from '@/components/ui/ModalShell'
+import PageBanner from '@/components/ui/PageBanner'
+import SearchableSelect from '@/components/ui/SearchableSelect'
+import StatCard from '@/components/ui/StatCard'
+import StatusPill from '@/components/ui/StatusPill'
+import HistoryTab from '@/components/housekeeping/HistoryTab'
+import ReportsTab from '@/components/housekeeping/ReportsTab'
+import TaskDetailModal from '@/components/housekeeping/TaskDetailModal'
+import { PriorityBadge, SOURCE_LABEL, StatusBadge, TYPE_LABEL, fmtDateTime, taskName, type Staff, type Task, type TaskType } from '@/components/housekeeping/shared'
 
-type Status = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED'
-type TaskType = 'CLEANING' | 'INSPECTION' | 'MAINTENANCE'
-type Room = { id: string; number: string; roomType: { name: string }; status: string; cleanliness: string }
-type Task = { id: string; type: TaskType; status: Status; assignedTo: string | null; notes: string | null; dueAt: string | null; roomId: string; room: Room }
-type Summary = { pending: number; inProgress: number; completed: number }
-type Form = { roomId: string; type: TaskType; assignedTo: string; notes: string; dueAt: string; status: Status }
+type Summary = { pending: number; inProgress: number; unassigned: number; overdue: number }
+type RoomOption = { id: string; number: string; cleanliness: string; roomType: { name: string } }
+type Tab = 'tasks' | 'history' | 'reports'
+
+const POLL_MS = 10_000
 
 export default function Housekeeping() {
+  const toast = useToast()
+  const [tab, setTab] = useState<Tab>('tasks')
   const [tasks, setTasks] = useState<Task[]>([])
-  const [rooms, setRooms] = useState<Room[]>([])
-  const [summary, setSummary] = useState<Summary>({ pending: 0, inProgress: 0, completed: 0 })
-  const [filter, setFilter] = useState<'ALL' | Status>('ALL')
-  const [editing, setEditing] = useState<Task | null>(null)
-  const [form, setForm] = useState<Form>({ roomId: '', type: 'CLEANING', assignedTo: '', notes: '', dueAt: '', status: 'PENDING' })
-  const [showForm, setShowForm] = useState(false)
+  const [summary, setSummary] = useState<Summary>({ pending: 0, inProgress: 0, unassigned: 0, overdue: 0 })
+  const [isManager, setIsManager] = useState(false)
+  const [staff, setStaff] = useState<Staff[]>([])
+  const [statusFilter, setStatusFilter] = useState<'active' | 'PENDING' | 'IN_PROGRESS'>('active')
+  const [assigneeFilter, setAssigneeFilter] = useState('')
+  const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [working, setWorking] = useState('')
   const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
+  const [working, setWorking] = useState('')
+  const [createOpen, setCreateOpen] = useState(false)
+  const [assigning, setAssigning] = useState<Task | null>(null)
+  const [cancelling, setCancelling] = useState<Task | null>(null)
+  const [detailId, setDetailId] = useState<string | null>(null)
+  const seen = useRef<Set<string> | null>(null)
 
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true)
     try {
-      const query = filter === 'ALL' ? '' : `?status=${filter}`
-      const [taskData, roomData] = await Promise.all([
-        api<{ tasks: Task[]; summary: Summary }>(`/housekeeping/tasks${query}`),
-        api<{ rooms: Room[] }>('/housekeeping/rooms'),
-      ])
-      setTasks(taskData.tasks); setSummary(taskData.summary); setRooms(roomData.rooms); setError('')
+      const q = new URLSearchParams({ status: statusFilter })
+      if (assigneeFilter) q.set('assigneeId', assigneeFilter)
+      if (search.trim()) q.set('search', search.trim())
+      const data = await api<{ tasks: Task[]; summary: Summary; isManager: boolean }>(`/housekeeping/tasks?${q}`)
+      // After the first load, announce tasks that appeared since the last poll.
+      if (seen.current) {
+        const fresh = data.tasks.filter((t) => !seen.current!.has(t.id) && t.status === 'PENDING' && (data.isManager ? !t.assignedToId : true))
+        if (fresh.length === 1) toast.info(data.isManager ? `New task to assign: ${taskName(fresh[0])}` : `New task assigned: ${taskName(fresh[0])}`)
+        else if (fresh.length > 1) toast.info(data.isManager ? `${fresh.length} new tasks to assign` : `${fresh.length} new tasks assigned to you`)
+      }
+      seen.current = new Set([...(seen.current ?? []), ...data.tasks.map((t) => t.id)])
+      setTasks(data.tasks); setSummary(data.summary); setIsManager(data.isManager); setError('')
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not load housekeeping') }
     finally { if (!quiet) setLoading(false) }
-  }, [filter])
+  }, [statusFilter, assigneeFilter, search, toast])
 
-  useEffect(() => { void load(); const timer = window.setInterval(() => void load(true), 10000); return () => window.clearInterval(timer) }, [load])
+  useEffect(() => {
+    const t = window.setTimeout(() => void load(), 200)
+    const timer = window.setInterval(() => { if (!document.hidden) void load(true) }, POLL_MS)
+    return () => { window.clearTimeout(t); window.clearInterval(timer) }
+  }, [load])
 
-  function openCreate() {
-    setEditing(null)
-    setForm({ roomId: rooms.find((room) => room.cleanliness !== 'CLEAN')?.id ?? rooms[0]?.id ?? '', type: 'CLEANING', assignedTo: '', notes: '', dueAt: '', status: 'PENDING' })
-    setShowForm(true); setError('')
-  }
+  useEffect(() => {
+    if (!isManager) return
+    api<{ staff: Staff[] }>('/housekeeping/staff').then((r) => setStaff(r.staff)).catch(() => {})
+  }, [isManager, assigning, createOpen])
 
-  function openEdit(task: Task) {
-    setEditing(task)
-    setForm({ roomId: task.roomId, type: task.type, assignedTo: task.assignedTo ?? '', notes: task.notes ?? '', dueAt: task.dueAt ? new Date(task.dueAt).toISOString().slice(0, 16) : '', status: task.status })
-    setShowForm(true); setError('')
-  }
-
-  async function saveTask(event: FormEvent) {
-    event.preventDefault(); setSaving(true); setError(''); setNotice('')
+  async function act(task: Task, action: 'start' | 'complete') {
+    setWorking(task.id)
     try {
-      await api(editing ? `/housekeeping/tasks/${editing.id}` : '/housekeeping/tasks', {
-        method: editing ? 'PATCH' : 'POST',
-        body: JSON.stringify({ ...form, assignedTo: form.assignedTo || undefined, notes: form.notes || undefined, dueAt: form.dueAt || undefined, ...(editing ? {} : { status: undefined }) }),
-      })
-      setNotice(editing ? 'Housekeeping task updated.' : 'Housekeeping task created.'); setShowForm(false); await load()
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not save task') }
-    finally { setSaving(false) }
-  }
-
-  async function advance(task: Task) {
-    setWorking(task.id); setError(''); setNotice('')
-    try {
-      const next = task.status === 'PENDING' ? 'IN_PROGRESS' : 'COMPLETED'
-      await api(`/housekeeping/tasks/${task.id}`, { method: 'PATCH', body: JSON.stringify({ status: next }) })
-      setNotice(next === 'COMPLETED' ? `Room ${task.room.number} is clean and available to Reception.` : `Room ${task.room.number} is being serviced.`)
-      await load()
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not update task') }
+      await api(`/housekeeping/tasks/${task.id}/${action}`, { method: 'POST', body: JSON.stringify({}) })
+      toast.success(action === 'start' ? `Started ${taskName(task)}` : task.roomNumber && task.type !== 'MAINTENANCE' ? `Room ${task.roomNumber} is done` : `${taskName(task)} completed`)
+      await load(true)
+    } catch (cause) { toast.error(cause instanceof Error ? cause.message : 'Could not update task') }
     finally { setWorking('') }
   }
 
-  async function remove(task: Task) {
-    if (!window.confirm(`Delete the ${task.type.toLowerCase()} task for room ${task.room.number}?`)) return
-    try { await api(`/housekeeping/tasks/${task.id}`, { method: 'DELETE' }); setNotice('Task deleted.'); await load() }
-    catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not delete task') }
-  }
+  const tabs: { key: Tab; label: string }[] = [{ key: 'tasks', label: isManager ? 'Tasks' : 'My tasks' }, { key: 'history', label: 'History' }, { key: 'reports', label: isManager ? 'Reports' : 'My report' }]
 
-  return <div className="mx-auto max-w-7xl px-6 py-8 sm:px-8 lg:px-10">
-    <header className="rounded-sm bg-linear-to-r from-[#173d35] to-accent p-7 text-white shadow-xl"><div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-xs font-bold uppercase tracking-[.2em] text-white/60">Housekeeping command centre</p><h1 className="mt-3 font-display text-3xl font-semibold">Turn every room into a welcome.</h1><p className="mt-2 text-sm text-white/70">Room readiness is synchronized with Reception every 10 seconds.</p></div><Button onClick={openCreate} className="shrink-0"><LuPlus /> New task</Button></div></header>
-    {error && <Message error text={error} />}{notice && <Message text={notice} />}
-    <section className="mt-6 grid gap-4 sm:grid-cols-3"><Metric index={0} icon={<LuClipboardList />} label="Pending" value={summary.pending} /><Metric index={1} icon={<LuSparkles />} label="In progress" value={summary.inProgress} /><Metric index={2} icon={<LuBedDouble />} label="Completed" value={summary.completed} /></section>
-    <div className="mt-7 flex w-fit rounded-sm border bg-card p-1">{([['ALL','All'],['PENDING','Pending'],['IN_PROGRESS','In progress'],['COMPLETED','Completed']] as const).map(([value,label]) => <button key={value} onClick={() => setFilter(value)} className={`rounded-sm px-4 py-2 text-sm font-semibold ${filter === value ? 'bg-primary text-white' : 'text-muted-foreground hover:bg-muted'}`}>{label}</button>)}</div>
-    {loading ? <div className="p-16 text-center"><LuLoaderCircle className="mx-auto animate-spin" /></div> : tasks.length === 0 ? <div className="mt-5 rounded-sm border border-dashed p-16 text-center text-sm text-muted-foreground">No housekeeping tasks in this view.</div> : <section className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">{tasks.map((task) => <article key={task.id} className="overflow-hidden rounded-sm border bg-card shadow-sm"><div className={`h-1.5 ${task.type === 'MAINTENANCE' ? 'bg-warning' : task.status === 'COMPLETED' ? 'bg-success' : 'bg-secondary'}`} /><div className="p-5"><div className="flex justify-between"><div><p className="text-xs font-bold uppercase text-muted-foreground">{task.type}</p><h2 className="mt-1 font-display text-2xl font-bold">Room {task.room.number}</h2></div><div className="flex gap-1"><button onClick={() => openEdit(task)} className="rounded-sm p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuPencil /></button><button onClick={() => void remove(task)} className="rounded-sm p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><LuTrash2 /></button></div></div><div className="mt-4 rounded-sm bg-muted/60 p-3 text-sm"><p className="text-xs text-muted-foreground">Assigned to</p><p className="font-semibold">{task.assignedTo || 'Unassigned'}</p>{task.dueAt && <p className="mt-1 text-xs text-muted-foreground">Due {new Date(task.dueAt).toLocaleString()}</p>}{task.notes && <p className="mt-2 text-xs text-muted-foreground">{task.notes}</p>}</div>{task.status === 'COMPLETED' ? <div className="mt-4 flex items-center justify-center gap-2 rounded-sm bg-success/10 py-2.5 text-sm font-bold text-success"><LuCheck /> Ready for Reception</div> : <button disabled={working === task.id} onClick={() => void advance(task)} className="mt-4 flex w-full items-center justify-center gap-2 rounded-sm bg-primary py-2.5 text-sm font-bold text-white disabled:opacity-60">{working === task.id ? <LuLoaderCircle className="animate-spin" /> : task.status === 'PENDING' ? <LuSparkles /> : <LuCheck />}{task.status === 'PENDING' ? 'Start task' : 'Complete task'}</button>}</div></article>)}</section>}
-    {showForm && <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/60 p-4 backdrop-blur-sm"><form onSubmit={saveTask} className="w-full max-w-lg rounded-sm bg-card p-6 shadow-2xl"><p className="text-sm font-semibold text-secondary">{editing ? 'Edit task' : 'New task'}</p><h2 className="mt-1 font-display text-2xl font-semibold">{editing ? `Room ${editing.room.number}` : 'Housekeeping assignment'}</h2><div className="mt-5 space-y-3"><select required value={form.roomId} onChange={(e) => setForm({ ...form, roomId: e.target.value })} className="input">{rooms.map((room) => <option key={room.id} value={room.id}>Room {room.number} · {room.roomType.name} · {room.cleanliness.toLowerCase()}</option>)}</select><select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as TaskType })} className="input"><option value="CLEANING">Cleaning</option><option value="INSPECTION">Inspection</option><option value="MAINTENANCE">Maintenance</option></select>{editing && <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as Status })} className="input"><option value="PENDING">Pending</option><option value="IN_PROGRESS">In progress</option><option value="COMPLETED">Completed</option></select>}<input value={form.assignedTo} onChange={(e) => setForm({ ...form, assignedTo: e.target.value })} placeholder="Assign to" className="input" /><input type="datetime-local" value={form.dueAt} onChange={(e) => setForm({ ...form, dueAt: e.target.value })} className="input" /><textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Notes" className="input" /></div><div className="mt-5 flex justify-end gap-2"><button type="button" onClick={() => setShowForm(false)} className="rounded-sm border px-4 py-2">Cancel</button><button disabled={saving} className="flex items-center gap-2 rounded-sm bg-primary px-4 py-2 font-semibold text-white disabled:opacity-60">{saving && <LuLoaderCircle className="animate-spin" />}{editing ? 'Save changes' : 'Create task'}</button></div></form></div>}
-  </div>
+  return (
+    <div className="mx-auto max-w-7xl px-6 py-8 sm:px-8 lg:px-10">
+      <PageBanner kicker="Housekeeping" title={isManager ? 'Housekeeping tasks' : 'My tasks'}>
+        {isManager && <Button onClick={() => setCreateOpen(true)}><LuPlus /> New task</Button>}
+      </PageBanner>
+
+      <div className="mt-6 flex w-fit border bg-card p-1">
+        {tabs.map((t) => (
+          <button key={t.key} type="button" onClick={() => setTab(t.key)} className={cn('px-4 py-2 text-sm font-semibold transition', tab === t.key ? 'bg-black text-white' : 'text-muted-foreground hover:bg-muted')}>{t.label}</button>
+        ))}
+      </div>
+
+      {tab === 'history' && <div className="mt-5"><HistoryTab isManager={isManager} staff={staff} /></div>}
+      {tab === 'reports' && <div className="mt-5"><ReportsTab isManager={isManager} /></div>}
+
+      {tab === 'tasks' && (
+        <>
+          <section className={cn('mt-5 grid gap-4 sm:grid-cols-2', isManager ? 'lg:grid-cols-4' : 'lg:grid-cols-3')}>
+            <StatCard index={0} label="Pending" value={summary.pending} />
+            <StatCard index={1} label="In progress" value={summary.inProgress} />
+            {isManager && <StatCard tone={summary.unassigned ? 'warn' : undefined} index={2} label="Waiting for assignment" value={summary.unassigned} />}
+            <StatCard tone={summary.overdue ? 'danger' : undefined} index={3} label="Overdue" value={summary.overdue} />
+          </section>
+
+          <div className="mt-5 flex flex-wrap items-end gap-3">
+            <div className="flex border bg-card p-1">
+              {([['active', 'All active'], ['PENDING', 'Pending'], ['IN_PROGRESS', 'In progress']] as const).map(([value, label]) => (
+                <button key={value} type="button" onClick={() => setStatusFilter(value)} className={cn('px-3 py-1.5 text-xs font-semibold', statusFilter === value ? 'bg-black text-white' : 'text-muted-foreground hover:bg-muted')}>{label}</button>
+              ))}
+            </div>
+            <input className="input h-9 w-56 text-sm" placeholder="Search room, task, employee…" value={search} onChange={(e) => setSearch(e.target.value)} />
+            {isManager && (
+              <div className="w-52">
+                <SearchableSelect value={assigneeFilter} onChange={setAssigneeFilter} placeholder="All employees" searchPlaceholder="Search…" emptyText="No match" options={[{ value: '', label: 'All employees' }, ...staff.map((s) => ({ value: s.id, label: s.name }))]} />
+              </div>
+            )}
+          </div>
+
+          {error && <div className="mt-4 flex items-center gap-2 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert /> {error}</div>}
+
+          {loading ? <div className="p-16 text-center"><LuLoaderCircle className="mx-auto animate-spin" /></div>
+            : tasks.length === 0 ? <div className="mt-5 border border-dashed p-16 text-center text-sm text-muted-foreground">{isManager ? 'Nothing to do right now. New checkouts and dirty rooms will appear here automatically.' : 'No tasks assigned to you right now. New ones appear here automatically.'}</div>
+            : (
+              <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {tasks.map((task) => (
+                  <article key={task.id} className={cn('flex flex-col border bg-card p-4 shadow-sm', task.overdue && 'border-destructive/60')}>
+                    <div className="flex items-start justify-between gap-2">
+                      <button type="button" onClick={() => setDetailId(task.id)} className="min-w-0 text-left">
+                        <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{task.taskNo} · {SOURCE_LABEL[task.source]}</p>
+                        <h3 className="mt-0.5 truncate font-display text-lg font-semibold hover:underline">{taskName(task)}</h3>
+                      </button>
+                      <div className="flex shrink-0 flex-col items-end gap-1"><StatusBadge status={task.status} /><PriorityBadge priority={task.priority} />{task.overdue && <StatusPill tone="danger">Overdue</StatusPill>}</div>
+                    </div>
+                    <dl className="mt-3 space-y-1 text-sm">
+                      <div className="flex justify-between gap-2"><dt className="text-muted-foreground">Assigned to</dt><dd className={cn('font-medium', !task.assigneeName && 'text-warning')}>{task.assigneeName ?? 'Unassigned'}</dd></div>
+                      {task.dueAt && <div className="flex justify-between gap-2"><dt className="text-muted-foreground">Due</dt><dd className="flex items-center gap-1 font-medium"><LuCalendarClock className="size-3.5" />{fmtDateTime(task.dueAt)}</dd></div>}
+                      {task.startedAt && <div className="flex justify-between gap-2"><dt className="text-muted-foreground">Started</dt><dd className="font-medium">{fmtDateTime(task.startedAt)}</dd></div>}
+                      {task.roomNumber && task.type !== 'CLEANING' && <div className="flex justify-between gap-2"><dt className="text-muted-foreground">Type</dt><dd className="font-medium">{TYPE_LABEL[task.type]}</dd></div>}
+                    </dl>
+                    {task.notes && <p className="mt-2 text-sm text-muted-foreground">{task.notes}</p>}
+                    <div className="mt-auto flex flex-wrap gap-2 pt-4">
+                      {task.assigneeName && task.status === 'PENDING' && <ActionButton tone="secondary" icon={<LuPlay />} loading={working === task.id} onClick={() => void act(task, 'start')}>Start</ActionButton>}
+                      {task.status === 'IN_PROGRESS' && <ActionButton tone="success" icon={<LuCheck />} loading={working === task.id} onClick={() => void act(task, 'complete')}>Complete</ActionButton>}
+                      {isManager && <ActionButton tone="neutral" icon={<LuUserRoundPlus />} onClick={() => setAssigning(task)}>{task.assignedToId ? 'Reassign' : 'Assign'}</ActionButton>}
+                      {isManager && <ActionButton tone="danger" icon={<LuBan />} title="Cancel task" onClick={() => setCancelling(task)}>Cancel</ActionButton>}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+        </>
+      )}
+
+      {createOpen && <CreateTaskModal staff={staff} onClose={() => setCreateOpen(false)} onCreated={() => { setCreateOpen(false); toast.success('Task created'); void load(true) }} />}
+      {assigning && <AssignModal task={assigning} staff={staff} onClose={() => setAssigning(null)} onDone={() => { setAssigning(null); void load(true) }} />}
+      {cancelling && <CancelModal task={cancelling} onClose={() => setCancelling(null)} onDone={() => { setCancelling(null); toast.success('Task cancelled'); void load(true) }} />}
+      {detailId && <TaskDetailModal taskId={detailId} onClose={() => setDetailId(null)} />}
+    </div>
+  )
 }
 
-function Metric({ icon,label,value,index }: { icon:React.ReactNode;label:string;value:number;index?:number }) { return <StatCard index={index} icon={icon} label={label} value={value} /> }
-function Message({ text,error=false }: { text:string;error?:boolean }) { return <div className={`mt-5 flex items-center gap-2 rounded-sm p-3 text-sm ${error?'bg-destructive/10 text-destructive':'bg-success/10 text-success'}`}>{error?<LuCircleAlert/>:<LuCheck/>}{text}</div> }
+function CreateTaskModal({ staff, onClose, onCreated }: { staff: Staff[]; onClose: () => void; onCreated: () => void }) {
+  const [mode, setMode] = useState<'room' | 'general'>('room')
+  const [rooms, setRooms] = useState<RoomOption[]>([])
+  const [roomId, setRoomId] = useState('')
+  const [type, setType] = useState<TaskType>('CLEANING')
+  const [title, setTitle] = useState('')
+  const [assignedToId, setAssignedToId] = useState('')
+  const [priority, setPriority] = useState('NORMAL')
+  const [dueAt, setDueAt] = useState('')
+  const [notes, setNotes] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => { api<{ rooms: RoomOption[] }>('/housekeeping/rooms').then((r) => setRooms(r.rooms)).catch(() => {}) }, [])
+
+  async function save() {
+    setSaving(true); setError('')
+    try {
+      await api('/housekeeping/tasks', {
+        method: 'POST',
+        body: JSON.stringify({
+          ...(mode === 'room' ? { roomId, type } : { title, type: 'GENERAL' }),
+          priority,
+          assignedToId: assignedToId || undefined,
+          dueAt: dueAt ? new Date(dueAt).toISOString() : undefined,
+          notes: notes.trim() || undefined,
+        }),
+      })
+      onCreated()
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not create task') }
+    finally { setSaving(false) }
+  }
+
+  const valid = mode === 'room' ? Boolean(roomId) : title.trim().length >= 2
+  return (
+    <ModalShell kicker="Housekeeping" title="New task" onClose={onClose} size="md" footer={<Button onClick={() => void save()} disabled={!valid || saving}>{saving ? 'Saving…' : 'Create task'}</Button>}>
+      <div className="space-y-4 p-5">
+        <div className="flex w-fit border p-1">
+          {([['room', 'Room task'], ['general', 'General task']] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setMode(value)} className={cn('px-3 py-1.5 text-xs font-semibold', mode === value ? 'bg-black text-white' : 'text-muted-foreground hover:bg-muted')}>{label}</button>)}
+        </div>
+        {mode === 'room' ? (
+          <>
+            <div className="text-sm font-medium">Room
+              <div className="mt-1.5"><SearchableSelect value={roomId} onChange={setRoomId} placeholder="Choose a room" searchPlaceholder="Search rooms…" emptyText="No rooms" options={rooms.map((r) => ({ value: r.id, label: `Room ${r.number}`, hint: `${r.roomType.name} · ${r.cleanliness.toLowerCase()}` }))} /></div>
+            </div>
+            <label className="block text-sm font-medium">Task type
+              <select className="input mt-1.5" value={type} onChange={(e) => setType(e.target.value as TaskType)}>{(['CLEANING', 'INSPECTION', 'MAINTENANCE'] as const).map((t) => <option key={t} value={t}>{TYPE_LABEL[t]}</option>)}</select>
+            </label>
+          </>
+        ) : (
+          <label className="block text-sm font-medium">What needs doing?
+            <input className="input mt-1.5" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Wash towels, clean level 2 bathrooms" />
+          </label>
+        )}
+        <div className="text-sm font-medium">Assign to <span className="font-normal text-muted-foreground">(optional, can be done later)</span>
+          <div className="mt-1.5"><SearchableSelect value={assignedToId} onChange={setAssignedToId} placeholder="Leave unassigned" searchPlaceholder="Search staff…" emptyText="No housekeeping staff" options={[{ value: '', label: 'Leave unassigned' }, ...staff.map((s) => ({ value: s.id, label: s.name, hint: `${s.activeTasks} active` }))]} /></div>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="block text-sm font-medium">Priority
+            <select className="input mt-1.5" value={priority} onChange={(e) => setPriority(e.target.value)}><option value="LOW">Low</option><option value="NORMAL">Normal</option><option value="HIGH">High</option></select>
+          </label>
+          <label className="block text-sm font-medium">Due <span className="font-normal text-muted-foreground">(optional)</span>
+            <input type="datetime-local" className="input mt-1.5" value={dueAt} onChange={(e) => setDueAt(e.target.value)} />
+          </label>
+        </div>
+        <label className="block text-sm font-medium">Notes
+          <textarea rows={2} className="input mt-1.5" value={notes} onChange={(e) => setNotes(e.target.value)} />
+        </label>
+        {error && <p className="text-sm text-destructive">{error}</p>}
+      </div>
+    </ModalShell>
+  )
+}
+
+function AssignModal({ task, staff, onClose, onDone }: { task: Task; staff: Staff[]; onClose: () => void; onDone: () => void }) {
+  const toast = useToast()
+  const [employeeId, setEmployeeId] = useState(task.assignedToId ?? '')
+  const [saving, setSaving] = useState(false)
+  async function save() {
+    setSaving(true)
+    try {
+      await api(`/housekeeping/tasks/${task.id}/assign`, { method: 'POST', body: JSON.stringify({ employeeId }) })
+      toast.success('Task assigned')
+      onDone()
+    } catch (cause) { toast.error(cause instanceof Error ? cause.message : 'Could not assign task'); setSaving(false) }
+  }
+  return (
+    <ModalShell kicker={task.taskNo ?? 'Task'} title={`${task.assignedToId ? 'Reassign' : 'Assign'} ${taskName(task)}`} onClose={onClose} size="sm" footer={<Button onClick={() => void save()} disabled={!employeeId || employeeId === task.assignedToId || saving}>{saving ? 'Saving…' : 'Assign'}</Button>}>
+      <div className="space-y-3 p-5">
+        <SearchableSelect value={employeeId} onChange={setEmployeeId} placeholder="Choose an employee" searchPlaceholder="Search staff…" emptyText="No housekeeping staff. Add employees to the Housekeeping department first." options={staff.map((s) => ({ value: s.id, label: s.name, hint: `${s.activeTasks} active` }))} />
+        {task.status === 'IN_PROGRESS' && <p className="text-xs text-warning">This task is already in progress. Reassigning restarts the work for the new person.</p>}
+      </div>
+    </ModalShell>
+  )
+}
+
+function CancelModal({ task, onClose, onDone }: { task: Task; onClose: () => void; onDone: () => void }) {
+  const toast = useToast()
+  const [reason, setReason] = useState('')
+  const [saving, setSaving] = useState(false)
+  async function save() {
+    setSaving(true)
+    try {
+      await api(`/housekeeping/tasks/${task.id}/cancel`, { method: 'POST', body: JSON.stringify({ reason }) })
+      onDone()
+    } catch (cause) { toast.error(cause instanceof Error ? cause.message : 'Could not cancel task'); setSaving(false) }
+  }
+  return (
+    <ModalShell kicker={task.taskNo ?? 'Task'} title={`Cancel ${taskName(task)}`} onClose={onClose} size="sm" footer={<Button variant="danger" onClick={() => void save()} disabled={reason.trim().length < 3 || saving}>{saving ? 'Cancelling…' : 'Cancel task'}</Button>}>
+      <div className="space-y-3 p-5">
+        <label className="block text-sm font-medium">Reason
+          <textarea rows={3} className="input mt-1.5" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why is this task being cancelled?" />
+        </label>
+        <p className="text-xs text-muted-foreground">The task stays in History. If the room is still dirty, a fresh unassigned cleaning task is opened for it.</p>
+      </div>
+    </ModalShell>
+  )
+}
