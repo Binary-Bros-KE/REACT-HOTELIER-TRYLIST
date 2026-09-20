@@ -160,7 +160,7 @@ export default function Sidebar({ className, mobile = false, onNavigate }: Sideb
                         'group relative flex items-center gap-3 py-2 text-[13.5px] font-medium text-sidebar-muted transition-colors hover:bg-sidebar-accent hover:text-white',
                         !collapsed && (group.items.length > 1 ? 'pl-7 pr-3' : 'px-3'),
                         collapsed && 'justify-center px-0 py-2.5',
-                        isActive && 'bg-sidebar-accent text-white before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-[color-mix(in_srgb,var(--primary)_60%,black)]',
+                        isActive && 'bg-sidebar-accent text-white before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-[color-mix(in_srgb,var(--primary)_45%,white)]',
                       )
                     }
                   >

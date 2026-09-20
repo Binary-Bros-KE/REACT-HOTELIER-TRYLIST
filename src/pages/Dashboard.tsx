@@ -137,7 +137,7 @@ function RevenueDashboard({ variant, pickerSlot }: { variant: 'operations' | 'fi
   const locationPicker = fixedLocation ? (
     <span className="text-sm font-medium text-muted-foreground">{fixedLocation.name}</span>
   ) : pickableLocations.length > 0 ? (
-    <select aria-label="Filter by location" value={selectedLocationId} onChange={(e) => setLocation(e.target.value)} className="input w-auto">
+    <select aria-label="Filter by location" value={selectedLocationId} onChange={(e) => setLocation(e.target.value)} className="input w-auto !border-black !bg-black !text-white">
       <option value="">All locations</option>
       {pickableLocations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
     </select>

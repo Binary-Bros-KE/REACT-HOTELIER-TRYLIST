@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { LuCheck, LuClipboardCheck, LuClock3, LuEye, LuPower, LuTriangleAlert, LuX } from 'react-icons/lu'
-import SlantButton from '@/components/ui/SlantButton'
+import ActionButton from '@/components/ui/ActionButton'
 import Avatar from '@/components/ui/Avatar'
 import { TablePanelSkeleton } from '@/components/ui/DashboardSkeleton'
 import { cn } from '@/lib/utils'
@@ -60,9 +60,9 @@ function OnShiftCard({ s }: { s: ShiftRow }) {
           {open > 0 && <span className="inline-flex items-center gap-1 bg-warning/15 px-1.5 py-1 text-[10px] font-bold uppercase tracking-wide text-warning"><LuTriangleAlert className="size-3" />{open} open</span>}
         </div>
       </div>
-      <div className="flex shrink-0 flex-col items-end gap-1.5">
-        <SlantButton tone="secondary" icon={<LuEye />} loading={busyKey === `${s.id}:summary`} onClick={() => openSummary(s, `${s.employee.firstName}'s active shift`)}>View</SlantButton>
-        <SlantButton tone="danger" icon={<LuPower />} loading={busyKey === `${s.id}:force-end`} onClick={() => forceEnd(s)}>End</SlantButton>
+      <div className="flex shrink-0 items-center gap-1.5">
+        <ActionButton tone="neutral" icon={<LuEye />} title="View details" loading={busyKey === `${s.id}:summary`} onClick={() => openSummary(s, `${s.employee.firstName}'s active shift`)} />
+        <ActionButton tone="neutral" icon={<LuPower />} title="End shift" loading={busyKey === `${s.id}:force-end`} onClick={() => forceEnd(s)} />
       </div>
     </article>
   )
@@ -116,25 +116,25 @@ export default function ShiftTeamPanels() {
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap items-center justify-end gap-3">
                         {a.status === 'REQUESTED_END' && a.summary && (
-                          <SlantButton tone="secondary" icon={<LuClipboardCheck />} loading={busyKey === `${a.id}:summary`} onClick={() => openSummary(a, `${a.employee.firstName}'s handover`, true)}>Review</SlantButton>
+                          <ActionButton tone="secondary" icon={<LuClipboardCheck />} loading={busyKey === `${a.id}:summary`} onClick={() => openSummary(a, `${a.employee.firstName}'s handover`, true)}>Review</ActionButton>
                         )}
                         {a.status === 'REQUESTED_START' && (
                           <>
-                            <SlantButton tone="success" icon={<LuCheck />} loading={busyKey === `${a.id}:approve`} onClick={() => ask({
+                            <ActionButton tone="success" icon={<LuCheck />} loading={busyKey === `${a.id}:approve`} onClick={() => ask({
                               title: 'Approve shift start?',
                               message: `${fullName(a)} will be marked active immediately.`,
                               confirmLabel: 'Approve',
                               busyKey: `${a.id}:approve`,
                               run: () => post(`/shifts/${a.id}/start-approval`, { action: 'APPROVE' }, `${a.id}:approve`),
-                            })}>Approve</SlantButton>
-                            <SlantButton tone="danger" icon={<LuX />} loading={busyKey === `${a.id}:reject`} onClick={() => ask({
+                            })}>Approve</ActionButton>
+                            <ActionButton tone="danger" icon={<LuX />} loading={busyKey === `${a.id}:reject`} onClick={() => ask({
                               title: 'Reject shift start?',
                               message: `${fullName(a)}'s start request will be rejected.`,
                               confirmLabel: 'Reject',
                               tone: 'danger',
                               busyKey: `${a.id}:reject`,
                               run: () => post(`/shifts/${a.id}/start-approval`, { action: 'REJECT' }, `${a.id}:reject`),
-                            })}>Reject</SlantButton>
+                            })}>Reject</ActionButton>
                           </>
                         )}
                       </div>
@@ -194,7 +194,7 @@ export default function ShiftTeamPanels() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         {hasSummary && (
-                          <SlantButton tone="secondary" icon={<LuEye />} className="align-middle" loading={busyKey === `${s.id}:summary`} onClick={() => openSummary(s, isSupervisor ? `${s.employee.firstName}'s shift summary` : 'Shift summary')}>View</SlantButton>
+                          <ActionButton tone="secondary" icon={<LuEye />} className="align-middle" loading={busyKey === `${s.id}:summary`} onClick={() => openSummary(s, isSupervisor ? `${s.employee.firstName}'s shift summary` : 'Shift summary')}>View</ActionButton>
                         )}
                       </td>
                     </tr>
