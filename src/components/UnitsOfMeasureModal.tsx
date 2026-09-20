@@ -4,7 +4,7 @@ import { LuCircleAlert, LuLoaderCircle, LuPencil, LuPlus, LuRuler, LuTrash2, LuX
 import { api } from '@/lib/api'
 import { useToast } from '@/components/ui/Toast'
 
-type UnitRow = { id: string; name: string; _count: { services: number } }
+type UnitRow = { id: string; name: string; systemKey: string | null; _count: { services: number } }
 
 type Props = {
   open: boolean
@@ -149,14 +149,14 @@ export default function UnitsOfMeasureModal({ open, onClose }: Props) {
                     <div className="flex items-center gap-3">
                       <span className="flex size-9 items-center justify-center rounded-sm bg-secondary/10 text-secondary"><LuRuler className="size-4" /></span>
                       <div>
-                        <p className="font-semibold">{unit.name}</p>
+                        <p className="font-semibold">{unit.name}{unit.systemKey && <span className="ml-2 border border-dashed border-muted-foreground/50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground" title="Built-in — used by room billing">Built-in</span>}</p>
                         <p className="text-xs text-muted-foreground">{unit._count.services} service{unit._count.services === 1 ? '' : 's'}</p>
                       </div>
                     </div>
-                    <div className="flex gap-1">
+                    {!unit.systemKey && <div className="flex gap-1">
                       <button onClick={() => { setEditing(unit); setEditingName(unit.name) }} title="Rename" className="rounded-sm p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuPencil className="size-4" /></button>
                       <button onClick={() => void removeUnit(unit)} title="Delete" className="rounded-sm p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><LuTrash2 className="size-4" /></button>
-                    </div>
+                    </div>}
                   </>
                 )}
               </div>

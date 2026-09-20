@@ -36,7 +36,7 @@ type Stay = {
   customer: { firstName: string; lastName: string | null };
   folio: Folio | null;
 };
-type UnitOption = { id: string; name: string };
+type UnitOption = { id: string; name: string; systemKey?: string | null };
 type RateOption = { id: string; name: string; price: string | number; unit: UnitOption | null };
 type AuditEmployee = { id: string; firstName: string; lastName: string } | null;
 type Room = {
@@ -181,7 +181,8 @@ export default function Rooms() {
         api<{ types: RoomType[] }>("/rooms/types"),
         api<{ units: UnitOption[] }>("/units-of-measure"),
       ]);
-      setUnits(unitResponse.units);
+      // Rooms are priced per Hour / Night / Day — the built-in units the system can bill by.
+      setUnits(unitResponse.units.filter((u) => u.systemKey));
       setRooms(response.rooms);
       setSummary(response.summary);
       setRoomTypes(typeResponse.types);

@@ -547,7 +547,7 @@ function NewGuestModal({ customers, rooms, at, onClose, onDone, onCustomerCreate
   function pickRate(id: string) {
     setRateId(id);
     const chosen = room?.roomType.rates.find((r) => r.id === id);
-    const wantsTime = chosen ? /\bhours?\b|\bhrs?\b/i.test(chosen.unit?.name ?? "") && !/\b24\b/.test(chosen.unit?.name ?? "") : false;
+    const wantsTime = chosen?.unit?.systemKey === "HOUR";
     const stamp = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}T${String(d.getHours()).padStart(2, "0")}:00`;
     if (wantsTime) {
       const start = new Date();

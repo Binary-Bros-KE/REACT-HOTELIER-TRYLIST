@@ -1,27 +1,26 @@
 // Room pricing on the client — mirrors the server's lib/roomCharge.ts so the
 // price shown while booking matches what lands on the folio.
 
-export type RoomRateOption = { id: string; name: string; price: string | number; unit: { id: string; name: string } | null }
+/** A unit of measure as room pricing sees it. systemKey is HOUR / NIGHT / DAY for the built-in ones. */
+export type RateUnit = { id: string; name: string; systemKey?: string | null }
+
+export type RoomRateOption = { id: string; name: string; price: string | number; unit: RateUnit | null }
 
 export type RatedRoom = {
   nightlyRate: string | number
-  roomType: { name: string; rates?: RoomRateOption[]; priceUnit?: { id: string; name: string } | null }
+  roomType: { name: string; rates?: RoomRateOption[]; priceUnit?: RateUnit | null }
 }
 
-const HOURLY = /\bhours?\b|\bhrs?\b/
-
-export const isHourlyUnit = (unitName: string | null | undefined) => {
-  const name = (unitName ?? '').toLowerCase()
-  return HOURLY.test(name) && !/\b24\b/.test(name)
-}
+/** Only the built-in HOUR unit bills by the hour — keyed on the system key, so spelling can't change billing. */
+export const isHourlyUnit = (unit: RateUnit | null | undefined) => unit?.systemKey === 'HOUR'
 
 export const hasVariants = (room: RatedRoom) => (room.roomType.rates?.length ?? 0) > 0
 
-/** Hours for an hourly unit, otherwise 24-hour days; at least 1 once the dates are valid, 0 if not. */
-export function unitQuantity(unitName: string | null | undefined, checkIn: string, checkOut: string): number {
+/** Hours for the HOUR unit, otherwise 24-hour days; at least 1 once the dates are valid, 0 if not. */
+export function unitQuantity(unit: RateUnit | null | undefined, checkIn: string, checkOut: string): number {
   const ms = new Date(checkOut).getTime() - new Date(checkIn).getTime()
   if (!Number.isFinite(ms) || ms <= 0) return 0
-  return isHourlyUnit(unitName) ? Math.max(1, Math.ceil(ms / 3_600_000)) : Math.max(1, Math.ceil(ms / 86_400_000))
+  return isHourlyUnit(unit) ? Math.max(1, Math.ceil(ms / 3_600_000)) : Math.max(1, Math.ceil(ms / 86_400_000))
 }
 
 /** "per night" → "night", "Hour" → "hour". */
@@ -38,11 +37,10 @@ export function roomPricing(room: RatedRoom, rateId: string, checkIn: string, ch
   const rate = rates.length > 0 ? rates.find((r) => r.id === rateId) : undefined
   if (rates.length > 0 && !rate) return null
   const unitPrice = rate ? Number(rate.price) : Number(room.nightlyRate)
-  const unitName = rate ? rate.unit?.name ?? null : room.roomType.priceUnit?.name ?? null
-  const quantity = unitQuantity(unitName, checkIn, checkOut)
-  return { unitPrice, unitName, quantity, total: unitPrice * quantity, rateName: rate?.name ?? null, hourly: isHourlyUnit(unitName) }
+  const unit = rate ? rate.unit : room.roomType.priceUnit ?? null
+  const quantity = unitQuantity(unit, checkIn, checkOut)
+  return { unitPrice, unitName: unit?.name ?? null, quantity, total: unitPrice * quantity, rateName: rate?.name ?? null, hourly: isHourlyUnit(unit) }
 }
-
 /** Date-only stays go as-is; date+time (hourly) values go as full ISO so the server sees the intended instant. */
 export const toApiDate = (value: string) => (value.length > 10 ? new Date(value).toISOString() : value)
 

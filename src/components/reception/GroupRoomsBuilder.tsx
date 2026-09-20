@@ -151,7 +151,7 @@ export default function GroupRoomsBuilder({ rooms, customers, rows, onChange, gr
                     <label className="block text-sm font-medium">Rate *
                       <select className="input mt-1.5" value={row.rateId} onChange={(e) => update(row.key, { rateId: e.target.value })}>
                         <option value="" disabled>Select a rate</option>
-                        {room.roomType.rates.filter((r) => !isHourlyUnit(r.unit?.name)).map((r) => <option key={r.id} value={r.id}>{r.name} — KSh {Number(r.price).toLocaleString('en-KE')}{r.unit ? ` / ${unitWord(r.unit.name)}` : ''}</option>)}
+                        {room.roomType.rates.filter((r) => !isHourlyUnit(r.unit)).map((r) => <option key={r.id} value={r.id}>{r.name} — KSh {Number(r.price).toLocaleString('en-KE')}{r.unit ? ` / ${unitWord(r.unit.name)}` : ''}</option>)}
                       </select>
                     </label>
                   )}
