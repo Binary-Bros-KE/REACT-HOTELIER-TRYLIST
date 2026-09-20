@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { LuBadgeCheck, LuCircleAlert, LuClock3, LuLoaderCircle, LuLock, LuReceiptText, LuUserRound, LuX } from 'react-icons/lu'
+import PageBanner from '@/components/ui/PageBanner'
+import ActionButton from '@/components/ui/ActionButton'
+import StatusPill from '@/components/ui/StatusPill'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/Toast'
@@ -169,15 +172,9 @@ export default function Approvals() {
 
   if (!canApprove) {
     return (
-      <div className="mx-auto max-w-5xl px-6 py-8 sm:px-8 lg:px-10">
-        <header className="flex items-start gap-3">
-          <span className="flex size-11 items-center justify-center rounded-sm bg-secondary/10 text-secondary"><LuBadgeCheck className="size-5" /></span>
-          <div>
-            <h1 className="font-display text-3xl font-semibold">Approvals</h1>
-            <p className="mt-1 text-sm text-muted-foreground">Cancellation requests from the floor.</p>
-          </div>
-        </header>
-        <div className="mt-7 flex min-h-40 flex-col items-center justify-center gap-2 rounded-sm border border-dashed p-12 text-center text-sm text-muted-foreground">
+      <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
+        <PageBanner kicker="Sales" title="Approvals" />
+        <div className="mt-6 flex min-h-40 flex-col items-center justify-center gap-2 border border-dashed bg-card p-12 text-center text-sm text-muted-foreground">
           <LuLock className="size-5" />
           You don't have permission to approve cancellations. Ask a manager to grant "Approve order cancellations" on your role.
         </div>
@@ -186,33 +183,27 @@ export default function Approvals() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-6 py-8 sm:px-8 lg:px-10">
-      <header className="flex items-start gap-3">
-        <span className="flex size-11 items-center justify-center rounded-sm bg-secondary/10 text-secondary"><LuBadgeCheck className="size-5" /></span>
-        <div>
-          <h1 className="font-display text-3xl font-semibold">Approvals</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Cancellation requests from the floor. Approve to cancel the order, or reject to send it back.</p>
-        </div>
-      </header>
+    <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
+      <PageBanner kicker="Sales" title="Approvals" />
 
-      {error && <div className="mt-5 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert />{error}</div>}
+      {error && <div className="mt-5 flex items-center gap-2 border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert />{error}</div>}
 
-      <p className="mt-6 text-xs font-semibold uppercase tracking-widest text-muted-foreground">Cancellation requests · {heading}</p>
+      <SectionHead title="Cancellation requests" hint="Approve to cancel the order, or reject to send it back." count={heading} />
 
       {loading ? (
-        <div className="mt-4 flex min-h-40 items-center justify-center gap-2 text-sm text-muted-foreground"><LuLoaderCircle className="animate-spin" /> Loading…</div>
+        <div className="mt-4 flex min-h-40 items-center justify-center gap-2 border bg-card text-sm text-muted-foreground"><LuLoaderCircle className="animate-spin" /> Loading…</div>
       ) : orders.length === 0 ? (
-        <div className="mt-4 rounded-sm border border-dashed p-12 text-center text-sm text-muted-foreground">Nothing waiting for approval.</div>
+        <div className="mt-4 border border-dashed bg-card p-12 text-center text-sm text-muted-foreground">Nothing waiting for approval.</div>
       ) : (
-        <div className="mt-4 space-y-4">
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
           {orders.map((order) => (
-            <article key={order.id} className="rounded-sm border bg-card p-5 shadow-sm">
+            <article key={order.id} className="border border-l-4 border-l-warning bg-card p-5 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <h2 className="font-display text-xl font-bold">Order #{order.orderNumber}</h2>
-                    <span className="rounded-full bg-warning/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-warning">Pending approval</span>
-                    {order.statusBeforeCancel && <span className="rounded-full bg-muted px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">was {order.statusBeforeCancel.toLowerCase()}</span>}
+                    <StatusPill tone="warning">Pending approval</StatusPill>
+                    {order.statusBeforeCancel && <StatusPill tone="muted">was {order.statusBeforeCancel.toLowerCase()}</StatusPill>}
                   </div>
                   <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                     <span>{order.table?.label ?? 'Takeaway'}</span>
@@ -220,18 +211,18 @@ export default function Approvals() {
                     <span className="flex items-center gap-1"><LuClock3 className="size-3.5" /> requested {ago(order.cancelRequestedAt)}{order.cancelRequestedBy && staff[order.cancelRequestedBy] ? ` by ${staff[order.cancelRequestedBy]}` : ''}</span>
                   </p>
                 </div>
-                <p className="text-lg font-bold">{money(order.total)}</p>
+                <p className="text-lg font-bold tabular-nums">{money(order.total)}</p>
               </div>
 
-              <div className="mt-3 rounded-sm bg-muted/40 p-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Reason</p>
+              <div className="mt-3 border bg-muted/40 p-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Reason</p>
                 <p className="mt-0.5 text-sm">{order.cancelReason || <span className="italic text-muted-foreground">No reason given</span>}</p>
               </div>
 
               {(() => {
                 const folded = returns.filter((request) => request.order.id === order.id).reduce((sum, request) => sum + request.quantity, 0)
                 return folded > 0 ? (
-                  <p className="mt-3 rounded-sm border border-warning/40 bg-warning/10 p-2.5 text-xs text-warning">
+                  <p className="mt-3 border border-warning/40 bg-warning/10 p-2.5 text-xs text-warning">
                     This order also has {folded} item{folded === 1 ? '' : 's'} waiting on their own return requests. Deciding this closes those too — nothing else to approve for #{order.orderNumber}.
                   </p>
                 ) : null
@@ -244,37 +235,20 @@ export default function Approvals() {
               )}
 
               <div className="mt-4 flex flex-wrap gap-2">
-                <button
-                  disabled={busyId === order.id}
-                  onClick={() => void decide(order, 'approve')}
-                  className="inline-flex items-center gap-1.5 rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50"
-                >
-                  {busyId === order.id ? <LuLoaderCircle className="size-4 animate-spin" /> : <LuBadgeCheck className="size-4" />} Approve cancellation
-                </button>
-                <button
-                  disabled={busyId === order.id}
-                  onClick={() => void decide(order, 'reject')}
-                  className="inline-flex items-center gap-1.5 rounded-sm border px-4 py-2 text-sm font-semibold hover:bg-muted disabled:opacity-50"
-                >
-                  <LuX className="size-4" /> Reject
-                </button>
-                <button
-                  onClick={() => setReceiptId(order.id)}
-                  className="inline-flex items-center gap-1.5 rounded-sm border px-4 py-2 text-sm font-semibold hover:bg-muted"
-                >
-                  <LuReceiptText className="size-4" /> View receipt
-                </button>
+                <ActionButton tone="success" icon={<LuBadgeCheck />} loading={busyId === order.id} onClick={() => void decide(order, 'approve')}>Approve cancellation</ActionButton>
+                <ActionButton tone="danger" icon={<LuX />} disabled={busyId === order.id} onClick={() => void decide(order, 'reject')}>Reject</ActionButton>
+                <ActionButton tone="neutral" icon={<LuReceiptText />} onClick={() => setReceiptId(order.id)}>Receipt</ActionButton>
               </div>
             </article>
           ))}
         </div>
       )}
 
-      <p className="mt-8 text-xs font-semibold uppercase tracking-widest text-muted-foreground">Partial return requests</p>
+      <SectionHead title="Partial return requests" count={`${returnGroups.length} waiting`} />
       {!loading && returnGroups.length === 0 ? (
-        <div className="mt-4 rounded-sm border border-dashed p-8 text-center text-sm text-muted-foreground">No partial returns waiting for approval.</div>
+        <div className="mt-4 border border-dashed bg-card p-8 text-center text-sm text-muted-foreground">No partial returns waiting for approval.</div>
       ) : (
-        <div className="mt-4 space-y-4">
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
           {returnGroups.map((group) => {
             const first = group.requests[0]
             const requestedByItem = new Map<string, number>()
@@ -282,22 +256,22 @@ export default function Approvals() {
             const reason = [...new Set(group.requests.map((request) => request.reason).filter(Boolean))].join(' | ')
             const requestedQty = group.requests.reduce((sum, request) => sum + request.quantity, 0)
             return (
-            <article key={group.order.id} className="rounded-sm border bg-card p-5 shadow-sm">
+            <article key={group.order.id} className="border border-l-4 border-l-warning bg-card p-5 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <h2 className="font-display text-xl font-bold">Order #{group.order.orderNumber}</h2>
-                    <span className="rounded-full bg-warning/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-warning">Return requested</span>
+                    <StatusPill tone="warning">Return requested</StatusPill>
                   </div>
                   <p className="mt-1.5 text-xs text-muted-foreground">
                     {requestedQty} item{requestedQty === 1 ? '' : 's'} requested {ago(first.requestedAt)}
                     {first.requestedBy && staff[first.requestedBy] ? ` by ${staff[first.requestedBy]}` : ''}
                   </p>
                 </div>
-                <p className="text-lg font-bold">{money(group.order.total)}</p>
+                <p className="text-lg font-bold tabular-nums">{money(group.order.total)}</p>
               </div>
-              <div className="mt-3 overflow-hidden rounded-sm border bg-muted/20">
-                <div className="flex items-center justify-between border-b bg-primary px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-primary-foreground">
+              <div className="mt-3 overflow-hidden border">
+                <div className="flex items-center justify-between bg-primary px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-primary-foreground">
                   <span>Receipt lines</span>
                   <span>Returning</span>
                 </div>
@@ -311,7 +285,7 @@ export default function Approvals() {
                           <p className="text-[11px] text-muted-foreground">Original order quantity</p>
                         </div>
                         {returning > 0 ? (
-                          <span className="self-center rounded-full bg-warning px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-warning-foreground">{returning} back</span>
+                          <span className="self-center"><StatusPill tone="warning">{returning} back</StatusPill></span>
                         ) : (
                           <span className="self-center text-xs text-muted-foreground">-</span>
                         )}
@@ -320,20 +294,14 @@ export default function Approvals() {
                   })}
                 </div>
               </div>
-              <div className="mt-3 rounded-sm bg-muted/40 p-3">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Reason</p>
+              <div className="mt-3 border bg-muted/40 p-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted-foreground">Reason</p>
                 <p className="mt-0.5 text-sm">{reason}</p>
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
-                <button disabled={busyId === group.order.id} onClick={() => void decideReturnGroup(group, 'approve')} className="inline-flex items-center gap-1.5 rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50">
-                  {busyId === group.order.id ? <LuLoaderCircle className="size-4 animate-spin" /> : <LuBadgeCheck className="size-4" />} Approve return
-                </button>
-                <button disabled={busyId === group.order.id} onClick={() => void decideReturnGroup(group, 'reject')} className="inline-flex items-center gap-1.5 rounded-sm border px-4 py-2 text-sm font-semibold hover:bg-muted disabled:opacity-50">
-                  <LuX className="size-4" /> Reject
-                </button>
-                <button onClick={() => setReceiptId(group.order.id)} className="inline-flex items-center gap-1.5 rounded-sm border px-4 py-2 text-sm font-semibold hover:bg-muted">
-                  <LuReceiptText className="size-4" /> View receipt
-                </button>
+                <ActionButton tone="success" icon={<LuBadgeCheck />} loading={busyId === group.order.id} onClick={() => void decideReturnGroup(group, 'approve')}>Approve return</ActionButton>
+                <ActionButton tone="danger" icon={<LuX />} disabled={busyId === group.order.id} onClick={() => void decideReturnGroup(group, 'reject')}>Reject</ActionButton>
+                <ActionButton tone="neutral" icon={<LuReceiptText />} onClick={() => setReceiptId(group.order.id)}>Receipt</ActionButton>
               </div>
             </article>
             )
@@ -341,58 +309,68 @@ export default function Approvals() {
         </div>
       )}
 
-      <p className="mt-10 text-xs font-semibold uppercase tracking-widest text-muted-foreground">Recently decided · last {decided.length}</p>
+      <SectionHead title="Recently decided" hint="Cancellations" count={`last ${decided.length}`} />
       {!loading && decided.length === 0 ? (
-        <div className="mt-4 rounded-sm border border-dashed p-8 text-center text-sm text-muted-foreground">No cancellations decided yet.</div>
+        <div className="mt-4 border border-dashed bg-card p-8 text-center text-sm text-muted-foreground">No cancellations decided yet.</div>
       ) : (
-        <div className="mt-4 space-y-2">
-          {decided.map((order) => (
-            <article key={order.id} className="flex flex-wrap items-center justify-between gap-3 rounded-sm border bg-card p-3.5 shadow-sm">
-              <div className="min-w-0">
-                <p className="flex items-center gap-2 text-sm font-semibold">
-                  #{order.orderNumber}
-                  <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-destructive">Cancelled</span>
-                </p>
-                <p className="mt-1 truncate text-xs text-muted-foreground">
-                  {order.cancelReason || 'No reason given'}
-                  {order.cancelDecidedBy && staff[order.cancelDecidedBy] ? ` · decided by ${staff[order.cancelDecidedBy]}` : ''}
-                  {order.cancelDecidedAt ? ` · ${ago(order.cancelDecidedAt)}` : ''}
-                </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-3">
-                <p className="text-sm font-bold">{money(order.total)}</p>
-                <button onClick={() => setReceiptId(order.id)} title="View receipt" className="rounded-sm p-2 text-muted-foreground hover:bg-muted hover:text-foreground"><LuReceiptText className="size-4" /></button>
-              </div>
-            </article>
-          ))}
+        <div className="mt-4 overflow-x-auto border bg-card">
+          <table className="w-full min-w-[720px] text-left text-sm">
+            <thead className="bg-primary text-primary-foreground">
+              <tr><th className={TH}>Order</th><th className={TH}>Reason</th><th className={TH}>Decided</th><th className={cn(TH, 'text-right')}>Total</th><th className={cn(TH, 'text-right')}>Receipt</th></tr>
+            </thead>
+            <tbody className="divide-y">
+              {decided.map((order) => (
+                <tr key={order.id} className="align-middle even:bg-muted/30">
+                  <td className="px-5 py-3"><span className="mr-2 font-semibold">#{order.orderNumber}</span><StatusPill tone="danger">Cancelled</StatusPill></td>
+                  <td className="max-w-xs truncate px-5 py-3 text-muted-foreground">{order.cancelReason || 'No reason given'}</td>
+                  <td className="whitespace-nowrap px-5 py-3 text-xs text-muted-foreground">{order.cancelDecidedBy && staff[order.cancelDecidedBy] ? `${staff[order.cancelDecidedBy]} · ` : ''}{order.cancelDecidedAt ? ago(order.cancelDecidedAt) : ''}</td>
+                  <td className="px-5 py-3 text-right font-semibold tabular-nums">{money(order.total)}</td>
+                  <td className="px-5 py-3"><div className="flex justify-end"><ActionButton tone="neutral" icon={<LuReceiptText />} title="View receipt" onClick={() => setReceiptId(order.id)} /></div></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
-      <p className="mt-8 text-xs font-semibold uppercase tracking-widest text-muted-foreground">Recently approved partial returns · last {decidedReturns.length}</p>
+      <SectionHead title="Recently approved returns" hint="Partial returns" count={`last ${decidedReturns.length}`} />
       {!loading && decidedReturns.length === 0 ? (
-        <div className="mt-4 rounded-sm border border-dashed p-8 text-center text-sm text-muted-foreground">No partial returns approved yet.</div>
+        <div className="mt-4 border border-dashed bg-card p-8 text-center text-sm text-muted-foreground">No partial returns approved yet.</div>
       ) : (
-        <div className="mt-4 space-y-2">
-          {decidedReturns.map((request) => (
-            <article key={request.id} className="flex flex-wrap items-center justify-between gap-3 rounded-sm border bg-card p-3.5 shadow-sm">
-              <div className="min-w-0">
-                <p className="flex items-center gap-2 text-sm font-semibold">
-                  #{request.order.orderNumber}
-                  <span className="rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-success">Returned</span>
-                </p>
-                <p className="mt-1 truncate text-xs text-muted-foreground">
-                  {request.quantity}x {request.orderItem.menuItem?.name ?? 'item'}
-                  {request.decidedBy && staff[request.decidedBy] ? ` · decided by ${staff[request.decidedBy]}` : ''}
-                  {request.decidedAt ? ` · ${ago(request.decidedAt)}` : ''}
-                </p>
-              </div>
-              <button onClick={() => setReceiptId(request.order.id)} title="View receipt" className="rounded-sm p-2 text-muted-foreground hover:bg-muted hover:text-foreground"><LuReceiptText className="size-4" /></button>
-            </article>
-          ))}
+        <div className="mt-4 overflow-x-auto border bg-card">
+          <table className="w-full min-w-[720px] text-left text-sm">
+            <thead className="bg-primary text-primary-foreground">
+              <tr><th className={TH}>Order</th><th className={TH}>Item</th><th className={TH}>Decided</th><th className={cn(TH, 'text-right')}>Receipt</th></tr>
+            </thead>
+            <tbody className="divide-y">
+              {decidedReturns.map((request) => (
+                <tr key={request.id} className="align-middle even:bg-muted/30">
+                  <td className="px-5 py-3"><span className="mr-2 font-semibold">#{request.order.orderNumber}</span><StatusPill tone="success">Returned</StatusPill></td>
+                  <td className="px-5 py-3 text-muted-foreground">{request.quantity}× {request.orderItem.menuItem?.name ?? 'item'}</td>
+                  <td className="whitespace-nowrap px-5 py-3 text-xs text-muted-foreground">{request.decidedBy && staff[request.decidedBy] ? `${staff[request.decidedBy]} · ` : ''}{request.decidedAt ? ago(request.decidedAt) : ''}</td>
+                  <td className="px-5 py-3"><div className="flex justify-end"><ActionButton tone="neutral" icon={<LuReceiptText />} title="View receipt" onClick={() => setReceiptId(request.order.id)} /></div></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
       {receiptId && <ReceiptPreviewModal orderId={receiptId} profile={profile} onClose={() => setReceiptId(null)} />}
+    </div>
+  )
+}
+
+const TH = 'px-5 py-3 text-xs font-bold uppercase tracking-wider'
+
+function SectionHead({ title, hint, count }: { title: string; hint?: string; count?: string }) {
+  return (
+    <div className="mb-0 mt-8 flex items-end justify-between gap-3 border-l-4 border-accent pl-3">
+      <div>
+        <h2 className="font-display text-lg font-semibold leading-tight">{title}</h2>
+        {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+      </div>
+      {count && <span className="border bg-muted px-2.5 py-1 text-xs font-bold tabular-nums text-foreground">{count}</span>}
     </div>
   )
 }
