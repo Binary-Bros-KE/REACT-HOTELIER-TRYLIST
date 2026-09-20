@@ -24,6 +24,7 @@ import { useWorkingLocation } from "@/lib/useWorkingLocation";
 import SharedStatCard from "@/components/ui/StatCard";
 import ActionButton from "@/components/ui/ActionButton";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import RoomTermsFields, { CreditFields, defaultTerms, termsDiscount, termsFromReservation, termsInvalid, termsPayload, type RoomTerms } from "@/components/reception/RoomTerms";
 
 const RESERVATION_SOURCES = ["WALK_IN", "PHONE", "WEBSITE", "BOOKING_ENGINE", "TRAVEL_AGENT", "OTA", "CORPORATE", "OTHER"] as const;
 const CANCELLATION_REASONS = ["CHANGED_MIND", "NO_SHOW", "FOUND_ALTERNATIVE", "DUPLICATE_BOOKING", "HOTEL_CANCELLED", "OTHER"] as const;
@@ -50,10 +51,10 @@ type Room = {
   cleanliness: string;
 };
 type Service = { id: string; name: string; price: string | number; unit: { name: string } };
-type FolioLineItem = { id: string; source: "ROOM" | "SERVICE" | "POS_ORDER" | "AD_HOC"; label: string; amount: string | number; quantity: number; createdAt: string };
+type FolioLineItem = { id: string; source: "ROOM" | "SERVICE" | "POS_ORDER" | "AD_HOC" | "DISCOUNT"; label: string; amount: string | number; quantity: number; createdAt: string };
 type PaymentMethod = { id: string; name: string; requiresReference: boolean };
 type FolioPayment = { id: string; kind: "DEPOSIT" | "SETTLEMENT"; paymentMethod: PaymentMethod; amount: string | number; reference: string | null; createdAt: string };
-type Folio = { id: string; folioNo: string; status: "OPEN" | "SETTLED"; lineItems: FolioLineItem[]; payments: FolioPayment[] };
+type Folio = { id: string; folioNo: string; status: "OPEN" | "SETTLED"; lineItems: FolioLineItem[]; payments: FolioPayment[]; creditAmount?: string | number; creditReason?: string | null; creditExpectedAt?: string | null; creditOutstanding?: number };
 type Guest = { id: string; name: string; idNumber: string | null; notes: string | null; addedAt: string };
 type ReservationStatus = "PENDING" | "CONFIRMED" | "CHECKED_IN" | "CHECKED_OUT" | "CANCELLED" | "NO_SHOW";
 type ReservationActivity = {
@@ -83,6 +84,11 @@ type Reservation = {
   folio: Folio | null;
   additionalGuests: Guest[];
   activities: ReservationActivity[];
+  roomSaleType?: "PAID" | "COMPLIMENTARY";
+  complimentaryReason?: string | null;
+  discountType?: "PERCENT" | "AMOUNT" | null;
+  discountValue?: string | number;
+  discountReason?: string | null;
 };
 type DeskLocation = { id: string; name: string; isActive?: boolean };
 
@@ -451,6 +457,7 @@ function NewGuestModal({ customers, rooms, at, onClose, onDone, onCustomerCreate
   const [source, setSource] = useState<(typeof RESERVATION_SOURCES)[number]>("WALK_IN");
   const [bookingDate, setBookingDate] = useState(date());
   const [arrival, setArrival] = useState<"CHECKED_IN" | "PENDING">("CHECKED_IN");
+  const [terms, setTerms] = useState<RoomTerms>(defaultTerms());
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -459,8 +466,10 @@ function NewGuestModal({ customers, rooms, at, onClose, onDone, onCustomerCreate
   const room = rooms.find((r) => r.id === roomId);
   const chosenCustomer = customers.find((c) => c.id === customerId);
   const nights = nightsBetween(checkIn, checkOut);
+  const roomGross = room ? rateFor(room, mealPlan) * nights : 0;
+  const roomOff = termsDiscount(terms, roomGross);
   const guestValid = mode === "existing" ? Boolean(customerId) : Boolean(guest.firstName.trim()) && guest.phone.trim().length >= 5;
-  const stayValid = Boolean(roomId) && nights > 0 && Number(adults) >= 1;
+  const stayValid = Boolean(roomId) && nights > 0 && Number(adults) >= 1 && !termsInvalid(terms);
   const valid = [guestValid, stayValid, true];
   const guestName = mode === "existing" ? (chosenCustomer ? `${chosenCustomer.firstName} ${chosenCustomer.lastName}` : "—") : `${guest.firstName} ${guest.lastName}`.trim() || "—";
 
@@ -494,6 +503,7 @@ function NewGuestModal({ customers, rooms, at, onClose, onDone, onCustomerCreate
           bookingDate,
           notes: notes.trim() || undefined,
           status: arrival,
+          ...termsPayload(terms),
         }),
       });
       toast.success(arrival === "CHECKED_IN" ? "Guest checked in." : "Reservation created.");
@@ -601,6 +611,9 @@ function NewGuestModal({ customers, rooms, at, onClose, onDone, onCustomerCreate
                 </select>
               </label>
             </Section>
+            <Section title="Room terms">
+              <div className="sm:col-span-2"><RoomTermsFields value={terms} onChange={setTerms} roomTotal={room ? roomGross : undefined} /></div>
+            </Section>
             <Section title="Stay">
               <label className="text-sm font-medium">Check-in date<input type="date" className="input mt-1.5" value={checkIn} onChange={(e) => setCheckIn(e.target.value)} /></label>
               <label className="text-sm font-medium">Check-out date<input type="date" className="input mt-1.5" min={checkIn} value={checkOut} onChange={(e) => setCheckOut(e.target.value)} /></label>
@@ -613,7 +626,7 @@ function NewGuestModal({ customers, rooms, at, onClose, onDone, onCustomerCreate
                   <p className="text-sm font-semibold">Room {room.number} · {room.roomType.name}</p>
                   <p className="mt-0.5 text-xs text-muted-foreground">{nights} night{nights === 1 ? "" : "s"} · {MEAL_PLAN_LABELS[mealPlan]} · sleeps {room.capacity}</p>
                 </div>
-                <p className="text-right text-sm font-bold text-secondary">{formatKes(rateFor(room, mealPlan) * nights)}<span className="block text-[11px] font-normal text-muted-foreground">{formatKes(rateFor(room, mealPlan))} / night</span></p>
+                <p className="text-right text-sm font-bold text-secondary">{formatKes(roomGross - roomOff)}<span className="block text-[11px] font-normal text-muted-foreground">{roomOff > 0 ? `${formatKes(roomGross)} less ${formatKes(roomOff)}` : `${formatKes(rateFor(room, mealPlan))} / night`}</span></p>
               </div>
             )}
             {nights <= 0 && <p className="text-xs font-semibold text-destructive">Check-out must be after check-in.</p>}
@@ -646,7 +659,8 @@ function NewGuestModal({ customers, rooms, at, onClose, onDone, onCustomerCreate
                 ["Room", room ? `Room ${room.number} · ${room.roomType.name}` : "—"],
                 ["Stay", `${new Date(checkIn).toLocaleDateString()} – ${new Date(checkOut).toLocaleDateString()} (${nights} night${nights === 1 ? "" : "s"})`],
                 ["Guests", `${adults} adult${Number(adults) === 1 ? "" : "s"}${Number(children) > 0 ? `, ${children} child${Number(children) === 1 ? "" : "ren"}` : ""}`],
-                ["Room total", room ? formatKes(rateFor(room, mealPlan) * nights) : "—"],
+                ["Room sale", terms.roomSaleType === "COMPLIMENTARY" ? "Complimentary" : roomOff > 0 ? `Paid — ${formatKes(roomOff)} discount` : "Paid"],
+                ["Room total", room ? formatKes(roomGross - roomOff) : "—"],
               ] as const).map(([k, v]) => (
                 <div key={k} className="flex justify-between gap-4 px-3 py-2"><span className="text-muted-foreground">{k}</span><span className="text-right font-semibold">{v}</span></div>
               ))}
@@ -724,6 +738,10 @@ function StayModal({ reservation, at, onClose, onChanged, onCheckedOut }: { rese
   const [payMethodId, setPayMethodId] = useState("");
   const [payAmount, setPayAmount] = useState("");
   const [payReference, setPayReference] = useState("");
+  const [creditReason, setCreditReason] = useState("");
+  const [creditExpectedAt, setCreditExpectedAt] = useState("");
+  const [termsOpen, setTermsOpen] = useState(false);
+  const [terms, setTerms] = useState<RoomTerms>(termsFromReservation(reservation));
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -740,6 +758,24 @@ function StayModal({ reservation, at, onClose, onChanged, onCheckedOut }: { rese
   const selectedPayMethod = paymentMethods.find((m) => m.id === payMethodId);
 
   const totals = folioTotals(reservation.folio);
+  const enteredPay = Number(payAmount) || 0;
+  // Whatever the guest isn't paying now is left owing — completed on credit.
+  const onCredit = Math.round((totals.balance - enteredPay) * 100) / 100;
+
+  async function saveTerms() {
+    if (termsInvalid(terms)) { toast.error(termsInvalid(terms)!); return; }
+    setBusy(true);
+    try {
+      await at(`/reception/reservations/${reservation.id}/room-terms`, { method: "PATCH", body: JSON.stringify(termsPayload(terms)) });
+      toast.success("Room terms updated.");
+      setTermsOpen(false);
+      onChanged();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not update room terms");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function extend(e: FormEvent) {
     e.preventDefault();
@@ -842,10 +878,11 @@ function StayModal({ reservation, at, onClose, onChanged, onCheckedOut }: { rese
     const amount = Number(payAmount) || 0;
     if (amount > 0 && !payMethodId) { toast.error("Choose a payment method"); return; }
     if (amount > 0 && selectedPayMethod?.requiresReference && !payReference.trim()) { toast.error(`${selectedPayMethod.name} requires a reference number`); return; }
+    if (onCredit > 0.01 && (creditReason.trim().length < 3 || !creditExpectedAt)) { toast.error("Give a reason for the credit and an expected payment date"); return; }
     setBusy(true);
     try {
-      await at(`/reception/reservations/${reservation.id}/checkout`, { method: "PATCH", body: JSON.stringify({ paymentMethodId: amount > 0 ? payMethodId : undefined, amount, reference: payReference || undefined }) });
-      toast.success(`Room ${reservation.room.number}: checked out and sent to Housekeeping.`);
+      await at(`/reception/reservations/${reservation.id}/checkout`, { method: "PATCH", body: JSON.stringify({ paymentMethodId: amount > 0 ? payMethodId : undefined, amount, reference: payReference || undefined, ...(onCredit > 0.01 ? { creditReason: creditReason.trim(), creditExpectedAt } : {}) }) });
+      toast.success(onCredit > 0.01 ? `Room ${reservation.room.number}: checked out on credit (${formatKes(onCredit)} owing).` : `Room ${reservation.room.number}: checked out and sent to Housekeeping.`);
       onCheckedOut();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not check out");
@@ -885,7 +922,7 @@ function StayModal({ reservation, at, onClose, onChanged, onCheckedOut }: { rese
                         <td className="px-3 py-2">{item.quantity}</td>
                         <td className="px-3 py-2 text-right">{formatKes(Number(item.amount) * item.quantity)}</td>
                         <td className="px-2 py-2 text-right">
-                          {item.source !== "ROOM" && <button onClick={() => void removeCharge(item.id)} className="text-xs text-destructive hover:underline">Remove</button>}
+                          {item.source !== "ROOM" && item.source !== "DISCOUNT" && <button onClick={() => void removeCharge(item.id)} className="text-xs text-destructive hover:underline">Remove</button>}
                         </td>
                       </tr>
                     ))}
@@ -897,6 +934,19 @@ function StayModal({ reservation, at, onClose, onChanged, onCheckedOut }: { rese
                 <div className="flex justify-between"><span>Charges</span><span>{formatKes(totals.charges)}</span></div>
                 <div className="flex justify-between text-success"><span>Paid</span><span>-{formatKes(totals.paid)}</span></div>
                 <div className="mt-1 flex justify-between border-t pt-1 font-bold"><span>Balance</span><span>{formatKes(totals.balance)}</span></div>
+              </div>
+
+              <div className="rounded-sm border p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm"><span className="font-semibold">Room sale:</span> {reservation.roomSaleType === "COMPLIMENTARY" ? "Complimentary" : reservation.discountType && Number(reservation.discountValue) > 0 ? `Paid — ${reservation.discountType === "PERCENT" ? `${Number(reservation.discountValue)}%` : formatKes(Number(reservation.discountValue))} discount` : "Paid"}</p>
+                  <button type="button" onClick={() => { setTerms(termsFromReservation(reservation)); setTermsOpen((v) => !v); }} className="text-xs font-semibold text-secondary hover:underline">{termsOpen ? "Close" : "Change room terms"}</button>
+                </div>
+                {termsOpen && (
+                  <div className="mt-3 space-y-3">
+                    <RoomTermsFields value={terms} onChange={setTerms} roomTotal={totals.charges > 0 ? reservation.folio?.lineItems.filter((l) => l.source === "ROOM").reduce((sum, l) => sum + Number(l.amount) * l.quantity, 0) : undefined} />
+                    <button type="button" disabled={busy} onClick={() => void saveTerms()} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-60">{busy && <LuLoaderCircle className="animate-spin" />} Save room terms</button>
+                  </div>
+                )}
               </div>
 
               <FieldGroup title="Add addon service">
@@ -969,10 +1019,15 @@ function StayModal({ reservation, at, onClose, onChanged, onCheckedOut }: { rese
                 <input type="number" min="0" placeholder="Amount" className="input" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} />
                 <input placeholder={selectedPayMethod?.requiresReference ? "Reference *" : "Reference (optional)"} required={selectedPayMethod?.requiresReference} className="input" value={payReference} onChange={(e) => setPayReference(e.target.value)} />
               </div>
+              {totals.balance > 0.01 && (
+                <button type="button" onClick={() => setPayAmount(String(Math.round(totals.balance * 100) / 100))} className="text-xs font-semibold text-secondary hover:underline">Pay the full balance ({formatKes(totals.balance)})</button>
+              )}
+              {onCredit > 0.01 && <CreditFields reason={creditReason} expectedAt={creditExpectedAt} onReason={setCreditReason} onExpectedAt={setCreditExpectedAt} />}
+              {onCredit > 0.01 && <p className="text-xs font-semibold text-warning">{formatKes(onCredit)} will be left owing on this guest's account.</p>}
               <div className="grid grid-cols-2 gap-2">
                 <button type="button" onClick={() => void addDeposit()} disabled={busy || !payAmount || !payMethodId} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted disabled:opacity-60">Record deposit</button>
-                <button type="button" onClick={() => void completeCheckout()} disabled={busy} className="inline-flex items-center justify-center gap-2 rounded-sm bg-success px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60">
-                  {busy && <LuLoaderCircle className="animate-spin" />} Complete checkout
+                <button type="button" onClick={() => void completeCheckout()} disabled={busy} className={cn("inline-flex items-center justify-center gap-2 rounded-sm px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60", onCredit > 0.01 ? "bg-warning" : "bg-success")}>
+                  {busy && <LuLoaderCircle className="animate-spin" />} {onCredit > 0.01 ? "Complete on credit" : "Complete checkout"}
                 </button>
               </div>
               <p className="text-xs text-muted-foreground">"Record deposit" adds a payment without ending the stay. "Complete checkout" settles the folio, frees the room, and sends it to Housekeeping.</p>

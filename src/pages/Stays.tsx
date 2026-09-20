@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { LuCircleAlert, LuEye, LuLoaderCircle, LuSearch } from 'react-icons/lu'
 import { api } from '@/lib/api'
 import { useToast } from '@/components/ui/Toast'
@@ -16,7 +16,7 @@ const STATUSES: ReservationStatus[] = ['PENDING', 'CONFIRMED', 'CHECKED_IN', 'CH
 
 type FolioLineItem = { id: string; source: string; label: string; amount: string | number; quantity: number }
 type FolioPayment = { id: string; kind: 'DEPOSIT' | 'SETTLEMENT'; paymentMethod: { id: string; name: string }; amount: string | number; reference: string | null; createdAt: string }
-type Folio = { id: string; folioNo: string; status: 'OPEN' | 'SETTLED'; lineItems: FolioLineItem[]; payments: FolioPayment[] }
+type Folio = { id: string; folioNo: string; status: 'OPEN' | 'SETTLED'; lineItems: FolioLineItem[]; payments: FolioPayment[]; creditAmount?: string | number; creditReason?: string | null; creditExpectedAt?: string | null; creditOutstanding?: number }
 type Guest = { id: string; name: string; idNumber: string | null; addedAt: string }
 type Activity = {
   id: string
@@ -100,6 +100,10 @@ export default function Stays() {
     const timer = window.setTimeout(() => void load(), 250)
     return () => window.clearTimeout(timer)
   }, [load])
+  // After a credit payment the list reloads — swap the open stay for its fresh copy.
+  useEffect(() => {
+    setSelected((current) => (current ? stays.find((s) => s.id === current.id) ?? current : current))
+  }, [stays])
 
   return (
     <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
@@ -178,7 +182,7 @@ export default function Stays() {
         )}
       </section>
 
-      {selected && <StayDetailModal stay={selected} onClose={() => setSelected(null)} />}
+      {selected && <StayDetailModal stay={selected} onClose={() => setSelected(null)} onChanged={() => void load()} />}
     </div>
   )
 }
@@ -187,9 +191,42 @@ function SectionTitle({ children }: { children: string }) {
   return <p className="mb-2 border-l-4 border-accent pl-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">{children}</p>
 }
 
-function StayDetailModal({ stay, onClose }: { stay: Stay; onClose: () => void }) {
+function StayDetailModal({ stay, onClose, onChanged }: { stay: Stay; onClose: () => void; onChanged: () => void }) {
+  const toast = useToast()
   const totals = folioTotals(stay.folio)
   const info = deskOf(stay)
+  const credit = Number(stay.folio?.creditAmount ?? 0)
+  const owing = stay.folio?.creditOutstanding ?? 0
+  const [methods, setMethods] = useState<{ id: string; name: string; requiresReference: boolean; code: string }[]>([])
+  const [methodId, setMethodId] = useState('')
+  const [amount, setAmount] = useState(owing > 0 ? String(owing) : '')
+  const [reference, setReference] = useState('')
+  const [paying, setPaying] = useState(false)
+  useEffect(() => {
+    if (owing <= 0.01) return
+    api<{ methods: { id: string; name: string; requiresReference: boolean; code: string }[] }>('/payment-methods?activeOnly=true')
+      .then((r) => { const list = r.methods.filter((m) => m.code !== 'ROOM_CHARGE'); setMethods(list); setMethodId((c) => c || list[0]?.id || '') })
+      .catch(() => {})
+  }, [owing])
+  useEffect(() => { setAmount(owing > 0 ? String(owing) : '') }, [owing])
+  const method = methods.find((m) => m.id === methodId)
+
+  async function receivePayment(event: FormEvent) {
+    event.preventDefault()
+    if (!methodId || !(Number(amount) > 0)) return
+    if (method?.requiresReference && !reference.trim()) { toast.error(`${method.name} requires a reference number`); return }
+    setPaying(true)
+    try {
+      await api(`/reception/reservations/${stay.id}/folio/credit-payments`, { method: 'POST', body: JSON.stringify({ paymentMethodId: methodId, amount: Number(amount), reference: reference.trim() || undefined }) })
+      toast.success('Payment received.')
+      setReference('')
+      onChanged()
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : 'Could not record the payment')
+    } finally {
+      setPaying(false)
+    }
+  }
   return (
     <ModalShell
       size="lg"
@@ -261,6 +298,28 @@ function StayDetailModal({ stay, onClose }: { stay: Stay; onClose: () => void })
                     </tbody>
                   </table>
                 </div>
+              </div>
+            )}
+            {credit > 0 && (
+              <div className={cn('space-y-3 border-2 p-3', owing > 0.01 ? 'border-warning/60 bg-warning/5' : 'border-success/50 bg-success/5')}>
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <p className={cn('text-xs font-bold uppercase tracking-wider', owing > 0.01 ? 'text-warning' : 'text-success')}>{owing > 0.01 ? 'Checked out on credit' : 'Credit paid in full'}</p>
+                    <p className="mt-1 text-sm">{formatKes(credit)} was left owing{stay.folio?.creditExpectedAt ? `, expected by ${new Date(stay.folio.creditExpectedAt).toLocaleDateString()}` : ''}.</p>
+                    {stay.folio?.creditReason && <p className="text-xs text-muted-foreground">Reason: {stay.folio.creditReason}</p>}
+                  </div>
+                  {owing > 0.01 && <p className="text-right text-lg font-bold tabular-nums text-warning">{formatKes(owing)}<span className="block text-[11px] font-normal text-muted-foreground">still owing</span></p>}
+                </div>
+                {owing > 0.01 && (
+                  <form onSubmit={receivePayment} className="grid gap-2 sm:grid-cols-[1fr_9rem_1fr_auto]">
+                    <select className="input" value={methodId} onChange={(e) => setMethodId(e.target.value)}>
+                      {methods.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                    </select>
+                    <input type="number" min="0" step="0.01" max={owing} className="input" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Amount" />
+                    <input className="input" value={reference} onChange={(e) => setReference(e.target.value)} placeholder={method?.requiresReference ? 'Reference *' : 'Reference (optional)'} />
+                    <button disabled={paying || !methodId || !(Number(amount) > 0)} className="inline-flex items-center justify-center gap-2 rounded-sm bg-success px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">{paying && <LuLoaderCircle className="animate-spin" />} Receive payment</button>
+                  </form>
+                )}
               </div>
             )}
             <div className="grid grid-cols-3 gap-3">
