@@ -3,6 +3,7 @@ import { LuLoaderCircle, LuX } from 'react-icons/lu'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/Toast'
+import Avatar from '@/components/ui/Avatar'
 import { useAppSelector } from '@/store/hooks'
 
 export type ShiftSession = {
@@ -78,7 +79,7 @@ const nairobiMonth = (iso: string) => new Date(new Date(iso).getTime() + 3 * 360
  * wherever it's opened from.
  */
 export default function ShiftSummaryModal({
-  title, session, summary, approval, busyKey, onClose, onApprove, onReject, onChanged,
+  session, summary, approval, busyKey, onClose, onApprove, onReject, onChanged,
 }: {
   title: string
   session: ShiftSession
@@ -118,17 +119,15 @@ export default function ShiftSummaryModal({
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 px-4 py-8">
       <div className="w-full max-w-4xl border-2 border-foreground/25 bg-card shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
         <div className="flex items-start justify-between gap-4 border-b-4 border-accent bg-muted/60 px-5 py-4">
-          <div className="flex min-w-0 items-start gap-4">
-            <div className="flex size-14 shrink-0 items-center justify-center border-2 border-secondary/30 bg-secondary/15 font-display text-xl font-bold text-secondary">
-              {(session.employee.firstName[0] ?? '') + (session.employee.lastName[0] ?? '')}
-            </div>
+          <div className="flex min-w-0 items-center gap-4">
+            <Avatar size="lg" />
             <div className="min-w-0">
               <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">Shift handover</p>
-              <h2 className="mt-0.5 truncate font-display text-2xl font-semibold leading-tight">{title}</h2>
-              <p className="mt-0.5 text-sm text-muted-foreground">{session.employee.firstName} {session.employee.lastName} · {session.employee.jobTitle || 'Employee'}</p>
+              <h2 className="mt-0.5 truncate font-display text-2xl font-semibold leading-tight">{session.employee.firstName} {session.employee.lastName}</h2>
+              <p className="text-sm text-muted-foreground">{session.employee.jobTitle || 'Employee'}</p>
             </div>
           </div>
-          <button onClick={onClose} className="flex shrink-0 items-center gap-1.5 border-2 border-foreground/20 bg-card px-3 py-1.5 text-xs font-bold uppercase tracking-wider transition hover:bg-muted"><LuX className="size-4" /> Close</button>
+          <button onClick={onClose} className="flex shrink-0 items-center gap-1.5 bg-black px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-white transition hover:bg-black/80"><LuX className="size-4" /> Close</button>
         </div>
 
         <div className="grid grid-cols-2 border-b bg-card text-sm sm:grid-cols-4">
@@ -154,8 +153,6 @@ export default function ShiftSummaryModal({
           {live.reviewedAt && (
             <p className="text-xs text-muted-foreground">Outcome edited {new Date(live.reviewedAt).toLocaleString()}{live.reviewReason ? ' — ' + live.reviewReason : ''}</p>
           )}
-          {!approval && decided && canReview && <ReviewPanel session={live} onSaved={(next) => { setLive(next); onChanged?.() }} />}
-          {!approval && decided && canSalary && <PayrollPanel session={live} onSaved={() => onChanged?.()} />}
 
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
             <ShiftMiniStat label="Sales" value={formatKes(summary.totalSales)} hint={`${summary.sales.length} sale${summary.sales.length === 1 ? '' : 's'}`} bar="bg-secondary" />
@@ -185,6 +182,13 @@ export default function ShiftSummaryModal({
             {summary.sales.map((s) => <tr key={s.id}><td className="px-3 py-2 font-semibold">#{s.orderNumber}</td><td className="px-3 py-2">{s.saleType === 'COMPLIMENTARY' ? `Complimentary${s.complimentaryRecipientName ? ` - ${s.complimentaryRecipientName}` : ''}` : s.paymentStatus}</td><td className="px-3 py-2 tabular-nums">{new Date(s.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td><td className="px-3 py-2 text-right font-bold tabular-nums">{formatKes(s.total)}</td></tr>)}
           </ShiftSummaryTable>
         </div>
+        {!approval && decided && (canReview || canSalary) && (
+          <div className="space-y-3 border-t-2 border-foreground/15 bg-muted/30 p-5">
+            <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Adjustments</p>
+            {!approval && decided && canReview && <ReviewPanel session={live} onSaved={(next) => { setLive(next); onChanged?.() }} />}
+            {!approval && decided && canSalary && <PayrollPanel session={live} onSaved={() => onChanged?.()} />}
+          </div>
+        )}
         {approval && (onApprove || onReject) && (
           <div className="border-t-2 border-foreground/15 bg-muted/40 p-5">
             <p className="text-xs font-bold uppercase tracking-wider text-secondary">Outcome</p>
@@ -299,7 +303,7 @@ function ReviewPanel({ session, onSaved }: { session: ShiftSession; onSaved: (ne
   }
 
   if (!open) {
-    return <button type="button" onClick={() => setOpen(true)} className=" border px-3 py-1.5 text-sm font-semibold hover:bg-muted">Edit outcome / discrepancy</button>
+    return <button type="button" onClick={() => setOpen(true)} className="bg-secondary px-4 py-2 text-sm font-bold uppercase tracking-wide text-secondary-foreground transition hover:brightness-110">Edit details</button>
   }
   return (
     <div className="space-y-3 border bg-muted/20 p-4">
@@ -382,7 +386,7 @@ function PayrollPanel({ session, onSaved }: { session: ShiftSession; onSaved: ()
       {locked ? (
         <p className="text-xs text-muted-foreground">That salary is already completed, so this line can no longer be changed.</p>
       ) : !open ? (
-        <button type="button" onClick={() => setOpen(true)} className=" border px-3 py-1.5 text-sm font-semibold hover:bg-muted">{recorded ? 'Edit salary line' : 'Record deduction / allowance'}</button>
+        <button type="button" onClick={() => setOpen(true)} className="bg-orange-500 px-4 py-2 text-sm font-bold uppercase tracking-wide text-white transition hover:bg-orange-600">{recorded ? 'Edit salary line' : 'Record deduction / allowance'}</button>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           <div>

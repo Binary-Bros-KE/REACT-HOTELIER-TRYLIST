@@ -330,6 +330,10 @@ textarea {
   border-radius: 0 !important;
 }
 
+.dashboard-square .keep-round {
+  border-radius: 9999px !important;
+}
+
 @keyframes shift-stripes {
   from { background-position: 0 0; }
   to { background-position: 28px 0; }

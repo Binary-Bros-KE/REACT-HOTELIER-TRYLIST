@@ -1,12 +1,12 @@
 import type { ReactNode } from 'react'
 import { LuCheck, LuClipboardCheck, LuClock3, LuEye, LuPower, LuTriangleAlert, LuX } from 'react-icons/lu'
 import SlantButton from '@/components/ui/SlantButton'
+import Avatar from '@/components/ui/Avatar'
 import { TablePanelSkeleton } from '@/components/ui/DashboardSkeleton'
 import { cn } from '@/lib/utils'
 import { formatKes } from '@/components/shifts/ShiftSummaryModal'
 import { useNow, useShift, type ShiftRow } from '@/components/shifts/shiftContext'
 
-const initials = (s: ShiftRow) => `${s.employee.firstName[0] ?? ''}${s.employee.lastName[0] ?? ''}`.toUpperCase()
 const fullName = (s: ShiftRow) => `${s.employee.firstName} ${s.employee.lastName}`
 const clock = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--')
 
@@ -18,7 +18,7 @@ function Panel({ title, count, hint, children }: { title: string; count?: number
           <h2 className="font-display text-lg font-semibold leading-tight">{title}</h2>
           {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
         </div>
-        {count != null && <span className="bg-secondary px-2.5 py-1 text-xs font-bold tabular-nums text-secondary-foreground">{count}</span>}
+        {count != null && <span className="border bg-muted px-2.5 py-1 text-xs font-bold tabular-nums text-foreground">{count}</span>}
       </div>
       {children}
     </section>
@@ -48,7 +48,7 @@ function OnShiftCard({ s }: { s: ShiftRow }) {
   const open = s.summary?.pendingOrders ?? 0
   return (
     <article className="flex items-center gap-3 border border-l-4 border-l-success bg-card px-3 py-2.5 shadow-sm">
-      <div className="flex size-10 shrink-0 items-center justify-center bg-secondary/15 font-display text-sm font-bold text-secondary">{initials(s)}</div>
+      <Avatar size="md" />
       <div className="min-w-0 flex-1">
         <p className="flex items-center gap-2 text-sm font-semibold leading-tight">
           <span className="truncate">{fullName(s)}</span>
@@ -68,15 +68,22 @@ function OnShiftCard({ s }: { s: ShiftRow }) {
   )
 }
 
+const PILL_TONES = {
+  warning: 'border-warning/70 text-warning',
+  secondary: 'border-secondary/70 text-secondary',
+  success: 'border-success/70 text-success',
+  danger: 'border-destructive/70 text-destructive',
+} as const
+
+function Pill({ tone, children }: { tone: keyof typeof PILL_TONES; children: ReactNode }) {
+  return <span className={cn('keep-round inline-block border border-dashed px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider', PILL_TONES[tone])}>{children}</span>
+}
+
 function Outcome({ s }: { s: ShiftRow }) {
-  if (s.status === 'REJECTED_START' || s.status === 'REJECTED_END') {
-    return <span className="inline-block border border-destructive/40 bg-destructive/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-destructive">Rejected</span>
-  }
+  if (s.status === 'REJECTED_START' || s.status === 'REJECTED_END') return <Pill tone="danger">Rejected</Pill>
   const v = s.cashVariance != null ? Number(s.cashVariance) : 0
-  if (Math.abs(v) > 0.005) {
-    return <span className={cn('inline-block border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider', v > 0 ? 'border-success/40 bg-success/10 text-success' : 'border-destructive/40 bg-destructive/10 text-destructive')}>{v > 0 ? 'Over' : 'Short'} {formatKes(Math.abs(v))}</span>
-  }
-  return <span className="inline-block border border-success/40 bg-success/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-success">Cleared</span>
+  if (Math.abs(v) > 0.005) return <Pill tone={v > 0 ? 'success' : 'danger'}>{v > 0 ? 'Over' : 'Short'} {formatKes(Math.abs(v))}</Pill>
+  return <Pill tone="success">Cleared</Pill>
 }
 
 export default function ShiftTeamPanels() {
@@ -98,14 +105,12 @@ export default function ShiftTeamPanels() {
                   <tr key={a.id} className="align-middle even:bg-muted/30">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
-                        <span className="flex size-9 shrink-0 items-center justify-center bg-secondary/15 text-xs font-bold text-secondary">{initials(a)}</span>
+                        <Avatar size="md" />
                         <div className="min-w-0"><p className="truncate font-semibold">{fullName(a)}</p><p className="truncate text-xs text-muted-foreground">{a.employee.jobTitle || 'Employee'}</p></div>
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={cn('inline-block border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider', a.status === 'REQUESTED_END' ? 'border-warning/40 bg-warning/10 text-warning' : 'border-secondary/40 bg-secondary/10 text-secondary')}>
-                        {a.status === 'REQUESTED_END' ? 'End shift' : 'Start shift'}
-                      </span>
+                      <Pill tone={a.status === 'REQUESTED_END' ? 'warning' : 'secondary'}>{a.status === 'REQUESTED_END' ? 'End shift' : 'Start shift'}</Pill>
                     </td>
                     <td className="px-4 py-3 text-right font-semibold tabular-nums">{a.status === 'REQUESTED_END' ? formatKes(a.summary?.totalPaid ?? 0) : '—'}</td>
                     <td className="px-4 py-3">
@@ -169,13 +174,12 @@ export default function ShiftTeamPanels() {
               <tbody className="divide-y">
                 {history.map((s) => {
                   const hasSummary = s.status !== 'REJECTED_START'
-                  const rejected = s.status === 'REJECTED_START' || s.status === 'REJECTED_END'
                   return (
                     <tr key={s.id} className="align-middle even:bg-muted/30">
                       {isSupervisor && (
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-3">
-                            <span className="flex size-8 shrink-0 items-center justify-center bg-secondary/15 text-[11px] font-bold text-secondary">{initials(s)}</span>
+                            <Avatar size="sm" />
                             <span className="font-semibold">{fullName(s)}</span>
                           </div>
                         </td>
@@ -187,7 +191,6 @@ export default function ShiftTeamPanels() {
                       <td className="px-4 py-3 text-right font-semibold tabular-nums">{hasSummary ? formatKes(s.summary?.totalPaid ?? 0) : '—'}</td>
                       <td className="px-4 py-3">
                         <Outcome s={s} />
-                        {rejected && <p className="mt-1 max-w-48 truncate text-xs text-destructive" title={s.rejectionReason ?? ''}>{s.rejectionReason || 'No reason given'}</p>}
                       </td>
                       <td className="px-4 py-3 text-right">
                         {hasSummary && (

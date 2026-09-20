@@ -1,4 +1,5 @@
 import { type ReactNode, useCallback, useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import {
   LuArrowDownLeft, LuArrowUpRight, LuBanknote, LuBedDouble, LuBellRing, LuBookOpen, LuBoxes, LuChefHat, LuCircleAlert, LuCircleCheck, LuClipboardList, LuClock3, LuLoaderCircle, LuLock,
@@ -96,7 +97,7 @@ type LocationOption = { id: string; name: string }
  * Gets the debtors/creditors/expected-profit and tax panels instead, which
  * the operations variant skips (Super Admin/Manager get that same detail
  * from the full Sales Report already). */
-function RevenueDashboard({ variant }: { variant: 'operations' | 'finance' }) {
+function RevenueDashboard({ variant, pickerSlot }: { variant: 'operations' | 'finance'; pickerSlot: HTMLElement | null }) {
   const [locations, setLocations] = useState<LocationOption[]>([])
   const { fixed: fixedLocation, options: pickableLocations, selectedId: selectedLocationId, setLocation, effectiveId: effectiveLocationId } = useWorkingLocation(locations, { persist: false })
 
@@ -155,8 +156,8 @@ function RevenueDashboard({ variant }: { variant: 'operations' | 'finance' }) {
 
   return (
     <>
-      {locationPicker && <div className="mt-7 flex justify-end">{locationPicker}</div>}
-      <section className={locationPicker ? 'mt-3' : 'mt-7'}>
+      {locationPicker && pickerSlot && createPortal(locationPicker, pickerSlot)}
+      <section className="mt-7">
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Today's financial overview</p>
         <div className="mt-2.5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard index={0} label="Total Revenue" value={formatKes(report.cards.totalRevenue)} icon={<LuWallet className="size-4" />} hint="Cash received + credit sales" />
@@ -368,7 +369,7 @@ function MiniBreakdown({ title, rows }: { title: string; rows: { key: string; la
           {top.map((r) => (
             <div key={r.key}>
               <div className="flex items-center justify-between text-sm"><span className="truncate font-medium">{r.label}</span><span className="shrink-0 pl-2 tabular-nums font-semibold">{formatKes(r.value)}</span></div>
-              <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-secondary" style={{ width: `${Math.min(100, Math.max(0, r.percent))}%` }} /></div>
+              <div className="mt-1 h-3 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-secondary" style={{ width: `${Math.min(100, Math.max(0, r.percent))}%` }} /></div>
             </div>
           ))}
         </div>
@@ -1531,6 +1532,7 @@ export default function Dashboard() {
   const moduleKeys = useAppSelector((s) => s.tenant.moduleKeys)
   const [shiftReady, setShiftReady] = useState(user?.role?.name === 'Super Admin')
   const [shiftLoaded, setShiftLoaded] = useState(false)
+  const [pickerSlot, setPickerSlot] = useState<HTMLDivElement | null>(null)
   const markShiftLoaded = useCallback(() => setShiftLoaded(true), [])
   const firstName = user?.firstName ?? 'there'
   // Revenue and every figure derived from it: Super Admin, Manager, and
@@ -1548,23 +1550,27 @@ export default function Dashboard() {
 
   return (
     <div className="dashboard-square mx-auto max-w-7xl px-6 py-8 sm:px-8 lg:px-10">
-      <header>
-        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-accent">
-          01 &middot; Daily Focus
-        </p>
-        <h1 className="mt-1.5 font-display text-3xl font-semibold tracking-tight text-foreground">
-          Dashboard
-        </h1>
-        <p className="mt-1.5 text-sm text-muted-foreground">
-          {getGreeting()}, {firstName}
-        </p>
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-accent">
+            01 &middot; Daily Focus
+          </p>
+          <h1 className="mt-1.5 font-display text-3xl font-semibold tracking-tight text-foreground">
+            Dashboard
+          </h1>
+          <p className="mt-1.5 text-sm text-muted-foreground">
+            {getGreeting()}, {firstName}
+          </p>
+        
+        </div>
+        <div ref={setPickerSlot} />
       </header>
 
       <ShiftProvider onReady={setShiftReady} onLoaded={markShiftLoaded}>
         <ShiftControl />
         {!shiftLoaded && roleName !== 'Super Admin' && <DashboardSkeleton />}
 
-      {shiftReady && revenueVariant && <RevenueDashboard variant={revenueVariant} />}
+      {shiftReady && revenueVariant && <RevenueDashboard variant={revenueVariant} pickerSlot={pickerSlot} />}
       {shiftReady && isReceptionist && <ReceptionDashboard />}
       {shiftReady && isWaiter && <WaiterDashboard />}
       {shiftReady && isStorekeeper && <StorekeeperDashboard />}

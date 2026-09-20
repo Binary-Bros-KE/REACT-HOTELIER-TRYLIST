@@ -13,11 +13,7 @@ const TONES: Record<Tone, string> = {
   accent: 'bg-accent text-accent-foreground',
 }
 
-/**
- * Parallelogram button: one slanted shape with a slightly darker icon block
- * on the left. The wrapper carries the drop shadow because clip-path would
- * otherwise clip a box-shadow away.
- */
+/** Rectangular action button with a slightly darker icon block on the left. */
 export default function SlantButton({
   icon, children, tone = 'primary', loading, disabled, onClick, title, className,
 }: {
@@ -31,18 +27,18 @@ export default function SlantButton({
   className?: string
 }) {
   return (
-    <span className={cn('inline-block drop-shadow-[0_1px_1px_rgba(2,6,23,0.3)]', (disabled || loading) && 'opacity-60', className)}>
+    <span className={cn('inline-block', (disabled || loading) && 'opacity-60', className)}>
       <button
         type="button"
         title={title}
         disabled={disabled || loading}
         onClick={onClick}
-        className={cn('flex h-8 items-stretch text-[11px] font-bold uppercase tracking-wider transition enabled:hover:brightness-110 enabled:active:translate-y-px disabled:cursor-not-allowed [clip-path:polygon(9px_0,100%_0,calc(100%-9px)_100%,0_100%)]', TONES[tone])}
+        className={cn('flex h-8 items-stretch text-[11px] font-bold uppercase tracking-wider transition enabled:hover:brightness-110 enabled:active:translate-y-px disabled:cursor-not-allowed shadow-sm', TONES[tone])}
       >
-        <span className="flex w-9 items-center justify-center bg-black/15 pl-2 text-sm">
+        <span className="flex w-9 items-center justify-center bg-black/15 text-sm">
           {loading ? <LuLoaderCircle className="size-4 animate-spin" /> : icon}
         </span>
-        <span className="flex items-center whitespace-nowrap pl-3 pr-5">{children}</span>
+        <span className="flex items-center whitespace-nowrap px-3.5">{children}</span>
       </button>
     </span>
   )
