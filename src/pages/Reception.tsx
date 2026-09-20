@@ -12,6 +12,7 @@ import {
   LuMapPin,
   LuUserPlus,
   LuUserRound,
+  LuUsersRound,
   LuUsers,
   LuUserX,
   LuX,
@@ -24,6 +25,8 @@ import { useWorkingLocation } from "@/lib/useWorkingLocation";
 import SharedStatCard from "@/components/ui/StatCard";
 import ActionButton from "@/components/ui/ActionButton";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import GroupCheckInModal from "@/components/reception/GroupCheckInModal";
+import GroupModal from "@/components/reception/GroupModal";
 import RoomTermsFields, { CreditFields, defaultTerms, termsDiscount, termsFromReservation, termsInvalid, termsPayload, type RoomTerms } from "@/components/reception/RoomTerms";
 
 const RESERVATION_SOURCES = ["WALK_IN", "PHONE", "WEBSITE", "BOOKING_ENGINE", "TRAVEL_AGENT", "OTA", "CORPORATE", "OTHER"] as const;
@@ -84,6 +87,7 @@ type Reservation = {
   folio: Folio | null;
   additionalGuests: Guest[];
   activities: ReservationActivity[];
+  group?: { id: string; name: string; groupNo: string } | null;
   roomSaleType?: "PAID" | "COMPLIMENTARY";
   complimentaryReason?: string | null;
   discountType?: "PERCENT" | "AMOUNT" | null;
@@ -91,6 +95,13 @@ type Reservation = {
   discountReason?: string | null;
 };
 type DeskLocation = { id: string; name: string; isActive?: boolean };
+type GroupRow = {
+  id: string;
+  groupNo: string;
+  name: string;
+  customer: { firstName: string; lastName: string };
+  summary: { rooms: number; pending: number; checkedIn: number; checkedOut: number; guests: number; charges: number; paid: number; balance: number; creditOutstanding: number };
+};
 
 const date = (offset = 0) => {
   const d = new Date();
@@ -182,20 +193,26 @@ export default function Reception() {
   const [cancelling, setCancelling] = useState<Reservation | null>(null);
   const [stayOpen, setStayOpen] = useState<Reservation | null>(null);
   const [newGuestOpen, setNewGuestOpen] = useState(false);
+  const [groups, setGroups] = useState<GroupRow[]>([]);
+  const [newGroupOpen, setNewGroupOpen] = useState(false);
+  const [groupOpenId, setGroupOpenId] = useState<string | null>(null);
+  const [showClosedGroups, setShowClosedGroups] = useState(false);
   const { fixed: fixedLocation, options: pickableLocations, selectedId: selectedLocationId, setLocation, effectiveId: deskId } = useWorkingLocation(locations);
   const at = useMemo(() => apiAt(deskId), [deskId]);
 
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
     try {
-      const [c, r, b] = await Promise.all([
+      const [c, r, b, g] = await Promise.all([
         api<{ customers: Customer[] }>("/reception/customers"),
         api<{ rooms: Room[] }>("/rooms/rooms"),
         api<{ reservations: Reservation[] }>("/reception/reservations"),
+        api<{ groups: GroupRow[] }>("/reception/groups"),
       ]);
       setCustomers(c.customers);
       setRooms(r.rooms);
       setBookings(b.reservations);
+      setGroups(g.groups);
       setError("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load Reception");
@@ -307,7 +324,10 @@ export default function Reception() {
             <h2 className="font-display text-xl font-semibold leading-tight">Reservations &amp; check-ins</h2>
             <p className="text-xs text-muted-foreground">Completed and cancelled stays move to Guest Stays.</p>
           </div>
-          <ActionButton tone="primary" icon={<LuUserPlus />} onClick={() => setNewGuestOpen(true)}>New Guest</ActionButton>
+          <div className="flex flex-wrap gap-2">
+            <ActionButton tone="secondary" icon={<LuUsersRound />} onClick={() => setNewGroupOpen(true)}>New Group</ActionButton>
+            <ActionButton tone="primary" icon={<LuUserPlus />} onClick={() => setNewGuestOpen(true)}>New Guest</ActionButton>
+          </div>
         </div>
         {loading ? (
           <div className="p-16 text-center"><LuLoaderCircle className="mx-auto animate-spin" /></div>
@@ -331,7 +351,7 @@ export default function Reception() {
                     <tr key={b.id} className="align-middle even:bg-muted/30">
                       <td className="px-5 py-3.5">
                         <p className="font-semibold">{b.customer.firstName} {b.customer.lastName}</p>
-                        <p className="text-xs text-muted-foreground">{b.reservationNo}</p>
+                        <p className="text-xs text-muted-foreground">{b.reservationNo}{b.group && <button type="button" onClick={() => setGroupOpenId(b.group!.id)} className="ml-2 font-semibold text-secondary hover:underline">Group: {b.group.name}</button>}</p>
                       </td>
                       <td className="px-5 py-3.5">{b.room.number} · {b.room.roomType.name}</td>
                       <td className="whitespace-nowrap px-5 py-3.5 text-xs text-muted-foreground">
@@ -372,6 +392,60 @@ export default function Reception() {
         )}
       </section>
 
+      {(() => {
+        const visibleGroups = groups.filter((g) => showClosedGroups || g.summary.pending + g.summary.checkedIn > 0 || g.summary.creditOutstanding > 0.01);
+        if (groups.length === 0) return null;
+        return (
+          <section className="mt-6 overflow-hidden border bg-card shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
+              <div className="border-l-4 border-secondary pl-3">
+                <h2 className="font-display text-xl font-semibold leading-tight">Groups</h2>
+                <p className="text-xs text-muted-foreground">Parties booked together — check in, check out and pay for all their rooms at once.</p>
+              </div>
+              <label className="flex items-center gap-2 text-xs text-muted-foreground"><input type="checkbox" checked={showClosedGroups} onChange={(e) => setShowClosedGroups(e.target.checked)} /> Show completed groups</label>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[760px] text-left text-sm">
+                <thead className="bg-primary text-primary-foreground"><tr><th className={TH}>Group</th><th className={TH}>Rooms</th><th className={TH}>Guests</th><th className={cn(TH, "text-right")}>Balance</th><th className={cn(TH, "text-right")}>Action</th></tr></thead>
+                <tbody className="divide-y">
+                  {visibleGroups.map((g) => (
+                    <tr key={g.id} className="align-middle even:bg-muted/30">
+                      <td className="px-5 py-3.5"><p className="font-semibold">{g.name}</p><p className="text-xs text-muted-foreground">{g.groupNo} · {g.customer.firstName} {g.customer.lastName}</p></td>
+                      <td className="px-5 py-3.5">{g.summary.rooms}<span className="block text-xs text-muted-foreground">{g.summary.checkedIn} in house{g.summary.pending > 0 ? ` · ${g.summary.pending} waiting` : ""}{g.summary.checkedOut > 0 ? ` · ${g.summary.checkedOut} out` : ""}</span></td>
+                      <td className="px-5 py-3.5">{g.summary.guests}</td>
+                      <td className="px-5 py-3.5 text-right tabular-nums">{formatKes(Math.max(0, g.summary.balance))}{g.summary.creditOutstanding > 0.01 && <span className="block text-xs font-semibold text-warning">{formatKes(g.summary.creditOutstanding)} on credit</span>}</td>
+                      <td className="px-5 py-3.5 text-right"><ActionButton tone="success" icon={<LuUsersRound />} onClick={() => setGroupOpenId(g.id)}>Manage group</ActionButton></td>
+                    </tr>
+                  ))}
+                  {visibleGroups.length === 0 && <tr><td colSpan={5} className="px-5 py-8 text-center text-sm text-muted-foreground">No active groups.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        );
+      })()}
+
+      {newGroupOpen && (
+        <GroupCheckInModal
+          customers={customers}
+          rooms={rooms}
+          at={at}
+          onClose={() => setNewGroupOpen(false)}
+          onDone={(id) => { setNewGroupOpen(false); void load(); setGroupOpenId(id); }}
+          onCustomerCreated={() => void load(true)}
+        />
+      )}
+      {groupOpenId && (
+        <GroupModal
+          groupId={groupOpenId}
+          at={at}
+          rooms={rooms}
+          customers={customers}
+          onClose={() => setGroupOpenId(null)}
+          onChanged={() => void load(true)}
+          onOpenStay={(id) => { const b = bookings.find((x) => x.id === id); if (b) setStayOpen(b); }}
+        />
+      )}
       {newGuestOpen && (
         <NewGuestModal
           customers={customers}
