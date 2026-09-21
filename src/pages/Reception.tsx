@@ -139,18 +139,19 @@ const STATUS_TONE: Record<ReservationStatus, PillTone> = {
 const TH = "px-5 py-3 text-xs font-bold uppercase tracking-wider";
 
 /** Shared hard-edged modal chrome for every Reception dialog. */
-function ModalShell({ kicker, title, subtitle, onClose, footer, wide, children }: {
+function ModalShell({ kicker, title, subtitle, onClose, footer, wide, tall, children }: {
   kicker: string;
   title: string;
   subtitle?: string;
   onClose: () => void;
   footer?: ReactNode;
   wide?: boolean;
+  tall?: boolean;
   children: ReactNode;
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className={cn("flex max-h-[92vh] w-full flex-col overflow-hidden border-2 border-foreground/25 bg-card shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]", wide ? "max-w-2xl" : "max-w-md")}>
+      <div className={cn("flex max-h-[92vh] w-full flex-col overflow-hidden border-2 border-foreground/25 bg-card shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]", tall && "h-[92vh]", wide ? "max-w-2xl" : "max-w-md")}>
         <div className="flex items-start justify-between gap-4 border-b-4 border-accent bg-muted/60 px-5 py-4">
           <div className="min-w-0">
             <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">{kicker}</p>
@@ -608,6 +609,7 @@ function NewGuestModal({ customers, rooms, at, onClose, onDone, onCustomerCreate
   return (
     <ModalShell
       wide
+      tall
       kicker="Reception"
       title="New Guest"
       subtitle={STEPS[step]}
