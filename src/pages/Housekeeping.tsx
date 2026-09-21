@@ -3,7 +3,6 @@ import { LuBan, LuCalendarClock, LuCircleAlert, LuLoaderCircle, LuPlay, LuPlus, 
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/Toast'
-import Button from '@/components/ui/Button'
 import ActionButton from '@/components/ui/ActionButton'
 import ModalShell from '@/components/ui/ModalShell'
 import PageBanner from '@/components/ui/PageBanner'
@@ -83,14 +82,14 @@ export default function Housekeeping() {
   const tabs: { key: Tab; label: string }[] = [{ key: 'tasks', label: isManager ? 'Tasks' : 'My tasks' }, { key: 'history', label: 'History' }, { key: 'reports', label: isManager ? 'Reports' : 'My report' }]
 
   return (
-    <div className="mx-auto max-w-7xl px-6 py-8 sm:px-8 lg:px-10">
+    <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
       <PageBanner kicker="Housekeeping" title={isManager ? 'Housekeeping tasks' : 'My tasks'}>
-        {isManager && <Button onClick={() => setCreateOpen(true)}><LuPlus /> New task</Button>}
+        {isManager && <ActionButton tone="primary" icon={<LuPlus />} onClick={() => setCreateOpen(true)}>New task</ActionButton>}
       </PageBanner>
 
-      <div className="mt-6 flex w-fit border bg-card p-1">
+      <div className="mt-6 flex w-fit border bg-card">
         {tabs.map((t) => (
-          <button key={t.key} type="button" onClick={() => setTab(t.key)} className={cn('px-4 py-2 text-sm font-semibold transition', tab === t.key ? 'bg-black text-white' : 'text-muted-foreground hover:bg-muted')}>{t.label}</button>
+          <button key={t.key} type="button" onClick={() => setTab(t.key)} className={cn('px-4 py-2 text-xs font-bold uppercase tracking-wider transition', tab === t.key ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}>{t.label}</button>
         ))}
       </div>
 
@@ -107,9 +106,9 @@ export default function Housekeeping() {
           </section>
 
           <div className="mt-5 flex flex-wrap items-end gap-3">
-            <div className="flex border bg-card p-1">
+            <div className="flex border bg-card">
               {([['active', 'All active'], ['PENDING', 'Pending'], ['IN_PROGRESS', 'In progress']] as const).map(([value, label]) => (
-                <button key={value} type="button" onClick={() => setStatusFilter(value)} className={cn('px-3 py-1.5 text-xs font-semibold', statusFilter === value ? 'bg-black text-white' : 'text-muted-foreground hover:bg-muted')}>{label}</button>
+                <button key={value} type="button" onClick={() => setStatusFilter(value)} className={cn('px-3 py-2 text-xs font-bold uppercase tracking-wider', statusFilter === value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}>{label}</button>
               ))}
             </div>
             <input className="input h-9 w-56 text-sm" placeholder="Search room, task, employee…" value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -120,14 +119,14 @@ export default function Housekeeping() {
             )}
           </div>
 
-          {error && <div className="mt-4 flex items-center gap-2 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert /> {error}</div>}
+          {error && <div className="mt-4 flex items-center gap-2 border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert /> {error}</div>}
 
           {loading ? <div className="p-16 text-center"><LuLoaderCircle className="mx-auto animate-spin" /></div>
             : tasks.length === 0 ? <div className="mt-5 border border-dashed p-16 text-center text-sm text-muted-foreground">{isManager ? 'Nothing to do right now. New checkouts and dirty rooms will appear here automatically.' : 'No tasks assigned to you right now. New ones appear here automatically.'}</div>
             : (
               <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {tasks.map((task) => (
-                  <article key={task.id} className={cn('flex flex-col border bg-card p-4 shadow-sm', task.overdue && 'border-destructive/60')}>
+                  <article key={task.id} className={cn('flex flex-col border border-l-4 border-l-accent bg-card p-4 shadow-sm', task.overdue && 'border-destructive/60 border-l-destructive')}>
                     <div className="flex items-start justify-between gap-2">
                       <button type="button" onClick={() => setDetailId(task.id)} className="min-w-0 text-left">
                         <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{task.taskNo} · {SOURCE_LABEL[task.source]}</p>
@@ -198,10 +197,10 @@ function CreateTaskModal({ staff, onClose, onCreated }: { staff: Staff[]; onClos
 
   const valid = mode === 'room' ? Boolean(roomId) : title.trim().length >= 2
   return (
-    <ModalShell kicker="Housekeeping" title="New task" onClose={onClose} size="md" footer={<Button onClick={() => void save()} disabled={!valid || saving}>{saving ? 'Saving…' : 'Create task'}</Button>}>
+    <ModalShell kicker="Housekeeping" title="New task" onClose={onClose} size="md" footer={<ActionButton tone="primary" icon={<LuCheck />} loading={saving} disabled={!valid} onClick={() => void save()}>{saving ? 'Saving…' : 'Create task'}</ActionButton>}>
       <div className="space-y-4 p-5">
-        <div className="flex w-fit border p-1">
-          {([['room', 'Room task'], ['general', 'General task']] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setMode(value)} className={cn('px-3 py-1.5 text-xs font-semibold', mode === value ? 'bg-black text-white' : 'text-muted-foreground hover:bg-muted')}>{label}</button>)}
+        <div className="flex w-fit border">
+          {([['room', 'Room task'], ['general', 'General task']] as const).map(([value, label]) => <button key={value} type="button" onClick={() => setMode(value)} className={cn('px-3 py-2 text-xs font-bold uppercase tracking-wider', mode === value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}>{label}</button>)}
         </div>
         {mode === 'room' ? (
           <>
@@ -250,7 +249,7 @@ function AssignModal({ task, staff, onClose, onDone }: { task: Task; staff: Staf
     } catch (cause) { toast.error(cause instanceof Error ? cause.message : 'Could not assign task'); setSaving(false) }
   }
   return (
-    <ModalShell kicker={task.taskNo ?? 'Task'} title={`${task.assignedToId ? 'Reassign' : 'Assign'} ${taskName(task)}`} onClose={onClose} size="sm" footer={<Button onClick={() => void save()} disabled={!employeeId || employeeId === task.assignedToId || saving}>{saving ? 'Saving…' : 'Assign'}</Button>}>
+    <ModalShell kicker={task.taskNo ?? 'Task'} title={`${task.assignedToId ? 'Reassign' : 'Assign'} ${taskName(task)}`} onClose={onClose} size="sm" footer={<ActionButton tone="primary" icon={<LuUserRoundPlus />} loading={saving} disabled={!employeeId || employeeId === task.assignedToId} onClick={() => void save()}>{saving ? 'Saving…' : 'Assign'}</ActionButton>}>
       <div className="space-y-3 p-5">
         <SearchableSelect value={employeeId} onChange={setEmployeeId} placeholder="Choose an employee" searchPlaceholder="Search staff…" emptyText="No housekeeping staff. Add employees to the Housekeeping department first." options={staff.map((s) => ({ value: s.id, label: s.name, hint: `${s.activeTasks} active` }))} />
         {task.status === 'IN_PROGRESS' && <p className="text-xs text-warning">This task is already in progress. Reassigning restarts the work for the new person.</p>}
@@ -271,7 +270,7 @@ function CancelModal({ task, onClose, onDone }: { task: Task; onClose: () => voi
     } catch (cause) { toast.error(cause instanceof Error ? cause.message : 'Could not cancel task'); setSaving(false) }
   }
   return (
-    <ModalShell kicker={task.taskNo ?? 'Task'} title={`Cancel ${taskName(task)}`} onClose={onClose} size="sm" footer={<Button variant="danger" onClick={() => void save()} disabled={reason.trim().length < 3 || saving}>{saving ? 'Cancelling…' : 'Cancel task'}</Button>}>
+    <ModalShell kicker={task.taskNo ?? 'Task'} title={`Cancel ${taskName(task)}`} onClose={onClose} size="sm" footer={<ActionButton tone="danger" icon={<LuBan />} loading={saving} disabled={reason.trim().length < 3} onClick={() => void save()}>{saving ? 'Cancelling…' : 'Cancel task'}</ActionButton>}>
       <div className="space-y-3 p-5">
         <label className="block text-sm font-medium">Reason
           <textarea rows={3} className="input mt-1.5" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why is this task being cancelled?" />

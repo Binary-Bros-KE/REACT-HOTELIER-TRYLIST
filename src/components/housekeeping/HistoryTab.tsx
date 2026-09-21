@@ -67,8 +67,8 @@ export default function HistoryTab({ isManager, staff }: { isManager: boolean; s
         <label className="text-xs font-semibold">From<input type="date" className="input mt-1" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
         <label className="text-xs font-semibold">To<input type="date" className="input mt-1" value={to} onChange={(e) => setTo(e.target.value)} /></label>
       </div>
-      {error && <div className="mt-4 flex items-center gap-2 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert /> {error}</div>}
-      <div className="mt-4 overflow-x-auto border bg-card">
+      {error && <div className="mt-4 flex items-center gap-2 border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert /> {error}</div>}
+      <div className="mt-4 overflow-x-auto border bg-card shadow-sm">
         <table className="w-full min-w-[820px] text-left text-sm">
           <thead className="bg-primary text-primary-foreground"><tr>{['Task', 'Employee', 'Assigned', 'Started', 'Finished', 'Time taken', 'Outcome'].map((h) => <th key={h} className="px-4 py-3 text-xs font-bold uppercase tracking-wider">{h}</th>)}</tr></thead>
           <tbody className="divide-y">
