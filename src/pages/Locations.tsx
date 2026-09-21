@@ -69,6 +69,8 @@ type LocationRow = {
   canSellServices: boolean
   canSellProducts: boolean
   serveMode: ServeMode
+  requireStoreDispatch: boolean
+  dispatchFromLocationId: string | null
   receiptHeader: string | null
   receiptFooter: string | null
   invoiceHeader: string | null
@@ -94,6 +96,8 @@ type LocationForm = {
   canSellServices: boolean
   canSellProducts: boolean
   serveMode: ServeMode
+  requireStoreDispatch: boolean
+  dispatchFromLocationId: string
   receiptHeader: string
   receiptFooter: string
   invoiceHeader: string
@@ -107,6 +111,8 @@ const emptyLocationForm: LocationForm = {
   isActive: true,
   canSellRooms: true, canSellMenu: true, canSellServices: true, canSellProducts: true,
   serveMode: 'KITCHEN',
+  requireStoreDispatch: false,
+  dispatchFromLocationId: '',
   receiptHeader: '', receiptFooter: '', invoiceHeader: '', invoiceFooter: '', quotationHeader: '', quotationFooter: '',
 }
 
@@ -169,6 +175,8 @@ export default function Locations() {
       canSellServices: location.canSellServices,
       canSellProducts: location.canSellProducts,
       serveMode: location.serveMode,
+      requireStoreDispatch: location.requireStoreDispatch,
+      dispatchFromLocationId: location.dispatchFromLocationId ?? '',
       receiptHeader: location.receiptHeader ?? '',
       receiptFooter: location.receiptFooter ?? '',
       invoiceHeader: location.invoiceHeader ?? '',
@@ -183,7 +191,7 @@ export default function Locations() {
     event.preventDefault()
     setSaving(true)
     try {
-      await api(editing ? `/locations/${editing.id}` : '/locations', { method: editing ? 'PATCH' : 'POST', body: JSON.stringify(form) })
+      await api(editing ? `/locations/${editing.id}` : '/locations', { method: editing ? 'PATCH' : 'POST', body: JSON.stringify({ ...form, dispatchFromLocationId: form.dispatchFromLocationId || null }) })
       toast.success(editing ? 'Location updated.' : 'Location created.')
       setShowForm(false)
       await load()
@@ -447,6 +455,25 @@ export default function Locations() {
                     )
                   })}
                 </div>
+                {form.serveMode === 'KITCHEN' && (
+                  <div className={cn('mt-3 border p-3 transition-colors', form.requireStoreDispatch ? 'border-secondary bg-secondary/10' : 'bg-muted/40')}>
+                    <label className="flex cursor-pointer items-start gap-2.5">
+                      <input type="checkbox" checked={form.requireStoreDispatch} onChange={(e) => setForm({ ...form, requireStoreDispatch: e.target.checked })} className="mt-0.5 size-4 accent-secondary" />
+                      <span>
+                        <span className="block text-sm font-semibold">Kitchen needs store approval for ingredients</span>
+                        <span className="block text-xs text-muted-foreground">The chef requests the recipe&apos;s ingredients from the store, and the storekeeper dispatches them, before a ticket can be started. Leave off if the kitchen keeps its own stock.</span>
+                      </span>
+                    </label>
+                    {form.requireStoreDispatch && (
+                      <label className="mt-3 block text-sm font-medium">Supplying store
+                        <select className="input mt-1.5" value={form.dispatchFromLocationId} onChange={(e) => setForm({ ...form, dispatchFromLocationId: e.target.value })}>
+                          <option value="">First store location (default)</option>
+                          {locations.filter((l) => l.type === 'STORE' && l.id !== editing?.id).map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+                        </select>
+                      </label>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
