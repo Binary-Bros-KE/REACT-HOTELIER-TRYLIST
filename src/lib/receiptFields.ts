@@ -6,6 +6,11 @@ import type { ReceiptOrder, ReceiptProfile } from '@/components/pos/OrderReceipt
  * drift from each other.
  */
 
+/** The display name of a receipt line: a menu item, a service or a retail product. */
+export function receiptItemName(item: { menuItem?: { name: string } | null; service?: { name: string } | null; product?: { name: string } | null }): string {
+  return item.menuItem?.name ?? item.service?.name ?? item.product?.name ?? 'Item'
+}
+
 /** Location's own phone(s) — primary[/secondary] — else the business's. */
 export function receiptPhone(order: ReceiptOrder, profile: ReceiptProfile): string | null {
   const loc = order.location

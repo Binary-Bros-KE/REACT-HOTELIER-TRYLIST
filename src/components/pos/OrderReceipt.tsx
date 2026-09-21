@@ -2,7 +2,10 @@ export type ReceiptOrderItem = {
   id: string
   quantity: number
   unitPrice: string
-  menuItem: { name: string }
+  // Exactly one of these is set, depending on what was sold.
+  menuItem?: { name: string } | null
+  service?: { name: string } | null
+  product?: { name: string } | null
   variant: { name: string } | null
   addons: { id: string; quantity: number; unitPrice: string; addon: { name: string } }[]
   returnRequests?: { id: string; status: 'PENDING' | 'APPROVED' | 'REJECTED'; quantity: number; reason?: string | null }[]
@@ -55,7 +58,7 @@ export type ReceiptOrder = {
 }
 export type ReceiptProfile = { businessName: string; address: string | null; city: string | null; primaryPhone: string | null; kraPin: string | null } | null
 
-import { receiptFooterText, receiptHeaderText, receiptPhone, servedByName, showsTaxAsAddedOn } from '@/lib/receiptFields'
+import { receiptFooterText, receiptHeaderText, receiptItemName, receiptPhone, servedByName, showsTaxAsAddedOn } from '@/lib/receiptFields'
 
 const formatKes = (value: number | string) => `KSh ${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
@@ -100,7 +103,7 @@ export default function OrderReceipt({ order, profile }: { order: ReceiptOrder; 
         {order.items.map((item) => (
           <div key={item.id}>
             <div className="flex justify-between">
-              <span>{item.quantity} × {item.menuItem.name}{item.variant ? ` (${item.variant.name})` : ''}</span>
+              <span>{item.quantity} × {receiptItemName(item)}{item.variant ? ` (${item.variant.name})` : ''}</span>
               <span>{formatKes(Number(item.unitPrice) * item.quantity)}</span>
             </div>
             {item.addons.map((a) => (

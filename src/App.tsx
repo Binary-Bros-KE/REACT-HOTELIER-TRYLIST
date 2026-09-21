@@ -220,6 +220,7 @@ function App() {
         <Route path="/sales/tables" element={<Tables />} />
         <Route path="/sales/approvals" element={<Approvals />} />
         <Route path="/sales/receipts" element={<Receipts />} />
+        <Route path="/service-center/receipts" element={<Receipts channel="SERVICES" />} />
         <Route path="/reports" element={<Reports />} />
         <Route path="/reports/inventory-report" element={<InventoryOverview />} />
         <Route path="/reports/products-report" element={<ProductsReport />} />

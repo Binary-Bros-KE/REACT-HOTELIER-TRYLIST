@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  LuBuilding2, LuCheck, LuChevronDown, LuCircleAlert, LuCircleCheck, LuConciergeBell, LuLoaderCircle, LuMapPin, LuMinus,
+  LuBedDouble, LuBuilding2, LuCheck, LuChevronDown, LuCircleAlert, LuCircleCheck, LuConciergeBell, LuLoaderCircle, LuMapPin, LuMinus,
   LuPlus, LuSearch, LuTrash2, LuUserRound,
 } from 'react-icons/lu'
 import { api } from '@/lib/api'
@@ -8,7 +8,11 @@ import { useAppSelector } from '@/store/hooks'
 import { useWorkingLocation } from '@/lib/useWorkingLocation'
 import { cn } from '@/lib/utils'
 import RetailCheckoutModal, { type CreatedOrder, type PaymentMethod } from '@/components/pos/RetailCheckoutModal'
-import { resolveTax, taxLabel, type TaxMode, type TaxTreatment } from '@/lib/tax'
+import CustomerSelectModal, { partyLabel, type SaleParty } from '@/components/pos/CustomerSelectModal'
+import ReceiptPreviewModal from '@/components/pos/ReceiptPreviewModal'
+import type { ReceiptProfile } from '@/components/pos/OrderReceipt'
+import { resolveTax, type TaxMode, type TaxTreatment } from '@/lib/tax'
+import { computeFinancialsFromRows } from '@/lib/orderTotals'
 
 type ApiService = {
   id: string
@@ -16,26 +20,21 @@ type ApiService = {
   price: string | number
   unit: { name: string }
   category: { id: string; name: string }
+  // The service's own tax, or the property default - already resolved by the API.
+  taxRate: string | number | null
+  taxMode: TaxMode | null
+  taxTreatment: TaxTreatment | null
 }
 type RestaurantLocation = { id: string; name: string; type: string | null; isActive: boolean }
 type BusinessProfile = { businessName: string; taxRate: string | null; taxMode: TaxMode; taxTreatment: TaxTreatment }
-type PosService = Omit<ApiService, 'price'> & { price: number }
+type PosService = Omit<ApiService, 'price'> & { price: number; tax: { rate: number; mode: TaxMode; treatment: TaxTreatment } }
 type CartItem = PosService & { quantity: number }
 
 const formatKes = (price: number) => `KSh ${price.toLocaleString('en-KE', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
 
-function computeFinancials(cart: CartItem[], discountInput: string, profile: BusinessProfile | null) {
-  const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0)
-  const discount = Math.min(Number(discountInput) || 0, subtotal)
-  const taxable = subtotal - discount
-  const tax = resolveTax({}, profile)
-  let taxAmount = 0
-  let total = taxable
-  if (tax.treatment === 'STANDARD' && tax.rate > 0) {
-    if (tax.mode === 'EXCLUSIVE') { taxAmount = taxable * (tax.rate / 100); total = taxable + taxAmount }
-    else { taxAmount = taxable - taxable / (1 + tax.rate / 100); total = taxable }
-  }
-  return { subtotal, discount, taxable, tax, taxAmount, total }
+/** Per-line tax (each service's own treatment, else the property default) - the same engine as the food till and the server. */
+function computeFinancials(cart: CartItem[], discountInput: string) {
+  return computeFinancialsFromRows(cart.map((item) => ({ sub: item.price * item.quantity, tax: item.tax })), discountInput)
 }
 
 export default function ServicesPointOfSale() {
@@ -55,13 +54,16 @@ export default function ServicesPointOfSale() {
   const [error, setError] = useState('')
   const [confirmation, setConfirmation] = useState<CreatedOrder | null>(null)
   const [showCheckout, setShowCheckout] = useState(false)
+  const [party, setParty] = useState<SaleParty>({ kind: 'WALK_IN' })
+  const [customerModalOpen, setCustomerModalOpen] = useState(false)
+  const [receiptOrderId, setReceiptOrderId] = useState<string | null>(null)
 
   const { fixed: fixedLocation, options: pickableLocations, selectedId: selectedLocationId, setLocation, effectiveId: effectiveLocationId, needsChoice: needsLocationChoice } = useWorkingLocation(locations)
 
   async function loadServices() {
     const query = effectiveLocationId ? `?locationId=${effectiveLocationId}` : ''
     const response = await api<{ items: ApiService[] }>(`/pos/service-items${query}`)
-    setServices(response.items.map((item) => ({ ...item, price: Number(item.price) })))
+    setServices(response.items.map((item) => ({ ...item, price: Number(item.price), tax: resolveTax({ taxRate: item.taxRate, taxMode: item.taxMode, taxTreatment: item.taxTreatment }) })))
   }
 
   async function loadAll() {
@@ -98,7 +100,7 @@ export default function ServicesPointOfSale() {
   const categories = useMemo(() => ['All items', ...Array.from(new Set(services.map((s) => s.category.name)))], [services])
   const filteredCategories = categories.filter((c) => c.toLowerCase().includes(categoryQuery.trim().toLowerCase()))
   const visibleItems = services.filter((s) => (activeCategory === 'All items' || s.category.name === activeCategory) && (!search.trim() || s.name.toLowerCase().includes(search.trim().toLowerCase())))
-  const financials = useMemo(() => computeFinancials(cart, discount, profile), [cart, discount, profile])
+  const financials = useMemo(() => computeFinancials(cart, discount), [cart, discount])
   const itemCount = cart.reduce((sum, item) => sum + item.quantity, 0)
 
   function addItem(item: PosService) {
@@ -120,6 +122,7 @@ export default function ServicesPointOfSale() {
   function resetSale() {
     setCart([])
     setDiscount('0')
+    setParty({ kind: 'WALK_IN' })
   }
 
   return (
@@ -217,10 +220,19 @@ export default function ServicesPointOfSale() {
 
       <aside className="mt-8 flex h-fit flex-col gap-3 lg:mt-0">
         <div className="flex flex-col rounded-sm border border-border bg-card shadow-sm">
-          <div className="flex items-center gap-3 border-b p-4">
-            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-sm border border-dashed border-accent px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-accent">
-              <span className="size-1.5 rounded-full bg-accent" /> New Sale
-            </span>
+          <div className="flex items-start justify-between gap-3 border-b p-4">
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">New Sale</p>
+              <button type="button" onClick={() => setCustomerModalOpen(true)} className="mt-1.5 flex max-w-full items-center gap-2 text-left">
+                {party.kind === 'ROOM' ? <LuBedDouble className="size-4 shrink-0 text-secondary" /> : <LuUserRound className="size-4 shrink-0 text-primary" />}
+                <span className="truncate text-lg font-semibold text-foreground">{partyLabel(party)}</span>
+                <LuChevronDown className="size-4 shrink-0 text-muted-foreground" />
+              </button>
+              {party.kind === 'ROOM' && <p className="mt-1 text-xs font-semibold text-secondary">Charges to Room {party.roomNumber}</p>}
+            </div>
+            <button type="button" onClick={resetSale} disabled={cart.length === 0 && party.kind === 'WALK_IN'} title="Clear this sale" className="rounded-sm p-1 text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive disabled:pointer-events-none disabled:opacity-30">
+              <LuTrash2 className="size-4" />
+            </button>
           </div>
 
           <div className="max-h-96 overflow-y-auto p-4">
@@ -265,7 +277,9 @@ export default function ServicesPointOfSale() {
           <div className="space-y-1.5 border-t bg-muted/30 p-4 text-sm">
             <div className="flex justify-between text-muted-foreground"><span>Subtotal</span><span>{formatKes(financials.subtotal)}</span></div>
             {financials.discount > 0 && <div className="flex justify-between text-destructive"><span>Discount</span><span>-{formatKes(financials.discount)}</span></div>}
-            <div className="flex justify-between text-muted-foreground"><span>{taxLabel(financials.tax)}</span><span>{formatKes(financials.taxAmount)}</span></div>
+            {financials.taxLines.map((line) => (
+              <div key={line.key} className="flex justify-between text-muted-foreground"><span>{line.label}</span><span>{formatKes(line.tax)}</span></div>
+            ))}
             <div className="flex justify-between border-t pt-1.5 text-base font-bold text-foreground"><span>Total</span><span>{formatKes(financials.total)}</span></div>
           </div>
 
@@ -291,15 +305,20 @@ export default function ServicesPointOfSale() {
           locationId={effectiveLocationId || undefined}
           discount={financials.discount}
           methods={methods}
+          party={party}
+          onPartyChange={setParty}
           onClose={() => setShowCheckout(false)}
           onComplete={(order) => {
             setShowCheckout(false)
             resetSale()
             setConfirmation(order)
+            setReceiptOrderId(order.id)
             void loadAll()
           }}
         />
       )}
+      {customerModalOpen && <CustomerSelectModal party={party} onChange={setParty} onClose={() => setCustomerModalOpen(false)} />}
+      {receiptOrderId && <ReceiptPreviewModal orderId={receiptOrderId} profile={profile as unknown as ReceiptProfile} onClose={() => setReceiptOrderId(null)} />}
     </div>
   )
 }

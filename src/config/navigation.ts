@@ -155,6 +155,7 @@ export const navigation: NavGroup[] = [
     section: 'SERVICE_CENTER',
     items: [
       { label: 'Point of Sale', href: '/service-center/pos', icon: LuShoppingCart, moduleKey: 'SERVICE_CENTER' },
+      { label: 'Receipts', href: '/service-center/receipts', icon: LuReceiptText },
       { label: 'Services', href: '/service-center/services', icon: LuConciergeBell },
       { label: 'Appointments', href: '/service-center/appointments', icon: LuCalendarCheck },
       { label: 'Memberships', href: '/service-center/memberships', icon: LuIdCard },

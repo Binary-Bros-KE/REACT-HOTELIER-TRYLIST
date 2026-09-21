@@ -49,7 +49,9 @@ const paymentStatusOf = (row: ReceiptRow): PaymentStatus => {
   return owed <= 0.01 ? 'PAID' : row.paid > 0.01 ? 'PARTIAL' : 'UNPAID'
 }
 
-export default function Receipts() {
+/** channel: leave unset for every sale (Sales > Receipts) or pass 'SERVICES' for the Service Center's own receipts. */
+export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 'SERVICES' } = {}) {
+  const isServices = channel === 'SERVICES'
   const toast = useToast()
   const [orders, setOrders] = useState<ReceiptRow[]>([])
   const [locations, setLocations] = useState<LocationOption[]>([])
@@ -74,6 +76,7 @@ export default function Receipts() {
     setError('')
     try {
       let query = effectiveLocationId ? `&locationId=${effectiveLocationId}` : ''
+      if (channel) query += `&channel=${channel}`
       if (employeeFilter) query += `&employeeId=${employeeFilter}`
       if (dateFrom) query += `&from=${dateFrom}`
       if (dateTo) query += `&to=${dateTo}`
@@ -103,7 +106,7 @@ export default function Receipts() {
     } finally {
       setLoading(false)
     }
-  }, [effectiveLocationId, statusFilter, employeeFilter, dateFrom, dateTo, toast])
+  }, [effectiveLocationId, channel, statusFilter, employeeFilter, dateFrom, dateTo, toast])
 
   useEffect(() => { void load() }, [load])
 
@@ -131,7 +134,7 @@ export default function Receipts() {
 
   return (
     <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
-      <PageBanner kicker="Sales" title="Receipts" />
+      <PageBanner kicker={isServices ? 'Service center' : 'Sales'} title={isServices ? 'Service Receipts' : 'Receipts'} />
 
       <section className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatCard index={0} icon={<LuReceiptText className="size-4" />} label="Sales" value={formatKes(totalSales)} hint={`${completedVisible.length} order${completedVisible.length === 1 ? '' : 's'}`} />
@@ -231,7 +234,7 @@ export default function Receipts() {
               <thead className="bg-primary text-primary-foreground">
                 <tr>
                   <th className={TH}>Order</th>
-                  <th className={TH}>Table</th>
+                  <th className={TH}>{isServices ? 'Served by' : 'Table'}</th>
                   <th className={TH}>Customer</th>
                   <th className={TH}>Date</th>
                   <th className={TH}>Status</th>
@@ -248,7 +251,7 @@ export default function Receipts() {
                     <tr key={order.id} className="cursor-pointer align-middle transition even:bg-muted/30 hover:bg-muted/60" onClick={() => setManageId(order.id)}>
                       <td className="px-5 py-3.5 font-semibold">#{order.orderNumber}</td>
                       <td className="px-5 py-3.5 text-muted-foreground">
-                        {order.table?.label ?? 'Takeaway'}
+                        {order.table?.label ?? (isServices ? '' : 'Takeaway')}
                         {order.createdBy && staffNames[order.createdBy] && (
                           <span className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground/80"><LuUserRound className="size-3" /> {staffNames[order.createdBy]}</span>
                         )}

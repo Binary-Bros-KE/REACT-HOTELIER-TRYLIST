@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { LuCircleAlert, LuLoaderCircle, LuX } from 'react-icons/lu'
 import { api } from '@/lib/api'
-import { CustomerSelectField, type SaleParty } from './CustomerSelectModal'
+import { CustomerSelectField, partyLabel, type SaleParty } from './CustomerSelectModal'
 
 export type PaymentMethod = { id: string; name: string; requiresReference: boolean }
 export type CreatedOrder = { id: string; orderNumber: number }
@@ -14,18 +14,27 @@ const formatKes = (price: number) => `KSh ${price.toLocaleString('en-KE', { mini
  * screens — neither has a kitchen step, so creating the order and settling
  * it happen back-to-back behind one button, unlike the food POS's separate
  * send-to-kitchen / take-payment steps. */
-export default function RetailCheckoutModal({ items, total, channel, locationId, discount, methods, onClose, onComplete }: {
+export default function RetailCheckoutModal({ items, total, channel, locationId, discount, methods, party: controlledParty, onPartyChange, onClose, onComplete }: {
   items: { id: string; quantity: number }[]
   total: number
   channel: 'PRODUCTS' | 'SERVICES'
   locationId: string | undefined
   discount: number
   methods: PaymentMethod[]
+  /** When the till already shows the customer on its sale card, it passes it in here (and this modal only displays it). */
+  party?: SaleParty
+  onPartyChange?: (party: SaleParty) => void
   onClose: () => void
   onComplete: (order: CreatedOrder) => void
 }) {
   const [mode, setMode] = useState<'PAY' | 'ROOM'>('PAY')
-  const [party, setParty] = useState<SaleParty>({ kind: 'WALK_IN' })
+  const [ownParty, setOwnParty] = useState<SaleParty>({ kind: 'WALK_IN' })
+  const party = controlledParty ?? ownParty
+  const setParty = onPartyChange ?? setOwnParty
+  // The order is created first and paid second. If the payment step fails, the
+  // saved order is kept so "Try again" only retries the payment - it never
+  // creates a duplicate sale.
+  const savedOrder = useRef<CreatedOrder | null>(null)
   const [paymentMethodId, setPaymentMethodId] = useState(methods[0]?.id ?? '')
   const [reference, setReference] = useState('')
   const [amount, setAmount] = useState(String(total))
@@ -34,6 +43,8 @@ export default function RetailCheckoutModal({ items, total, channel, locationId,
   const [reservationId, setReservationId] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const tendered = Number(amount) || 0
+  const changeDue = Math.max(0, Math.round((tendered - total) * 100) / 100)
   const selectedMethod = methods.find((m) => m.id === paymentMethodId)
   const selectedStay = stays.find((s) => s.id === reservationId)
 
@@ -63,19 +74,23 @@ export default function RetailCheckoutModal({ items, total, channel, locationId,
     if (mode === 'PAY' && !paymentMethodId) return
     if (mode === 'ROOM' && !reservationId) { setError('Choose a checked-in stay to bill this to'); return }
     if (mode === 'PAY' && selectedMethod?.requiresReference && !reference.trim()) { setError(`${selectedMethod.name} requires a reference number`); return }
+    if (mode === 'PAY' && tendered < total - 0.005) { setError(`The amount received is less than the total of ${formatKes(total)}`); return }
     setSubmitting(true)
     setError('')
     try {
-      const orderResponse = await api<{ order: CreatedOrder }>('/pos/retail-orders', {
-        method: 'POST',
-        body: JSON.stringify({
-          channel,
-          locationId,
-          discount,
-          customerId: party.kind === 'WALK_IN' ? undefined : party.customer.id,
-          items: items.map((item) => channel === 'PRODUCTS' ? { productId: item.id, quantity: item.quantity } : { serviceId: item.id, quantity: item.quantity }),
-        }),
-      })
+      const orderResponse = savedOrder.current
+        ? { order: savedOrder.current }
+        : await api<{ order: CreatedOrder }>('/pos/retail-orders', {
+          method: 'POST',
+          body: JSON.stringify({
+            channel,
+            locationId,
+            discount,
+            customerId: party.kind === 'WALK_IN' ? undefined : party.customer.id,
+            items: items.map((item) => channel === 'PRODUCTS' ? { productId: item.id, quantity: item.quantity } : { serviceId: item.id, quantity: item.quantity }),
+          }),
+        })
+      savedOrder.current = orderResponse.order
       // Settlement — cash/card now, or charged to a room — always happens as
       // a second, separate call, decided right here at checkout rather than
       // baked into order creation.
@@ -83,16 +98,27 @@ export default function RetailCheckoutModal({ items, total, channel, locationId,
         method: 'POST',
         body: JSON.stringify(
           mode === 'PAY'
-            ? { method: 'PAY', paymentMethodId, amount: Number(amount) || total, reference: reference || undefined }
+            ? { method: 'PAY', paymentMethodId, amount: total, reference: reference || undefined }
             : { method: 'ROOM', reservationId, amount: total },
         ),
       })
+      savedOrder.current = null
       onComplete(orderResponse.order)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not complete the sale')
+      const message = cause instanceof Error ? cause.message : 'Could not complete the sale'
+      setError(savedOrder.current ? `Sale #${savedOrder.current.orderNumber} is saved but the payment failed: ${message}. Fix it and try again, or cancel to withdraw the sale.` : message)
     } finally {
       setSubmitting(false)
     }
+  }
+
+  /** Closing with a saved-but-unpaid service sale withdraws it, so no hidden unpaid order is left behind. */
+  async function close() {
+    const saved = savedOrder.current
+    if (saved && channel === 'SERVICES') {
+      try { await api(`/pos/orders/${saved.id}/revert`, { method: 'DELETE' }) } catch { /* the order stays; the cashier can find it and settle it */ }
+    }
+    onClose()
   }
 
   return (
@@ -103,7 +129,7 @@ export default function RetailCheckoutModal({ items, total, channel, locationId,
             <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">Checkout</p>
             <h2 className="mt-1 font-display text-2xl font-semibold">{formatKes(total)}</h2>
           </div>
-          <button type="button" onClick={onClose} title="Close" className="bg-black p-2 text-white transition hover:bg-black/80"><LuX /></button>
+          <button type="button" onClick={() => void close()} title="Close" className="bg-black p-2 text-white transition hover:bg-black/80"><LuX /></button>
         </div>
 
         {error && <div className="mt-4 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert />{error}</div>}
@@ -117,7 +143,9 @@ export default function RetailCheckoutModal({ items, total, channel, locationId,
         </div>
 
         <div className="mt-4">
-          <CustomerSelectField party={party} onChange={setParty} />
+          {controlledParty
+            ? <p className="rounded-sm border bg-muted/40 px-3 py-2 text-sm"><span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Customer</span><span className="ml-2 font-medium">{partyLabel(party)}</span></p>
+            : <CustomerSelectField party={party} onChange={setParty} />}
         </div>
 
         {mode === 'PAY' ? (
@@ -132,6 +160,7 @@ export default function RetailCheckoutModal({ items, total, channel, locationId,
             <label className="block text-sm font-medium">
               Amount received
               <input required type="number" min="0" step="0.01" className="input mt-1.5" value={amount} onChange={(e) => setAmount(e.target.value)} />
+              {changeDue > 0 && <span className="mt-1.5 block rounded-sm bg-success/10 px-3 py-1.5 text-sm font-semibold text-success">Change due: {formatKes(changeDue)}</span>}
             </label>
             <label className="block text-sm font-medium">
               {selectedMethod?.requiresReference ? 'Reference *' : 'Reference (optional)'}
@@ -164,7 +193,7 @@ export default function RetailCheckoutModal({ items, total, channel, locationId,
         )}
 
         <div className="mt-5 flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Cancel</button>
+          <button type="button" onClick={() => void close()} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Cancel</button>
           <button disabled={submitting || (mode === 'PAY' ? !paymentMethodId : !reservationId)} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
             {submitting && <LuLoaderCircle className="animate-spin" />} {mode === 'PAY' ? 'Complete sale' : 'Bill to room'}
           </button>

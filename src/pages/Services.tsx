@@ -9,6 +9,8 @@ import PageBanner from '@/components/ui/PageBanner'
 import ModalShell from '@/components/ui/ModalShell'
 import ActionButton from '@/components/ui/ActionButton'
 import StatusPill from '@/components/ui/StatusPill'
+import { TAX_CHOICES, taxChoiceLabel, taxChoiceOf, taxPayload, type BizTax, type TaxChoice } from '@/lib/taxChoices'
+import { taxCategoryText, type TaxMode, type TaxTreatment } from '@/lib/tax'
 
 type ServiceCategory = { id: string; name: string; isActive: boolean; _count: { services: number } }
 type UnitOfMeasure = { id: string; name: string }
@@ -21,6 +23,10 @@ type Service = {
   unitId: string
   unit: { id: string; name: string }
   price: string | number
+  cost: string | number | null
+  taxRate: string | number | null
+  taxMode: TaxMode | null
+  taxTreatment: TaxTreatment | null
   description: string | null
   isActive: boolean
   locations: Location[]
@@ -30,11 +36,14 @@ type ServiceForm = {
   categoryId: string
   unitId: string
   price: string
+  cost: string
+  taxChoice: TaxChoice
+  taxRate: string
   description: string
   isActive: boolean
   locationIds: string[]
 }
-const emptyForm: ServiceForm = { name: '', categoryId: '', unitId: '', price: '', description: '', isActive: true, locationIds: [] }
+const emptyForm: ServiceForm = { name: '', categoryId: '', unitId: '', price: '', cost: '', taxChoice: 'INHERIT', taxRate: '', description: '', isActive: true, locationIds: [] }
 
 const formatKes = (value: number) => `KSh ${value.toLocaleString('en-KE', { maximumFractionDigits: 2 })}`
 const TH = 'px-5 py-3 text-xs font-bold uppercase tracking-wider'
@@ -47,6 +56,7 @@ export default function Services() {
   const [categories, setCategories] = useState<ServiceCategory[]>([])
   const [units, setUnits] = useState<UnitOfMeasure[]>([])
   const [locations, setLocations] = useState<Location[]>([])
+  const [bizTax, setBizTax] = useState<BizTax | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
@@ -80,6 +90,7 @@ export default function Services() {
   }, [toast])
 
   useEffect(() => { void load() }, [load])
+  useEffect(() => { api<{ profile: BizTax | null }>('/business-profile').then((r) => setBizTax(r.profile)).catch(() => {}) }, [])
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -99,6 +110,9 @@ export default function Services() {
       categoryId: service.categoryId,
       unitId: service.unitId,
       price: String(service.price),
+      cost: service.cost != null ? String(Number(service.cost)) : '',
+      taxChoice: taxChoiceOf(service),
+      taxRate: service.taxRate != null ? String(Number(service.taxRate)) : '',
       description: service.description ?? '',
       isActive: service.isActive,
       locationIds: service.locations.map((l) => l.id),
@@ -117,7 +131,18 @@ export default function Services() {
     try {
       await api(editing ? `/services/${editing.id}` : '/services', {
         method: editing ? 'PATCH' : 'POST',
-        body: JSON.stringify({ ...form, price: Number(form.price) }),
+        body: JSON.stringify({
+          name: form.name,
+          categoryId: form.categoryId,
+          unitId: form.unitId,
+          price: Number(form.price),
+          // Blank cost = not costed (null), never 0.
+          cost: form.cost.trim() === '' ? null : Number(form.cost),
+          ...taxPayload(form.taxChoice, form.taxRate),
+          description: form.description,
+          isActive: form.isActive,
+          locationIds: form.locationIds,
+        }),
       })
       toast.success(editing ? 'Service updated.' : 'Service created.')
       setShowForm(false)
@@ -189,6 +214,7 @@ export default function Services() {
                   <th className={TH}>Service</th>
                   <th className={TH}>Category</th>
                   <th className={cn(TH, 'text-right')}>Price</th>
+                  <th className={TH}>Tax</th>
                   <th className={TH}>Available at</th>
                   <th className={TH}>Status</th>
                   <th className={cn(TH, 'text-right')}>Action</th>
@@ -205,6 +231,7 @@ export default function Services() {
                     <td className="whitespace-nowrap px-5 py-3.5 text-right font-semibold tabular-nums">
                       {formatKes(Number(service.price))} <span className="text-xs font-normal text-muted-foreground">/ {service.unit.name}</span>
                     </td>
+                    <td className="px-5 py-3.5 text-xs text-muted-foreground">{taxCategoryText(service.taxTreatment ? service : {}, bizTax)}</td>
                     <td className="max-w-[14rem] truncate px-5 py-3.5 text-xs text-muted-foreground">{service.locations.length > 0 ? service.locations.map((l) => l.name).join(', ') : 'Everywhere'}</td>
                     <td className="px-5 py-3.5"><StatusPill tone={service.isActive ? 'success' : 'muted'}>{service.isActive ? 'Active' : 'Inactive'}</StatusPill></td>
                     <td className="px-5 py-3.5">
@@ -252,7 +279,25 @@ export default function Services() {
                   {units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                 </select>
               </Field>
-              <Field label="Price" required><input required type="number" min="0" placeholder="e.g. 2500" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className="input" /></Field>
+              <Field label="Price" required><input required type="number" min="0" step="0.01" placeholder="e.g. 2500" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className="input" /></Field>
+              <Field label="Cost (optional)">
+                <input type="number" min="0" step="0.01" placeholder="What it costs you to deliver one unit" value={form.cost} onChange={(e) => setForm({ ...form, cost: e.target.value })} className="input" />
+              </Field>
+              <Field label="Tax treatment">
+                <select className="input" value={form.taxChoice} onChange={(e) => setForm({ ...form, taxChoice: e.target.value as TaxChoice })}>
+                  {TAX_CHOICES.map((c) => <option key={c.key} value={c.key}>{taxChoiceLabel(c, bizTax)}</option>)}
+                </select>
+              </Field>
+              <Field label="Tax rate (%)">
+                <input
+                  type="number" min="0" max="100" step="0.01"
+                  placeholder={form.taxChoice.startsWith('STANDARD') ? `Blank = ${Number(bizTax?.taxRate ?? 16)}% (property default)` : 'Not used for this treatment'}
+                  value={form.taxChoice.startsWith('STANDARD') ? form.taxRate : ''}
+                  disabled={!form.taxChoice.startsWith('STANDARD')}
+                  onChange={(e) => setForm({ ...form, taxRate: e.target.value })}
+                  className="input"
+                />
+              </Field>
               <Field label="Active">
                 <label className="flex items-center gap-2 border bg-background px-3 py-2.5">
                   <input type="checkbox" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} className="size-4 accent-secondary" />

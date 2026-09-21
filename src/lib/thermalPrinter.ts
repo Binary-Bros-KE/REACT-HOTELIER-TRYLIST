@@ -1,6 +1,6 @@
 import ReceiptPrinterEncoder from '@point-of-sale/receipt-printer-encoder'
 import type { ReceiptOrder, ReceiptProfile } from '@/components/pos/OrderReceipt'
-import { receiptFooterText, receiptHeaderText, receiptPhone, servedByName, showsTaxAsAddedOn } from '@/lib/receiptFields'
+import { receiptFooterText, receiptHeaderText, receiptItemName, receiptPhone, servedByName, showsTaxAsAddedOn } from '@/lib/receiptFields'
 import { createPrintJob } from '@/lib/printRelay'
 
 /**
@@ -348,7 +348,7 @@ export function buildReceiptBytes(order: ReceiptOrder, profile: ReceiptProfile, 
 
   // -------- items --------
   for (const item of order.items) {
-    const label = `${item.quantity} x ${item.menuItem.name}${item.variant ? ` (${item.variant.name})` : ''}`
+    const label = `${item.quantity} x ${receiptItemName(item)}${item.variant ? ` (${item.variant.name})` : ''}`
     if (compact && label.length > nameW) {
       const price = money(Number(item.unitPrice) * item.quantity)
       e.line(label)

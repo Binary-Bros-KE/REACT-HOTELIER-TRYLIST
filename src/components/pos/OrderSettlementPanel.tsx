@@ -7,6 +7,7 @@ import { useToast } from '@/components/ui/Toast'
 import { useAppSelector } from '@/store/hooks'
 import CustomerSelectModal, { type SaleParty } from '@/components/pos/CustomerSelectModal'
 import type { ReceiptOrder } from './OrderReceipt'
+import { receiptItemName } from '@/lib/receiptFields'
 
 type PaymentMethod = { id: string; name: string; requiresReference: boolean }
 type CheckedInStay = { id: string; reservationNo: string; customer: { firstName: string; lastName: string | null }; room: { number: string } }
@@ -397,7 +398,7 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
                           return (
                             <label key={item.id} className="grid grid-cols-[1fr_88px] items-center gap-3 rounded-sm border bg-card p-2.5 text-sm">
                               <span className="min-w-0">
-                                <span className="block truncate font-medium">{item.menuItem?.name ?? 'Item'}{item.variant ? ` (${item.variant.name})` : ''}</span>
+                                <span className="block truncate font-medium">{receiptItemName(item)}{item.variant ? ` (${item.variant.name})` : ''}</span>
                                 <span className="text-xs text-muted-foreground">{item.quantity} on order{pending ? `, ${pending} already pending` : ''}</span>
                               </span>
                               <input

@@ -1,3 +1,4 @@
+import { computeFinancialsFromRows } from '@/lib/orderTotals'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   LuBan, LuBedDouble, LuBellRing, LuBuilding2, LuCheck, LuChevronDown, LuCircleAlert, LuCircleCheck, LuClipboardList, LuCoffee, LuGift, LuLoaderCircle, LuMapPin, LuMinus,
@@ -13,7 +14,7 @@ import OrderSettlementPanel from '@/components/pos/OrderSettlementPanel'
 import ReceiptPreviewModal from '@/components/pos/ReceiptPreviewModal'
 import { type ReceiptOrder, type ReceiptProfile } from '@/components/pos/OrderReceipt'
 import { getThermalSettings, printReceipt } from '@/lib/thermalPrinter'
-import { taxLabel, type TaxMode, type TaxTreatment } from '@/lib/tax'
+import type { TaxMode, TaxTreatment } from '@/lib/tax'
 
 type StockProduct = { id: string; name: string; unit: string; packUnit: { id: string; name: string } | null }
 type ApiVariant = {
@@ -169,7 +170,6 @@ const configKey = (itemId: string, variantId: string | null, addonIds: string[])
 const lineUnitPrice = (line: CartLine) => (line.variant?.price ?? line.item.price) + line.addons.reduce((sum, a) => sum + a.price, 0)
 const lineTotal = (line: CartLine) => lineUnitPrice(line) * line.quantity
 
-const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100
 
 const formatQty = (value: number) => value.toLocaleString('en-KE', { maximumFractionDigits: 3 })
 
@@ -183,46 +183,9 @@ function variantConsumptionLabel(variant: Variant) {
   return `${formatQty(variant.stockQtyPerUnit ?? 1)} ${unit} of ${variant.stockProduct.name}`
 }
 
-type TaxBucket = { key: string; label: string; net: number; tax: number; gross: number }
-
-/** Live mirror of the server's computeOrderFinancials: tax is worked out per
- * line from the line's own treatment/rate/mode (menu-item override else the
- * property default, already resolved by the API), the order discount is
- * apportioned by line value, and lines are bucketed for the receipt-style
- * breakdown. Kept deliberately in step with lib/orderTotals.ts on the server. */
+/** Live mirror of the server's computeOrderFinancials, shared with the Services till (lib/orderTotals.ts). */
 function computeFinancials(cart: CartLine[], discountInput: string, complimentary = false) {
-  const rows = cart.map((line) => ({ sub: lineTotal(line), tax: line.item.tax }))
-  const subtotal = rows.reduce((s, r) => s + r.sub, 0)
-  const discount = Math.min(Number(discountInput) || 0, subtotal)
-
-  const buckets = new Map<string, TaxBucket>()
-  let net = 0
-  let taxAmount = 0
-  let total = 0
-
-  for (const { sub, tax } of rows) {
-    const share = subtotal > 0 ? sub - discount * (sub / subtotal) : 0
-    let lineNet: number
-    let lineTax: number
-    if (tax.treatment === 'EXEMPT' || tax.treatment === 'ZERO_RATED' || tax.rate <= 0) {
-      lineNet = share; lineTax = 0
-    } else if (tax.mode === 'EXCLUSIVE') {
-      lineNet = share; lineTax = lineNet * (tax.rate / 100)
-    } else {
-      lineNet = share / (1 + tax.rate / 100); lineTax = share - lineNet
-    }
-    const lineGross = lineNet + lineTax
-    net += lineNet; taxAmount += lineTax; total += lineGross
-
-    const label = taxLabel(tax)
-    const bucket = buckets.get(label) ?? { key: label, label, net: 0, tax: 0, gross: 0 }
-    bucket.net += lineNet; bucket.tax += lineTax; bucket.gross += lineGross
-    buckets.set(label, bucket)
-  }
-
-  const taxLines = [...buckets.values()].map((b) => ({ ...b, net: round2(b.net), tax: round2(b.tax), gross: round2(b.gross) }))
-  if (complimentary) return { subtotal: round2(subtotal), discount: round2(subtotal), net: 0, taxAmount: 0, total: 0, complimentaryValue: round2(subtotal), taxLines: [] }
-  return { subtotal: round2(subtotal), discount: round2(discount), net: round2(net), taxAmount: round2(taxAmount), total: round2(total), complimentaryValue: 0, taxLines }
+  return computeFinancialsFromRows(cart.map((line) => ({ sub: lineTotal(line), tax: line.item.tax })), discountInput, complimentary)
 }
 
 export default function PointOfSale() {
