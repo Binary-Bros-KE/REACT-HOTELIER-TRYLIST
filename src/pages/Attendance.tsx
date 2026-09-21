@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { LuChevronLeft, LuChevronRight, LuCircleAlert, LuFileText, LuLoaderCircle, LuX } from 'react-icons/lu'
 import { api } from '@/lib/api'
+import PageBanner from '@/components/ui/PageBanner'
+import ActionButton from '@/components/ui/ActionButton'
 import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
 import ShiftSummaryModal, { formatKes, type ShiftSession as FullShiftSession, type ShiftSummary } from '@/components/shifts/ShiftSummaryModal'
@@ -155,17 +157,17 @@ export default function Attendance() {
   }, [records])
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-8 sm:px-8 lg:px-10">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-widest text-secondary">Team</p>
-          <h1 className="mt-1 font-display text-3xl font-semibold">Attendance</h1>
-          <p className="mt-2 max-w-2xl text-sm text-muted-foreground">Click a day to choose Present, Absent, Late, or On leave for that person — any past month is one click away.</p>
+    <div className="dashboard-square mx-auto max-w-3xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
+      <PageBanner kicker="Team" title="Attendance" />
+
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border bg-card p-4 shadow-sm">
+        <div className="border-l-4 border-accent pl-3">
+          <h2 className="font-display text-xl font-semibold leading-tight">{monthLabel}</h2>
+          <p className="text-xs text-muted-foreground">Click a day to choose Present, Absent, Late, or On leave for that person — any past month is one click away.</p>
         </div>
-        <div className="flex items-center gap-2 rounded-sm border bg-card px-2 py-1.5 shadow-sm">
-          <button onClick={() => shiftMonth(-1)} aria-label="Previous month" className="rounded-sm p-1.5 hover:bg-muted"><LuChevronLeft className="size-4" /></button>
-          <span className="min-w-32 text-center text-sm font-semibold">{monthLabel}</span>
-          <button onClick={() => shiftMonth(1)} aria-label="Next month" className="rounded-sm p-1.5 hover:bg-muted"><LuChevronRight className="size-4" /></button>
+        <div className="flex items-center gap-2">
+          <ActionButton tone="neutral" icon={<LuChevronLeft />} title="Previous month" onClick={() => shiftMonth(-1)} />
+          <ActionButton tone="neutral" icon={<LuChevronRight />} title="Next month" onClick={() => shiftMonth(1)} />
         </div>
       </div>
 
@@ -179,7 +181,7 @@ export default function Attendance() {
       <div className="mt-5 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
         {STATUS_ORDER.map((s) => (
           <span key={s} className="inline-flex items-center gap-1.5">
-            <span className={cn('size-2.5 rounded-full', STATUS_DOT[s])} />
+            <span className={cn('keep-round size-2.5 rounded-full', STATUS_DOT[s])} />
             {STATUS_LABEL[s]}
           </span>
         ))}
@@ -209,10 +211,12 @@ export default function Attendance() {
         </div>
       )}
       {report && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-2xl rounded-sm border bg-card p-6 shadow-2xl">
-            <p className="text-sm font-semibold text-secondary">Employee report</p>
-            <h2 className="mt-1 font-display text-2xl font-semibold">{report.employee.firstName} {report.employee.lastName}</h2>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-2xl border-2 border-foreground/25 bg-card p-6 shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+            <div className="-mx-6 -mt-6 mb-5 border-b-4 border-accent bg-muted/60 px-6 py-4">
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">Employee report</p>
+              <h2 className="mt-1 font-display text-2xl font-semibold">{report.employee.firstName} {report.employee.lastName}</h2>
+            </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-5">
               <Mini label="Shifts" value={String(report.totals.shifts)} />
               <Mini label="Rejected" value={String(report.totals.rejected)} />
@@ -245,7 +249,7 @@ export default function Attendance() {
                   >
                     <p className="flex items-center gap-2 text-sm font-semibold">
                       {s.approvedStartAt ? new Date(s.approvedStartAt).toLocaleString() : 'Shift'} - {s.approvedEndAt ? new Date(s.approvedEndAt).toLocaleString() : rejected ? 'rejected' : 'open'}
-                      {rejected && <span className="rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-destructive">Rejected</span>}
+                      {rejected && <span className="keep-round border border-dashed border-destructive/70 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-destructive">Rejected</span>}
                     </p>
                     {rejected && <p className="mt-1 text-xs text-destructive">{s.rejectionReason || 'No reason given'}</p>}
                     {s.summary && (
@@ -257,7 +261,7 @@ export default function Attendance() {
                 )
               })}
             </div>
-            <div className="mt-5 flex justify-end"><button onClick={() => setReport(null)} className="rounded-sm border px-4 py-2 text-sm font-semibold hover:bg-muted">Close</button></div>
+            <div className="mt-5 flex justify-end"><button onClick={() => setReport(null)} className="bg-black px-5 py-2 text-xs font-bold uppercase tracking-wider text-white hover:bg-black/80">Close</button></div>
           </div>
         </div>
       )}
@@ -293,11 +297,11 @@ function EmployeeCalendar({
   onReport: (employee: Employee) => void
 }) {
   return (
-    <section className="rounded-lg border bg-card p-5 shadow-sm">
+    <section className="border bg-card p-5 shadow-sm">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <h2 className="font-display text-lg font-semibold">{employee.firstName} {employee.lastName}</h2>
         <p className="text-xs text-muted-foreground">{employee.jobTitle}</p>
-        <button onClick={() => onReport(employee)} className="inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1.5 text-xs font-semibold hover:bg-muted"><LuFileText className="size-3.5" /> Employee report</button>
+        <ActionButton tone="neutral" icon={<LuFileText />} onClick={() => onReport(employee)}>Employee report</ActionButton>
         <p className="flex gap-3 text-xs font-semibold tabular-nums">
           <span className="text-success">{summary?.PRESENT ?? 0} present</span>
           <span className="text-destructive">{summary?.ABSENT ?? 0} absent</span>
@@ -378,7 +382,7 @@ function DayCell({
           <>
             <span className="text-[11px] font-semibold leading-none opacity-70">{day}</span>
             <span className="text-sm leading-none">{status ? STATUS_LETTER[status] : ''}</span>
-            {shift && <span title={titleCase(shift.status)} className={cn('absolute bottom-1 right-1 size-2 rounded-full', shiftTone)} />}
+            {shift && <span title={titleCase(shift.status)} className={cn('keep-round absolute bottom-1 right-1 size-2 rounded-full', shiftTone)} />}
           </>
         )}
       </button>
@@ -391,7 +395,7 @@ function DayCell({
               onClick={() => onSetStatus(employee.id, day, s)}
               className={cn('flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted', status === s && 'bg-muted/60 font-semibold')}
             >
-              <span className={cn('size-2.5 shrink-0 rounded-full', STATUS_DOT[s])} />
+              <span className={cn('keep-round size-2.5 shrink-0 rounded-full', STATUS_DOT[s])} />
               {STATUS_LABEL[s]}
             </button>
           ))}

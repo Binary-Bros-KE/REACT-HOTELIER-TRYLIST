@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import {
   LuCircleAlert,
-  LuCircleCheck,
   LuLoaderCircle,
   LuLock,
   LuPencil,
@@ -12,7 +11,8 @@ import {
   LuUserCog,
 } from 'react-icons/lu'
 import { api } from '@/lib/api'
-import Button from '@/components/ui/Button'
+import PageBanner from '@/components/ui/PageBanner'
+import ActionButton from '@/components/ui/ActionButton'
 import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
 import StatCard from '@/components/ui/StatCard'
@@ -70,7 +70,7 @@ export default function RolesAndPermissions() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
+  const setNotice = (message: string) => { if (message) toast.success(message) }
 
   const loadRoles = useCallback(async () => {
     setLoading(true)
@@ -163,19 +163,10 @@ export default function RolesAndPermissions() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-6 py-8 sm:px-8 lg:px-10">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-sm font-semibold text-secondary">Team</p>
-          <h1 className="mt-1 font-display text-3xl font-semibold">Roles &amp; Permissions</h1>
-          <p className="mt-2 text-sm text-muted-foreground">Control which sidebar sections each role can see, and which server-enforced actions it can take.</p>
-        </div>
-        <Button onClick={openCreate}>
-          <LuPlus /> Add role
-        </Button>
-      </header>
+    <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
+      <PageBanner kicker="Team" title="Roles & Permissions" />
 
-      <section className="mt-7 grid gap-3 sm:grid-cols-3">
+      <section className="mt-6 grid gap-3 sm:grid-cols-3">
         {([
           ['Total roles', summary.total, <LuShieldCheck key="all" />],
           ['System roles', summary.system, <LuLock key="system" />],
@@ -191,14 +182,15 @@ export default function RolesAndPermissions() {
           {error}
         </div>
       )}
-      {notice && (
-        <div className="mt-5 flex items-center gap-2 rounded-sm border border-success/25 bg-success/10 p-3 text-sm text-success">
-          <LuCircleCheck />
-          {notice}
-        </div>
-      )}
 
-      <section className="mt-6 overflow-hidden rounded-sm border bg-card shadow-sm">
+      <section className="mt-6 overflow-hidden border bg-card shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
+          <div className="border-l-4 border-accent pl-3">
+            <h2 className="font-display text-xl font-semibold leading-tight">Roles</h2>
+            <p className="text-xs text-muted-foreground">Control which sidebar sections each role can see, and which server-enforced actions it can take.</p>
+          </div>
+          <ActionButton tone="primary" icon={<LuPlus />} onClick={openCreate}>Add role</ActionButton>
+        </div>
         {loading ? (
           <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground">
             <LuLoaderCircle className="animate-spin" /> Loading roles…
@@ -206,13 +198,13 @@ export default function RolesAndPermissions() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+              <thead className="bg-primary text-xs uppercase tracking-wider text-primary-foreground">
                 <tr>
-                  <th className="px-5 py-3">Role</th>
-                  <th className="px-5 py-3">Visible Sections</th>
-                  <th className="px-5 py-3">Capabilities</th>
-                  <th className="px-5 py-3">Employees</th>
-                  <th className="px-5 py-3 text-right">Actions</th>
+                  <th className="px-5 py-3 font-bold">Role</th>
+                  <th className="px-5 py-3 font-bold">Visible Sections</th>
+                  <th className="px-5 py-3 font-bold">Capabilities</th>
+                  <th className="px-5 py-3 font-bold">Employees</th>
+                  <th className="px-5 py-3 font-bold text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -221,7 +213,7 @@ export default function RolesAndPermissions() {
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-2">
                         <p className="font-semibold">{role.name}</p>
-                        {role.isSystemRole && <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">System</span>}
+                        {role.isSystemRole && <span className="keep-round border border-dashed border-muted-foreground/50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">System</span>}
                       </div>
                       {role.description && <p className="mt-0.5 text-xs text-muted-foreground">{role.description}</p>}
                     </td>
@@ -246,17 +238,8 @@ export default function RolesAndPermissions() {
                     <td className="px-5 py-4 text-muted-foreground">{role.employeeCount}</td>
                     <td className="px-5 py-4">
                       <div className="flex justify-end gap-1">
-                        <button onClick={() => openEdit(role)} title="Edit role" className="rounded-sm p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary">
-                          <LuPencil />
-                        </button>
-                        <button
-                          onClick={() => void deleteRole(role)}
-                          disabled={role.isSystemRole}
-                          title={role.isSystemRole ? 'System roles cannot be deleted' : 'Delete role'}
-                          className="rounded-sm p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
-                        >
-                          <LuTrash2 />
-                        </button>
+                        <ActionButton tone="neutral" icon={<LuPencil />} title="Edit role" onClick={() => openEdit(role)} />
+                        <ActionButton tone="neutral" icon={<LuTrash2 />} disabled={role.isSystemRole} title={role.isSystemRole ? 'System roles cannot be deleted' : 'Delete role'} onClick={() => void deleteRole(role)} />
                       </div>
                     </td>
                   </tr>
@@ -269,12 +252,12 @@ export default function RolesAndPermissions() {
 
       {showForm && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
         >
-          <form onSubmit={saveRole} className="flex max-h-[calc(100vh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-sm border bg-card shadow-2xl">
+          <form onSubmit={saveRole} className="flex max-h-[calc(100vh-2rem)] w-full max-w-lg flex-col overflow-hidden border-2 border-foreground/25 bg-card shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
             <div className="overflow-y-auto p-6">
-              <div>
-                <p className="text-sm font-semibold text-secondary">{editing ? 'Edit role' : 'New role'}</p>
+              <div className="-mx-6 -mt-6 mb-5 border-b-4 border-accent bg-muted/60 px-6 py-4">
+                <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">{editing ? 'Edit role' : 'New role'}</p>
                 <h2 className="mt-1 font-display text-2xl font-semibold">{editing ? editing.name : 'Add a role'}</h2>
               </div>
 
@@ -345,8 +328,8 @@ export default function RolesAndPermissions() {
             </div>
 
             <div className="flex shrink-0 justify-end gap-2 border-t bg-card p-5">
-              <button type="button" onClick={() => setShowForm(false)} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Cancel</button>
-              <button disabled={saving} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+              <button type="button" onClick={() => setShowForm(false)} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted">Cancel</button>
+              <button disabled={saving} className="inline-flex items-center gap-2 bg-primary px-5 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground disabled:opacity-60">
                 {saving && <LuLoaderCircle className="animate-spin" />}
                 {editing ? 'Save changes' : 'Create role'}
               </button>

@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import { LuCircleAlert, LuClock4, LuLoaderCircle, LuPencil, LuPlus, LuTrash2, LuX } from 'react-icons/lu'
 import { api } from '@/lib/api'
-import Button from '@/components/ui/Button'
+import PageBanner from '@/components/ui/PageBanner'
+import ActionButton from '@/components/ui/ActionButton'
 import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
 
@@ -175,14 +176,8 @@ export default function Shifts() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-6 py-8 sm:px-8 lg:px-10">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-widest text-secondary">Team</p>
-        <h1 className="mt-1 font-display text-3xl font-semibold">Shifts</h1>
-        <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-          Define work-hours windows, then give an employee a repeating rotation between them (e.g. a week of Day Shift, then a week of Night Shift). Outside their shift, an employee can't sign in or keep using the system — unless they're unrestricted (no rotation set) or their role is shift-exempt.
-        </p>
-      </div>
+    <div className="dashboard-square mx-auto max-w-5xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
+      <PageBanner kicker="Team" title="Shifts" />
 
       {error && (
         <div className="mt-5 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive">
@@ -191,13 +186,13 @@ export default function Shifts() {
         </div>
       )}
 
-      <section className="mt-6 overflow-hidden rounded-lg border bg-card shadow-sm">
+      <section className="mt-6 overflow-hidden border bg-card shadow-sm">
         <div className="flex flex-col gap-4 border-b p-5 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-secondary">Shift templates</p>
-            <h2 className="mt-1 font-display text-xl font-semibold">Work-hours windows</h2>
+          <div className="border-l-4 border-accent pl-3">
+            <h2 className="font-display text-xl font-semibold leading-tight">Work-hours windows</h2>
+            <p className="text-xs text-muted-foreground">Shift templates. Outside their shift, an employee can't sign in — unless they're unrestricted (no rotation).</p>
           </div>
-          <Button onClick={openCreateTemplate} className="shrink-0"><LuPlus /> New shift</Button>
+          <ActionButton tone="primary" icon={<LuPlus />} onClick={openCreateTemplate} className="shrink-0">New shift</ActionButton>
         </div>
 
         {loading ? (
@@ -225,14 +220,14 @@ export default function Shifts() {
                     <td className="px-4 py-3 tabular-nums text-muted-foreground">{t.startTime}–{t.endTime}{t.endTime <= t.startTime ? ' (overnight)' : ''}</td>
                     <td className="px-4 py-3 text-xs text-muted-foreground">±{t.graceMinutesBefore}/{t.graceMinutesAfter} min</td>
                     <td className="px-4 py-3">
-                      <span className={cn('inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide', t.isActive ? 'border-success/40 text-success' : 'border-muted-foreground/30 text-muted-foreground')}>
+                      <span className={cn('keep-round inline-flex border border-dashed px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide', t.isActive ? 'border-success/70 text-success' : 'border-muted-foreground/50 text-muted-foreground')}>
                         {t.isActive ? 'Active' : 'Inactive'}
                       </span>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => openEditTemplate(t)} title="Edit" className="rounded-md p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuPencil className="size-4" /></button>
-                        <button onClick={() => void deleteTemplate(t)} title="Delete" className="rounded-md p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><LuTrash2 className="size-4" /></button>
+                        <ActionButton tone="neutral" icon={<LuPencil />} title="Edit" onClick={() => openEditTemplate(t)} />
+                        <ActionButton tone="neutral" icon={<LuTrash2 />} title="Delete" onClick={() => void deleteTemplate(t)} />
                       </div>
                     </td>
                   </tr>
@@ -243,10 +238,12 @@ export default function Shifts() {
         )}
       </section>
 
-      <section className="mt-6 overflow-hidden rounded-lg border bg-card shadow-sm">
+      <section className="mt-6 overflow-hidden border bg-card shadow-sm">
         <div className="border-b p-5">
-          <p className="text-xs font-semibold uppercase tracking-widest text-secondary">Employee rotations</p>
-          <h2 className="mt-1 font-display text-xl font-semibold">Who's on which shift</h2>
+          <div className="border-l-4 border-accent pl-3">
+            <h2 className="font-display text-xl font-semibold leading-tight">Who's on which shift</h2>
+            <p className="text-xs text-muted-foreground">Employee rotations.</p>
+          </div>
         </div>
 
         {loading ? (
@@ -279,9 +276,7 @@ export default function Shifts() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <button onClick={() => openRotation(emp)} className="rounded-sm border px-3 py-1.5 text-xs font-semibold hover:bg-muted">
-                          {rotation ? 'Edit rotation' : 'Assign rotation'}
-                        </button>
+                        <ActionButton tone="neutral" icon={<LuClock4 />} onClick={() => openRotation(emp)}>{rotation ? 'Edit rotation' : 'Assign rotation'}</ActionButton>
                       </td>
                     </tr>
                   )
@@ -293,14 +288,14 @@ export default function Shifts() {
       </section>
 
       {showTemplateForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
-          <form onSubmit={saveTemplate} className="w-full max-w-md rounded-sm border bg-card p-6 shadow-2xl">
-            <div className="flex items-start justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <form onSubmit={saveTemplate} className="w-full max-w-md border-2 border-foreground/25 bg-card p-6 shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+            <div className="flex items-start justify-between -mx-6 -mt-6 mb-5 border-b-4 border-accent bg-muted/60 px-6 py-4">
               <div>
-                <p className="text-sm font-semibold text-secondary">{editingTemplate ? 'Edit shift' : 'New shift'}</p>
+                <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">{editingTemplate ? 'Edit shift' : 'New shift'}</p>
                 <h2 className="mt-1 font-display text-2xl font-semibold">{editingTemplate ? editingTemplate.name : 'Add a shift'}</h2>
               </div>
-              <button type="button" onClick={() => setShowTemplateForm(false)} className="rounded-sm p-2 text-muted-foreground hover:bg-muted"><LuX /></button>
+              <button type="button" onClick={() => setShowTemplateForm(false)} className="bg-black p-2 text-white transition hover:bg-black/80"><LuX /></button>
             </div>
             <div className="mt-6 space-y-4">
               <Field label="Name" required><input required autoFocus placeholder="e.g. Day Shift" value={templateForm.name} onChange={(e) => setTemplateForm({ ...templateForm, name: e.target.value })} className="input" /></Field>
@@ -319,8 +314,8 @@ export default function Shifts() {
               </label>
             </div>
             <div className="mt-6 flex justify-end gap-2 border-t pt-5">
-              <button type="button" onClick={() => setShowTemplateForm(false)} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Cancel</button>
-              <button disabled={savingTemplate || !templateForm.name.trim()} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+              <button type="button" onClick={() => setShowTemplateForm(false)} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted">Cancel</button>
+              <button disabled={savingTemplate || !templateForm.name.trim()} className="inline-flex items-center gap-2 bg-primary px-5 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground disabled:opacity-60">
                 {savingTemplate && <LuLoaderCircle className="animate-spin" />}
                 {editingTemplate ? 'Save changes' : 'Create shift'}
               </button>
@@ -330,14 +325,14 @@ export default function Shifts() {
       )}
 
       {rotationEmployee && rotationForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
-          <form onSubmit={saveRotation} className="w-full max-w-lg rounded-sm border bg-card p-6 shadow-2xl">
-            <div className="flex items-start justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <form onSubmit={saveRotation} className="w-full max-w-lg border-2 border-foreground/25 bg-card p-6 shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+            <div className="flex items-start justify-between -mx-6 -mt-6 mb-5 border-b-4 border-accent bg-muted/60 px-6 py-4">
               <div>
-                <p className="text-sm font-semibold text-secondary">Rotation</p>
+                <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">Rotation</p>
                 <h2 className="mt-1 font-display text-2xl font-semibold">{rotationEmployee.firstName} {rotationEmployee.lastName}</h2>
               </div>
-              <button type="button" onClick={() => { setRotationEmployee(null); setRotationForm(null) }} className="rounded-sm p-2 text-muted-foreground hover:bg-muted"><LuX /></button>
+              <button type="button" onClick={() => { setRotationEmployee(null); setRotationForm(null) }} className="bg-black p-2 text-white transition hover:bg-black/80"><LuX /></button>
             </div>
 
             {templates.length === 0 ? (
@@ -372,8 +367,8 @@ export default function Shifts() {
                 Remove rotation (unrestrict)
               </button>
               <div className="flex gap-2">
-                <button type="button" onClick={() => { setRotationEmployee(null); setRotationForm(null) }} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Cancel</button>
-                <button disabled={savingRotation || templates.length === 0} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+                <button type="button" onClick={() => { setRotationEmployee(null); setRotationForm(null) }} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted">Cancel</button>
+                <button disabled={savingRotation || templates.length === 0} className="inline-flex items-center gap-2 bg-primary px-5 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground disabled:opacity-60">
                   {savingRotation && <LuLoaderCircle className="animate-spin" />}
                   Save rotation
                 </button>
