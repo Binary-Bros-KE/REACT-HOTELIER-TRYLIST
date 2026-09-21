@@ -2,7 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import { LuCircleAlert, LuImageOff, LuLoaderCircle, LuPencil, LuPlus, LuPower, LuSearch, LuTrash2 } from 'react-icons/lu'
 import { api } from '@/lib/api'
-import Button from '@/components/ui/Button'
+import PageBanner from '@/components/ui/PageBanner'
+import ModalShell from '@/components/ui/ModalShell'
+import ActionButton from '@/components/ui/ActionButton'
+import StatusPill from '@/components/ui/StatusPill'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
@@ -37,6 +40,7 @@ function packHint(p: StockProduct): string | undefined {
   return `1 ${p.packLabel || 'pack'} = ${Number(p.packSize).toLocaleString()} ${p.packUnit.name}`
 }
 
+const TH = 'px-4 py-3 text-xs font-bold uppercase tracking-wider'
 const money = (v: string | number) => `KSh ${Number(v).toLocaleString('en-KE', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
 
 export default function Addons() {
@@ -151,42 +155,33 @@ export default function Addons() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-6 py-8 sm:px-8 lg:px-10">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-widest text-secondary">{addons.length} · Menu</p>
-        <h1 className="mt-1 font-display text-3xl font-semibold">Add-ons</h1>
-      </div>
+    <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
+      <PageBanner kicker="Menu" title="Add-ons" />
 
       {error && (
-        <div className="mt-5 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive">
+        <div className="mt-5 flex items-center gap-2 border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive">
           <LuCircleAlert />{error}
         </div>
       )}
 
-      <section className="mt-6 overflow-hidden rounded-lg border bg-card shadow-sm">
-        <div className="flex flex-col gap-4 border-b p-5 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-secondary">Add-ons</p>
-            <h2 className="mt-1 font-display text-xl font-semibold">Extras a cashier can attach to any item</h2>
-            <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-              One record per extra — Cheddar, Bacon, Extra Espresso. Tag each with a menu category so the POS add-on picker can filter to it; leave it blank to keep it general.
+      <section className="mt-6 overflow-hidden border bg-card shadow-sm">
+        <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center">
+          <div className="border-l-4 border-accent pl-3 lg:mr-auto">
+            <h2 className="font-display text-xl font-semibold leading-tight">Extras a cashier can attach to any item</h2>
+            <p className="max-w-xl text-xs text-muted-foreground">
+              One record per extra. Tag each with a menu category so the POS add-on picker can filter to it; leave it blank to keep it general.
             </p>
           </div>
-          <Button onClick={openCreate} className="shrink-0">
-            <LuPlus /> New add-on
-          </Button>
-        </div>
-
-        <div className="flex flex-col gap-3 border-b p-4 sm:flex-row">
-          <label className="relative block flex-1">
+          <label className="relative">
             <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name or SKU…" className="w-full rounded-sm border bg-background py-2.5 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name or SKU…" className="w-full border bg-background py-2.5 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring lg:w-60" />
           </label>
-          <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="rounded-sm border bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring sm:w-56">
+          <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="border bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring">
             <option value="">All categories</option>
             <option value="__none__">Uncategorised</option>
             {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
+          <ActionButton tone="primary" icon={<LuPlus />} onClick={openCreate}>New add-on</ActionButton>
         </div>
 
         {loading ? (
@@ -195,22 +190,22 @@ export default function Addons() {
           <div className="min-h-64 p-16 text-center text-sm text-muted-foreground">{search.trim() || categoryFilter ? 'No add-ons match.' : 'No add-ons yet.'}</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[680px] text-left text-sm">
+            <table className="w-full min-w-[720px] text-left text-sm">
               <thead className="bg-primary text-primary-foreground">
-                <tr className="[&>th]:px-4 [&>th]:py-3 [&>th]:text-xs [&>th]:font-semibold [&>th]:uppercase [&>th]:tracking-wide">
+                <tr>
                   <th className="w-14" aria-label="Image" />
-                  <th>Add-on</th>
-                  <th>Category</th>
-                  <th className="text-right">Price</th>
-                  <th>Status</th>
-                  <th className="text-right">Actions</th>
+                  <th className={TH}>Add-on</th>
+                  <th className={TH}>Category</th>
+                  <th className={cn(TH, 'text-right')}>Price</th>
+                  <th className={TH}>Status</th>
+                  <th className={cn(TH, 'text-right')}>Actions</th>
                 </tr>
               </thead>
-              <tbody className="[&>tr]:border-b [&>tr:last-child]:border-0">
+              <tbody className="divide-y">
                 {visible.map((a) => (
-                  <tr key={a.id} className={cn('align-middle transition hover:bg-muted/40', !a.isActive && 'opacity-60')}>
+                  <tr key={a.id} className={cn('align-middle transition even:bg-muted/30 hover:bg-muted/60', !a.isActive && 'opacity-60')}>
                     <td className="px-4 py-3">
-                      <span className="flex size-10 items-center justify-center overflow-hidden rounded-md border bg-muted/50 text-muted-foreground">
+                      <span className="flex size-10 items-center justify-center overflow-hidden border bg-muted/50 text-muted-foreground">
                         {a.imageUrl
                           ? <img src={a.imageUrl} alt="" className="size-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none' }} />
                           : <LuImageOff className="size-4" />}
@@ -227,25 +222,14 @@ export default function Addons() {
                         <p className="mt-0.5 text-xs italic text-warning">No stock impact</p>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground">{a.menuCategory?.name ?? <span className="italic text-xs">Any</span>}</td>
-                    <td className="px-4 py-3 text-right tabular-nums font-medium">{money(a.price)}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{a.menuCategory?.name ?? <span className="text-xs italic">Any</span>}</td>
+                    <td className="px-4 py-3 text-right font-medium tabular-nums">{money(a.price)}</td>
+                    <td className="px-4 py-3"><StatusPill tone={a.isActive ? 'success' : 'muted'}>{a.isActive ? 'Active' : 'Inactive'}</StatusPill></td>
                     <td className="px-4 py-3">
-                      <span className={cn('inline-flex whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide', a.isActive ? 'border-success/40 text-success' : 'border-muted-foreground/30 text-muted-foreground')}>
-                        {a.isActive ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => openEdit(a)} title="Edit" className="rounded-md p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuPencil className="size-4" /></button>
-                        <button onClick={() => void toggleActive(a)} disabled={busy} title={a.isActive ? 'Deactivate' : 'Activate'} className={cn('rounded-md p-2 hover:bg-muted', a.isActive ? 'text-muted-foreground' : 'text-success')}><LuPower className="size-4" /></button>
-                        <button
-                          onClick={() => void remove(a)}
-                          disabled={a._count.orderItems > 0}
-                          title={a._count.orderItems > 0 ? 'On an order — deactivate instead' : 'Delete'}
-                          className="rounded-md p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-30"
-                        >
-                          <LuTrash2 className="size-4" />
-                        </button>
+                      <div className="flex items-center justify-end gap-1.5">
+                        <ActionButton tone="neutral" icon={<LuPencil />} title="Edit" onClick={() => openEdit(a)} />
+                        <ActionButton tone="neutral" icon={<LuPower />} title={a.isActive ? 'Deactivate' : 'Activate'} disabled={busy} onClick={() => void toggleActive(a)} />
+                        <ActionButton tone="neutral" icon={<LuTrash2 />} title={a._count.orderItems > 0 ? 'On an order — deactivate instead' : 'Delete'} disabled={a._count.orderItems > 0} onClick={() => void remove(a)} />
                       </div>
                     </td>
                   </tr>
@@ -257,14 +241,23 @@ export default function Addons() {
       </section>
 
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
-          <form onSubmit={save} className="w-full max-w-md rounded-sm border bg-card p-6 shadow-2xl">
-            <div>
-              <p className="text-sm font-semibold text-secondary">{editing ? 'Edit add-on' : 'New add-on'}</p>
-              <h2 className="mt-1 font-display text-2xl font-semibold">{editing ? editing.name : 'Add an add-on'}</h2>
-            </div>
-
-            <div className="mt-6 space-y-4">
+        <ModalShell
+          size="md"
+          kicker={editing ? 'Edit add-on' : 'New add-on'}
+          title={editing ? editing.name : 'Add an add-on'}
+          onClose={() => setShowForm(false)}
+          footer={
+            <>
+              <button type="button" onClick={() => setShowForm(false)} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted">Cancel</button>
+              <button form="addon-form" disabled={saving || !form.name.trim() || form.price === ''} className="inline-flex items-center gap-2 bg-primary px-5 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground transition hover:brightness-110 disabled:opacity-60">
+                {saving && <LuLoaderCircle className="animate-spin" />}
+                {editing ? 'Save changes' : 'Create add-on'}
+              </button>
+            </>
+          }
+        >
+          <form id="addon-form" onSubmit={save}>
+            <div className="space-y-4 p-5">
               <Field label="Name" required><input required autoFocus placeholder="e.g. Cheddar" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="input" /></Field>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Price (KSh)" required><input required type="number" min="0" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className="input" /></Field>
@@ -326,16 +319,8 @@ export default function Addons() {
                 <input type="checkbox" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} className="size-4 accent-secondary" />
               </label>
             </div>
-
-            <div className="mt-6 flex justify-end gap-2 border-t pt-5">
-              <button type="button" onClick={() => setShowForm(false)} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Cancel</button>
-              <button disabled={saving || !form.name.trim() || form.price === ''} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
-                {saving && <LuLoaderCircle className="animate-spin" />}
-                {editing ? 'Save changes' : 'Create add-on'}
-              </button>
-            </div>
           </form>
-        </div>
+        </ModalShell>
       )}
     </div>
   )

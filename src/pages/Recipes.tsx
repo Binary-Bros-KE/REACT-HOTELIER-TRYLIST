@@ -1,8 +1,11 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
-import { LuChefHat, LuCircleAlert, LuCircleCheck, LuClock3, LuListChecks, LuLoaderCircle, LuPencil, LuPlus, LuTrash2, LuUtensils } from 'react-icons/lu'
+import { LuArrowDown, LuArrowUp, LuCircleAlert, LuLoaderCircle, LuPencil, LuPlus, LuSearch, LuTrash2, LuX } from 'react-icons/lu'
 import { api } from '@/lib/api'
-import Button from '@/components/ui/Button'
+import PageBanner from '@/components/ui/PageBanner'
+import ModalShell from '@/components/ui/ModalShell'
+import ActionButton from '@/components/ui/ActionButton'
+import StatusPill from '@/components/ui/StatusPill'
 import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
 
@@ -21,6 +24,7 @@ type Recipe = {
 
 type IngredientRow = { productId: string; quantity: string }
 type RecipeForm = { name: string; description: string; estimatedMinutes: string; steps: string[]; ingredients: IngredientRow[]; isActive: boolean }
+const TH = 'px-4 py-3 text-xs font-bold uppercase tracking-wider'
 const emptyForm: RecipeForm = { name: '', description: '', estimatedMinutes: '', steps: [''], ingredients: [{ productId: '', quantity: '' }], isActive: true }
 
 export default function Recipes() {
@@ -30,7 +34,11 @@ export default function Recipes() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
+  const [usageFilter, setUsageFilter] = useState<'all' | 'linked' | 'unlinked'>('all')
+  const [productFilter, setProductFilter] = useState('')
+  const [timeFilter, setTimeFilter] = useState<'all' | 'quick' | 'medium' | 'long'>('all')
   const [form, setForm] = useState<RecipeForm>(emptyForm)
   const [editing, setEditing] = useState<Recipe | null>(null)
   const [showForm, setShowForm] = useState(false)
@@ -83,7 +91,6 @@ export default function Recipes() {
     event.preventDefault()
     setSaving(true)
     setError('')
-    setNotice('')
     try {
       const payload = {
         ...form,
@@ -91,7 +98,6 @@ export default function Recipes() {
         ingredients: form.ingredients.filter((i) => i.productId && i.quantity),
       }
       await api(editing ? `/recipes/${editing.id}` : '/recipes', { method: editing ? 'PATCH' : 'POST', body: JSON.stringify(payload) })
-      setNotice(editing ? 'Recipe updated.' : 'Recipe created.')
       toast.success(editing ? 'Recipe updated.' : 'Recipe created.')
       setShowForm(false)
       await load()
@@ -107,10 +113,8 @@ export default function Recipes() {
   async function deleteRecipe(recipe: Recipe) {
     if (!window.confirm(`Delete "${recipe.name}"?`)) return
     setError('')
-    setNotice('')
     try {
       await api(`/recipes/${recipe.id}`, { method: 'DELETE' })
-      setNotice('Recipe deleted.')
       toast.success('Recipe deleted.')
       await load()
     } catch (cause) {
@@ -139,83 +143,170 @@ export default function Recipes() {
   function addIngredient() { setForm({ ...form, ingredients: [...form.ingredients, { productId: '', quantity: '' }] }) }
   function removeIngredient(index: number) { setForm({ ...form, ingredients: form.ingredients.filter((_, i) => i !== index) }) }
 
+  // Products that actually appear in a recipe — the ingredient filter only offers those.
+  const usedProducts = useMemo(() => {
+    const seen = new Map<string, string>()
+    for (const recipe of recipes) for (const i of recipe.ingredients) seen.set(i.productId, i.product.name)
+    return [...seen.entries()].map(([id, name]) => ({ id, name })).sort((x, y) => x.name.localeCompare(y.name))
+  }, [recipes])
+
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return recipes.filter((recipe) => {
+      if (statusFilter === 'active' && !recipe.isActive) return false
+      if (statusFilter === 'inactive' && recipe.isActive) return false
+      if (usageFilter === 'linked' && recipe._count.menuItems === 0) return false
+      if (usageFilter === 'unlinked' && recipe._count.menuItems > 0) return false
+      if (productFilter && !recipe.ingredients.some((i) => i.productId === productFilter)) return false
+      if (timeFilter !== 'all') {
+        const minutes = recipe.estimatedMinutes
+        if (minutes == null) return false
+        if (timeFilter === 'quick' && minutes > 15) return false
+        if (timeFilter === 'medium' && (minutes <= 15 || minutes > 45)) return false
+        if (timeFilter === 'long' && minutes <= 45) return false
+      }
+      if (!q) return true
+      return recipe.name.toLowerCase().includes(q) || (recipe.description ?? '').toLowerCase().includes(q) || recipe.ingredients.some((i) => i.product.name.toLowerCase().includes(q))
+    })
+  }, [recipes, search, statusFilter, usageFilter, productFilter, timeFilter])
+  const filtersActive = Boolean(search.trim() || statusFilter !== 'all' || usageFilter !== 'all' || productFilter || timeFilter !== 'all')
+
   return (
-    <div className="mx-auto max-w-5xl px-6 py-8 sm:px-8 lg:px-10">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-sm font-semibold text-secondary">Kitchen</p>
-          <h1 className="mt-1 font-display text-3xl font-semibold">Recipes</h1>
-          <p className="mt-2 text-sm text-muted-foreground">How each dish is made — steps, prep time, and the products it consumes from the kitchen.</p>
-        </div>
-        <Button onClick={openCreate}>
-          <LuPlus /> New recipe
-        </Button>
-      </header>
+    <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
+      <PageBanner kicker="Kitchen" title="Recipes" />
 
       {error && (
-        <div className="mt-5 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive">
+        <div className="mt-5 flex items-center gap-2 border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive">
           <LuCircleAlert />
           {error}
         </div>
       )}
-      {notice && (
-        <div className="mt-5 flex items-center gap-2 rounded-sm border border-success/25 bg-success/10 p-3 text-sm text-success">
-          <LuCircleCheck />
-          {notice}
+
+      <section className="mt-6 overflow-hidden border bg-card shadow-sm">
+        <div className="border-b p-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="border-l-4 border-accent pl-3 lg:mr-auto">
+              <h2 className="font-display text-xl font-semibold leading-tight">How each dish is made</h2>
+              <p className="text-xs text-muted-foreground">Steps, prep time and the products each recipe consumes.</p>
+            </div>
+            <ActionButton tone="primary" icon={<LuPlus />} onClick={openCreate}>New recipe</ActionButton>
+          </div>
+          <div className="mt-4 flex flex-wrap items-end gap-3">
+            <label className="flex min-w-[200px] flex-1 flex-col gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              Search
+              <span className="relative">
+                <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Recipe, description or ingredient…" className="input pl-9 font-normal normal-case tracking-normal" />
+              </span>
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              Status
+              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)} className="input font-normal normal-case tracking-normal">
+                <option value="all">All statuses</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              Used on menu
+              <select value={usageFilter} onChange={(e) => setUsageFilter(e.target.value as typeof usageFilter)} className="input font-normal normal-case tracking-normal">
+                <option value="all">All recipes</option>
+                <option value="linked">On a menu item</option>
+                <option value="unlinked">Not linked yet</option>
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              Ingredient
+              <select value={productFilter} onChange={(e) => setProductFilter(e.target.value)} className="input font-normal normal-case tracking-normal">
+                <option value="">Any ingredient</option>
+                {usedProducts.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              Prep time
+              <select value={timeFilter} onChange={(e) => setTimeFilter(e.target.value as typeof timeFilter)} className="input font-normal normal-case tracking-normal">
+                <option value="all">Any time</option>
+                <option value="quick">Quick (15 min or less)</option>
+                <option value="medium">Medium (16–45 min)</option>
+                <option value="long">Long (over 45 min)</option>
+              </select>
+            </label>
+            {filtersActive && (
+              <ActionButton tone="neutral" icon={<LuX />} onClick={() => { setSearch(''); setStatusFilter('all'); setUsageFilter('all'); setProductFilter(''); setTimeFilter('all') }}>Clear</ActionButton>
+            )}
+          </div>
         </div>
-      )}
 
-      {loading ? (
-        <div className="mt-7 flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><LuLoaderCircle className="animate-spin" /> Loading recipes…</div>
-      ) : recipes.length === 0 ? (
-        <div className="mt-7 min-h-64 rounded-sm border bg-card p-16 text-center text-sm text-muted-foreground shadow-sm">No recipes yet. Add your first one to start standardizing prep.</div>
-      ) : (
-        <section className="mt-7 grid gap-4 sm:grid-cols-2">
-          {recipes.map((recipe) => (
-            <article key={recipe.id} className="rounded-sm border bg-card p-5 shadow-sm">
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-start gap-3">
-                  <span className="flex size-9 shrink-0 items-center justify-center rounded-sm bg-secondary/10 text-secondary"><LuChefHat className="size-4" /></span>
-                  <div>
-                    <h2 className="font-semibold">{recipe.name}</h2>
-                    {recipe.description && <p className="mt-0.5 text-xs text-muted-foreground">{recipe.description}</p>}
-                  </div>
-                </div>
-                {!recipe.isActive && <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">Inactive</span>}
-              </div>
-
-              <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                {recipe.estimatedMinutes != null && <span className="flex items-center gap-1"><LuClock3 className="size-3.5" /> {recipe.estimatedMinutes} min</span>}
-                <span className="flex items-center gap-1"><LuListChecks className="size-3.5" /> {recipe.steps.length} step{recipe.steps.length === 1 ? '' : 's'}</span>
-                <span className="flex items-center gap-1"><LuUtensils className="size-3.5" /> {recipe.ingredients.length} ingredient{recipe.ingredients.length === 1 ? '' : 's'}</span>
-                {recipe._count.menuItems > 0 && <span className="rounded-full bg-secondary/10 px-2 py-0.5 font-semibold text-secondary">{recipe._count.menuItems} menu item{recipe._count.menuItems === 1 ? '' : 's'}</span>}
-              </div>
-
-              {recipe.ingredients.length > 0 && (
-                <p className="mt-3 truncate text-xs text-muted-foreground">{recipe.ingredients.map((i) => `${i.product.name} ${Number(i.quantity)}${i.product.unit}`).join(' · ')}</p>
-              )}
-
-              <div className="mt-4 flex gap-2">
-                <button onClick={() => openEdit(recipe)} className="inline-flex items-center gap-1.5 rounded-sm border px-3 py-1.5 text-xs font-semibold hover:bg-muted"><LuPencil className="size-3.5" /> Edit</button>
-                <button onClick={() => void deleteRecipe(recipe)} className="inline-flex items-center gap-1.5 rounded-sm border border-destructive/30 px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/10"><LuTrash2 className="size-3.5" /> Delete</button>
-              </div>
-            </article>
-          ))}
-        </section>
-      )}
+        {loading ? (
+          <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><LuLoaderCircle className="animate-spin" /> Loading recipes…</div>
+        ) : visible.length === 0 ? (
+          <div className="min-h-64 p-16 text-center text-sm text-muted-foreground">{recipes.length === 0 ? 'No recipes yet. Add your first one to start standardizing prep.' : 'No recipes match these filters.'}</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[820px] text-left text-sm">
+              <thead className="bg-primary text-primary-foreground">
+                <tr>
+                  <th className={TH}>Recipe</th>
+                  <th className={TH}>Ingredients</th>
+                  <th className={cn(TH, 'text-right')}>Prep</th>
+                  <th className={cn(TH, 'text-right')}>Steps</th>
+                  <th className={TH}>Menu items</th>
+                  <th className={TH}>Status</th>
+                  <th className={cn(TH, 'text-right')}>Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {visible.map((recipe) => (
+                  <tr key={recipe.id} className={cn('align-middle transition even:bg-muted/30 hover:bg-muted/60', !recipe.isActive && 'opacity-70')}>
+                    <td className="px-4 py-3">
+                      <p className="font-semibold">{recipe.name}</p>
+                      {recipe.description && <p className="max-w-xs truncate text-xs text-muted-foreground">{recipe.description}</p>}
+                    </td>
+                    <td className="max-w-sm px-4 py-3 text-xs text-muted-foreground">
+                      {recipe.ingredients.length > 0
+                        ? <span title={recipe.ingredients.map((i) => `${i.product.name} ${Number(i.quantity)}${i.product.unit}`).join(' · ')} className="line-clamp-2">{recipe.ingredients.map((i) => `${i.product.name} ${Number(i.quantity)}${i.product.unit}`).join(' · ')}</span>
+                        : <span className="italic">none</span>}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-muted-foreground">{recipe.estimatedMinutes != null ? `${recipe.estimatedMinutes} min` : '—'}</td>
+                    <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">{recipe.steps.length}</td>
+                    <td className="px-4 py-3">{recipe._count.menuItems > 0 ? <StatusPill tone="secondary">{recipe._count.menuItems} item{recipe._count.menuItems === 1 ? '' : 's'}</StatusPill> : <span className="text-xs text-muted-foreground">—</span>}</td>
+                    <td className="px-4 py-3"><StatusPill tone={recipe.isActive ? 'success' : 'muted'}>{recipe.isActive ? 'Active' : 'Inactive'}</StatusPill></td>
+                    <td className="px-4 py-3">
+                      <div className="flex justify-end gap-1.5">
+                        <ActionButton tone="neutral" icon={<LuPencil />} title="Edit" onClick={() => openEdit(recipe)} />
+                        <ActionButton tone="neutral" icon={<LuTrash2 />} title="Delete" onClick={() => void deleteRecipe(recipe)} />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {!loading && recipes.length > 0 && <p className="border-t px-4 py-2 text-xs text-muted-foreground">Showing {visible.length} of {recipes.length} recipe{recipes.length === 1 ? '' : 's'}.</p>}
+      </section>
 
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
-          <form onSubmit={saveRecipe} className="max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-sm border bg-card p-6 shadow-2xl">
-            <div>
-              <p className="text-sm font-semibold text-secondary">{editing ? 'Edit recipe' : 'New recipe'}</p>
-              <h2 className="mt-1 font-display text-2xl font-semibold">{editing ? editing.name : 'Add a recipe'}</h2>
-            </div>
-
+        <ModalShell
+          size="lg"
+          kicker={editing ? 'Edit recipe' : 'New recipe'}
+          title={editing ? editing.name : 'Add a recipe'}
+          onClose={() => setShowForm(false)}
+          footer={
+            <>
+              <button type="button" onClick={() => setShowForm(false)} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted">Cancel</button>
+              <button form="recipe-form" disabled={saving} className="inline-flex items-center gap-2 bg-primary px-5 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground transition hover:brightness-110 disabled:opacity-60">
+                {saving && <LuLoaderCircle className="animate-spin" />}
+                {editing ? 'Save changes' : 'Create recipe'}
+              </button>
+            </>
+          }
+        >
+          <form id="recipe-form" onSubmit={saveRecipe} className="px-5 pb-5">
             <FieldGroup title="Overview">
               <Field label="Name" required className="sm:col-span-2"><input required placeholder="e.g. Chicken Tikka Masala" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="input" /></Field>
               <Field label="Estimated Time (minutes)"><input type="number" min="0" placeholder="e.g. 25" value={form.estimatedMinutes} onChange={(e) => setForm({ ...form, estimatedMinutes: e.target.value })} className="input" /></Field>
-              <label className="flex items-center justify-between rounded-sm border bg-background px-3 py-2.5 text-sm font-medium">
+              <label className="flex items-center justify-between border bg-background px-3 py-2.5 text-sm font-medium">
                 Active
                 <input type="checkbox" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} className="size-4 accent-secondary" />
               </label>
@@ -223,24 +314,24 @@ export default function Recipes() {
             </FieldGroup>
 
             <FieldGroup title="Steps">
-              <div className="sm:col-span-2 space-y-2">
+              <div className="space-y-2 sm:col-span-2">
                 {form.steps.map((step, index) => (
                   <div key={index} className="flex items-start gap-2">
-                    <span className="mt-2.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-secondary/10 text-xs font-bold text-secondary">{index + 1}</span>
+                    <span className="mt-2 flex size-7 shrink-0 items-center justify-center bg-secondary/15 text-xs font-bold text-secondary">{index + 1}</span>
                     <input placeholder={`Step ${index + 1}`} value={step} onChange={(e) => updateStep(index, e.target.value)} className="input flex-1" />
                     <div className="flex shrink-0 gap-1">
-                      <button type="button" onClick={() => moveStep(index, -1)} disabled={index === 0} className="rounded-sm border px-2 py-2 text-xs hover:bg-muted disabled:opacity-30">&uarr;</button>
-                      <button type="button" onClick={() => moveStep(index, 1)} disabled={index === form.steps.length - 1} className="rounded-sm border px-2 py-2 text-xs hover:bg-muted disabled:opacity-30">&darr;</button>
-                      <button type="button" onClick={() => removeStep(index)} className="rounded-sm border border-destructive/30 p-2 text-destructive hover:bg-destructive/10"><LuTrash2 className="size-3.5" /></button>
+                      <ActionButton tone="neutral" icon={<LuArrowUp />} title="Move up" disabled={index === 0} onClick={() => moveStep(index, -1)} />
+                      <ActionButton tone="neutral" icon={<LuArrowDown />} title="Move down" disabled={index === form.steps.length - 1} onClick={() => moveStep(index, 1)} />
+                      <ActionButton tone="neutral" icon={<LuTrash2 />} title="Remove step" onClick={() => removeStep(index)} />
                     </div>
                   </div>
                 ))}
-                <button type="button" onClick={addStep} className="inline-flex items-center gap-1.5 rounded-sm border px-3 py-1.5 text-xs font-semibold hover:bg-muted"><LuPlus className="size-3.5" /> Add step</button>
+                <button type="button" onClick={addStep} className="inline-flex items-center gap-1.5 border-2 border-dashed px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-secondary hover:bg-secondary/5"><LuPlus className="size-3.5" /> Add step</button>
               </div>
             </FieldGroup>
 
             <FieldGroup title="Ingredients">
-              <div className="sm:col-span-2 space-y-2">
+              <div className="space-y-2 sm:col-span-2">
                 {form.ingredients.map((row, index) => (
                   <div key={index} className="flex items-center gap-2">
                     <div className="min-w-0 flex-1">
@@ -253,22 +344,14 @@ export default function Recipes() {
                       <input type="number" min="0" step="0.001" placeholder="Qty" value={row.quantity} onChange={(e) => updateIngredient(index, { quantity: e.target.value })} className="input" />
                     </div>
                     <span className="w-10 shrink-0 text-xs text-muted-foreground">{products.find((p) => p.id === row.productId)?.unit ?? ''}</span>
-                    <button type="button" onClick={() => removeIngredient(index)} className="shrink-0 rounded-sm border border-destructive/30 p-2 text-destructive hover:bg-destructive/10"><LuTrash2 className="size-3.5" /></button>
+                    <ActionButton tone="neutral" icon={<LuTrash2 />} title="Remove ingredient" onClick={() => removeIngredient(index)} />
                   </div>
                 ))}
-                <button type="button" onClick={addIngredient} className="inline-flex items-center gap-1.5 rounded-sm border px-3 py-1.5 text-xs font-semibold hover:bg-muted"><LuPlus className="size-3.5" /> Add ingredient</button>
+                <button type="button" onClick={addIngredient} className="inline-flex items-center gap-1.5 border-2 border-dashed px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-secondary hover:bg-secondary/5"><LuPlus className="size-3.5" /> Add ingredient</button>
               </div>
             </FieldGroup>
-
-            <div className="mt-6 flex justify-end gap-2 border-t pt-5">
-              <button type="button" onClick={() => setShowForm(false)} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Cancel</button>
-              <button disabled={saving} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
-                {saving && <LuLoaderCircle className="animate-spin" />}
-                {editing ? 'Save changes' : 'Create recipe'}
-              </button>
-            </div>
           </form>
-        </div>
+        </ModalShell>
       )}
     </div>
   )
@@ -277,7 +360,7 @@ export default function Recipes() {
 function FieldGroup({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="mt-6 border-t pt-5 first:mt-6 first:border-t">
-      <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
+      <p className="mb-3 border-l-4 border-accent pl-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">{title}</p>
       <div className="grid gap-4 sm:grid-cols-2">{children}</div>
     </div>
   )
