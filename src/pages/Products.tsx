@@ -16,7 +16,8 @@ import {
   LuTrash2,
 } from 'react-icons/lu'
 import { api, hasApiTenant } from '@/lib/api'
-import Button from '@/components/ui/Button'
+import PageBanner from '@/components/ui/PageBanner'
+import ActionButton from '@/components/ui/ActionButton'
 import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
 import StatCard from '@/components/ui/StatCard'
@@ -370,22 +371,8 @@ export default function Products() {
   if (!hasApiTenant()) return <SetupMessage />
 
   return (
-    <div className="mx-auto max-w-7xl px-6 py-8 sm:px-8 lg:px-10">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-sm font-semibold text-secondary">Products</p>
-          <h1 className="mt-1 font-display text-3xl font-semibold">Products</h1>
-          <p className="mt-2 text-sm text-muted-foreground">Record everything received into the store and track stock on hand.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="secondary" onClick={() => setShowUnits(true)}>
-            <LuRuler /> Manage UOM
-          </Button>
-          <Button onClick={openCreate}>
-            <LuPlus /> Add product
-          </Button>
-        </div>
-      </header>
+    <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
+      <PageBanner kicker="Inventory" title="Products" />
 
       <section className="mt-7 grid gap-3 sm:grid-cols-4">
         {([
@@ -438,6 +425,10 @@ export default function Products() {
             <input type="checkbox" checked={lowStockOnly} onChange={(e) => setLowStockOnly(e.target.checked)} className="size-4 accent-secondary" />
             Low stock only
           </label>
+          <div className="flex gap-2">
+            <ActionButton tone="neutral" icon={<LuRuler />} onClick={() => setShowUnits(true)}>Manage UOM</ActionButton>
+            <ActionButton tone="primary" icon={<LuPlus />} onClick={openCreate}>Add product</ActionButton>
+          </div>
         </div>
 
         {loading ? (
@@ -468,8 +459,8 @@ export default function Products() {
                         <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Total stock</p>
                       </div>
                       <div className="flex items-center gap-1">
-                        {low && <span className="rounded-full bg-warning/10 px-2 py-0.5 text-xs font-semibold text-warning">Low</span>}
-                        {!product.isActive && <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">Inactive</span>}
+                        {low && <span className="keep-round border border-dashed border-warning/70 px-2 py-0.5 text-xs font-semibold text-warning">Low</span>}
+                        {!product.isActive && <span className="keep-round border border-dashed border-muted-foreground/50 px-2 py-0.5 text-xs font-semibold text-muted-foreground">Inactive</span>}
                         <button onClick={() => openAdjust(product)} title="Add or remove stock" className="rounded-sm border p-2 text-muted-foreground hover:bg-success/10 hover:text-success"><LuPackagePlus /></button>
                         <button onClick={() => openTransfer(product)} title="Transfer stock" className="rounded-sm border p-2 text-muted-foreground hover:bg-accent/10 hover:text-accent"><LuArrowLeftRight /></button>
                         <button onClick={() => openEdit(product)} title="Edit product" className="rounded-sm border p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuPencil /></button>
@@ -530,15 +521,15 @@ export default function Products() {
                         {product.stockByLocation.length === 0 ? '—' : (
                           <div className="flex flex-wrap gap-1">
                             {product.stockByLocation.map((s) => (
-                              <span key={s.locationId} className="rounded-full bg-muted px-2 py-0.5 text-xs">{s.locationName}: {packAndUnit(Number(s.quantity), productPackSize, product.packLabel ?? '', unitLabel)}</span>
+                              <span key={s.locationId} className="keep-round rounded-full bg-muted px-2 py-0.5 text-xs">{s.locationName}: {packAndUnit(Number(s.quantity), productPackSize, product.packLabel ?? '', unitLabel)}</span>
                             ))}
                           </div>
                         )}
                       </td>
                       <td className="px-5 py-4">
                         <span className={cn('font-semibold', low ? 'text-warning' : 'text-foreground')}>{packAndUnit(Number(product.totalQuantity), productPackSize, product.packLabel ?? '', unitLabel)}</span>
-                        {low && <span className="ml-2 rounded-full bg-warning/10 px-2 py-0.5 text-xs font-semibold text-warning">Low</span>}
-                        {!product.isActive && <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">Inactive</span>}
+                        {low && <span className="ml-2 keep-round border border-dashed border-warning/70 px-2 py-0.5 text-xs font-semibold text-warning">Low</span>}
+                        {!product.isActive && <span className="ml-2 keep-round border border-dashed border-muted-foreground/50 px-2 py-0.5 text-xs font-semibold text-muted-foreground">Inactive</span>}
                       </td>
                       <td className="px-5 py-4 text-muted-foreground">{product.unitCost ? `KSh ${Number(product.unitCost).toLocaleString()}` : '—'}</td>
                       <td className="px-5 py-4">
@@ -560,10 +551,10 @@ export default function Products() {
       </section>
 
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
-          <form onSubmit={saveProduct} className="max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-sm border bg-card p-6 shadow-2xl">
-            <div>
-              <p className="text-sm font-semibold text-secondary">{editing ? 'Edit product' : 'New product'}</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <form onSubmit={saveProduct} className="max-h-[88vh] w-full max-w-2xl overflow-y-auto border-2 border-foreground/25 bg-card p-6 shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+            <div className="-mx-6 -mt-6 border-b-4 border-accent bg-muted/60 px-6 py-4">
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">{editing ? 'Edit product' : 'New product'}</p>
               <h2 className="mt-1 font-display text-2xl font-semibold">{editing ? editing.name : 'Record a product'}</h2>
             </div>
 
@@ -701,10 +692,10 @@ export default function Products() {
       )}
 
       {showTransfer && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
-          <form onSubmit={saveTransfer} className="w-full max-w-md rounded-sm border bg-card p-6 shadow-2xl">
-            <div>
-              <p className="text-sm font-semibold text-secondary">Transfer stock</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <form onSubmit={saveTransfer} className="w-full max-w-md border-2 border-foreground/25 bg-card p-6 shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+            <div className="-mx-6 -mt-6 border-b-4 border-accent bg-muted/60 px-6 py-4">
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">Transfer stock</p>
               <h2 className="mt-1 font-display text-2xl font-semibold">{transfer.productName}</h2>
               <p className="mt-1 text-xs text-muted-foreground">
                 {transfer.stockByLocation.length === 0 ? 'No stock recorded yet' : transfer.stockByLocation.map((s) => `${s.locationName}: ${packAndUnit(Number(s.quantity), transfer.packSize, transfer.packLabel, transfer.unitName)}`).join(' · ')}
@@ -758,11 +749,11 @@ export default function Products() {
       )}
 
       {showAdjust && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
-          <form onSubmit={saveAdjust} className="flex max-h-[calc(100vh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-sm border bg-card shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <form onSubmit={saveAdjust} className="flex max-h-[calc(100vh-2rem)] w-full max-w-lg flex-col overflow-hidden border-2 border-foreground/25 bg-card shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
             <div className="overflow-y-auto p-6">
-              <div>
-                <p className="text-sm font-semibold text-secondary">Add or remove stock</p>
+              <div className="-mx-6 -mt-6 border-b-4 border-accent bg-muted/60 px-6 py-4">
+                <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">Add or remove stock</p>
                 <h2 className="mt-1 font-display text-2xl font-semibold">{adjust.productName}</h2>
                 <div className="mt-4 grid gap-2 sm:grid-cols-2">
                   {locations.length === 0 ? (
@@ -873,7 +864,7 @@ export default function Products() {
 function FieldGroup({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="mt-6 border-t pt-5 first:mt-6 first:border-t">
-      <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
+      <p className="mb-3 border-l-4 border-accent pl-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">{title}</p>
       <div className="grid gap-4 sm:grid-cols-2">{children}</div>
     </div>
   )

@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
-import { LuCircleAlert, LuCircleCheck, LuFolderTree, LuLoaderCircle, LuPencil, LuPlus, LuTag, LuTrash2 } from 'react-icons/lu'
+import { LuCircleAlert, LuFolderTree, LuLoaderCircle, LuPencil, LuPlus, LuTag, LuTrash2 } from 'react-icons/lu'
 import { api } from '@/lib/api'
-import Button from '@/components/ui/Button'
+import PageBanner from '@/components/ui/PageBanner'
+import ModalShell from '@/components/ui/ModalShell'
+import ActionButton from '@/components/ui/ActionButton'
+import StatusPill from '@/components/ui/StatusPill'
 import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
 import StatCard from '@/components/ui/StatCard'
@@ -31,7 +34,6 @@ export default function Categories({ scope = 'STORE', title = 'Categories', subt
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
   const [form, setForm] = useState<CategoryForm>(emptyForm)
   const [editing, setEditing] = useState<Category | null>(null)
   const [showForm, setShowForm] = useState(false)
@@ -101,13 +103,11 @@ export default function Categories({ scope = 'STORE', title = 'Categories', subt
     event.preventDefault()
     setSaving(true)
     setError('')
-    setNotice('')
     try {
       await api(editing ? `/categories/${editing.id}` : '/categories', {
         method: editing ? 'PATCH' : 'POST',
         body: JSON.stringify(editing ? form : { ...form, scope }),
       })
-      setNotice(editing ? 'Category updated.' : 'Category created.')
       toast.success(editing ? 'Category updated.' : 'Category created.')
       setShowForm(false)
       await load()
@@ -123,10 +123,8 @@ export default function Categories({ scope = 'STORE', title = 'Categories', subt
   async function deleteCategory(category: Category) {
     if (!window.confirm(`Delete "${category.name}"?`)) return
     setError('')
-    setNotice('')
     try {
       await api(`/categories/${category.id}`, { method: 'DELETE' })
-      setNotice('Category deleted.')
       toast.success('Category deleted.')
       await load()
     } catch (cause) {
@@ -144,19 +142,10 @@ export default function Categories({ scope = 'STORE', title = 'Categories', subt
   }
 
   return (
-    <div className={embedded ? '' : 'mx-auto max-w-5xl px-6 py-8 sm:px-8 lg:px-10'}>
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          {!embedded && <p className="text-sm font-semibold text-secondary">Inventory</p>}
-          {embedded ? <h2 className="font-display text-xl font-semibold">{title}</h2> : <h1 className="mt-1 font-display text-3xl font-semibold">{title}</h1>}
-          <p className="mt-2 text-sm text-muted-foreground">{subtitle}</p>
-        </div>
-        <Button onClick={() => openCreate()}>
-          <LuPlus /> Add category
-        </Button>
-      </header>
+    <div className={cn('dashboard-square', !embedded && 'mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10')}>
+      {!embedded && <PageBanner kicker="Inventory" title={title} />}
 
-      <section className="mt-7 grid gap-3 sm:grid-cols-3">
+      <section className={cn('grid gap-3 sm:grid-cols-3', !embedded && 'mt-6')}>
         {([
           ['Total categories', summary.total, <LuFolderTree key="a" />],
           ['Top-level categories', summary.topLevel, <LuTag key="b" />],
@@ -167,19 +156,20 @@ export default function Categories({ scope = 'STORE', title = 'Categories', subt
       </section>
 
       {error && (
-        <div className="mt-5 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive">
+        <div className="mt-5 flex items-center gap-2 border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive">
           <LuCircleAlert />
           {error}
         </div>
       )}
-      {notice && (
-        <div className="mt-5 flex items-center gap-2 rounded-sm border border-success/25 bg-success/10 p-3 text-sm text-success">
-          <LuCircleCheck />
-          {notice}
-        </div>
-      )}
 
-      <section className="mt-6 overflow-hidden rounded-sm border bg-card shadow-sm">
+      <section className="mt-6 overflow-hidden border bg-card shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
+          <div className="border-l-4 border-accent pl-3">
+            <h2 className="font-display text-xl font-semibold leading-tight">{embedded ? title : 'Category tree'}</h2>
+            <p className="text-xs text-muted-foreground">{subtitle}</p>
+          </div>
+          <ActionButton tone="primary" icon={<LuPlus />} onClick={() => openCreate()}>Add category</ActionButton>
+        </div>
         {loading ? (
           <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground">
             <LuLoaderCircle className="animate-spin" /> Loading categories…
@@ -203,48 +193,47 @@ export default function Categories({ scope = 'STORE', title = 'Categories', subt
       </section>
 
       {showForm && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm"
-        >
-          <form onSubmit={saveCategory} className="w-full max-w-md rounded-sm border bg-card p-6 shadow-2xl">
-            <div>
-              <p className="text-sm font-semibold text-secondary">{editing ? 'Edit category' : 'New category'}</p>
-              <h2 className="mt-1 font-display text-2xl font-semibold">{editing ? editing.name : 'Add a category'}</h2>
-            </div>
-            <div className="mt-6 space-y-4">
-              <Field label="Name" required>
-                <input required className="input" placeholder="e.g. Beverages" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-              </Field>
-              <Field label="Description">
-                <input className="input" placeholder="e.g. Soft drinks, juices, and water" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-              </Field>
-              <Field label="Parent Category">
-                <select
-                  className="input"
-                  value={form.parentId}
-                  onChange={(e) => setForm({ ...form, parentId: e.target.value })}
-                  disabled={Boolean(presetParentId)}
-                >
-                  <option value="">No parent — top level</option>
-                  {parentOptions.map((c) => (
-                    <option key={c.id} value={c.id}>{'— '.repeat(c.level - 1)}{c.name}</option>
-                  ))}
-                </select>
-              </Field>
-              <label className="flex items-center justify-between rounded-sm border bg-background px-3 py-2.5 text-sm font-medium">
-                Active
-                <input type="checkbox" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} className="size-4 accent-secondary" />
-              </label>
-            </div>
-            <div className="mt-6 flex justify-end gap-2">
-              <button type="button" onClick={() => setShowForm(false)} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Cancel</button>
-              <button disabled={saving} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+        <ModalShell
+          size="sm"
+          kicker={editing ? 'Edit category' : 'New category'}
+          title={editing ? editing.name : 'Add a category'}
+          onClose={() => setShowForm(false)}
+          footer={
+            <>
+              <button type="button" onClick={() => setShowForm(false)} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted">Cancel</button>
+              <button form="category-form" disabled={saving} className="inline-flex items-center gap-2 bg-primary px-5 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground transition hover:brightness-110 disabled:opacity-60">
                 {saving && <LuLoaderCircle className="animate-spin" />}
                 {editing ? 'Save changes' : 'Create category'}
               </button>
-            </div>
+            </>
+          }
+        >
+          <form id="category-form" onSubmit={saveCategory} className="space-y-4 p-5">
+            <Field label="Name" required>
+              <input required className="input" placeholder="e.g. Beverages" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            </Field>
+            <Field label="Description">
+              <input className="input" placeholder="e.g. Soft drinks, juices, and water" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+            </Field>
+            <Field label="Parent Category">
+              <select
+                className="input"
+                value={form.parentId}
+                onChange={(e) => setForm({ ...form, parentId: e.target.value })}
+                disabled={Boolean(presetParentId)}
+              >
+                <option value="">No parent — top level</option>
+                {parentOptions.map((c) => (
+                  <option key={c.id} value={c.id}>{'— '.repeat(c.level - 1)}{c.name}</option>
+                ))}
+              </select>
+            </Field>
+            <label className="flex items-center justify-between border bg-background px-3 py-2.5 text-sm font-medium">
+              Active
+              <input type="checkbox" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} className="size-4 accent-secondary" />
+            </label>
           </form>
-        </div>
+        </ModalShell>
       )}
     </div>
   )
@@ -260,36 +249,28 @@ function CategoryNode({ category, childrenOf, onAddChild, onEdit, onDelete }: {
   const children = childrenOf.get(category.id) ?? []
   return (
     <div>
-      <div className="flex items-center gap-3 px-5 py-3.5 hover:bg-muted/30" style={{ paddingLeft: `${1.25 + (category.level - 1) * 1.5}rem` }}>
-        <span className={cn('flex size-8 shrink-0 items-center justify-center rounded-sm', category.isActive ? 'bg-secondary/10 text-secondary' : 'bg-muted text-muted-foreground')}>
+      <div className="flex items-center gap-3 px-5 py-3 transition hover:bg-muted/40" style={{ paddingLeft: `${1.25 + (category.level - 1) * 1.5}rem` }}>
+        <span className={cn('flex size-8 shrink-0 items-center justify-center', category.isActive ? 'bg-secondary/15 text-secondary' : 'bg-muted text-muted-foreground')}>
           <LuTag className="size-4" />
         </span>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <p className="truncate font-semibold">{category.name}</p>
-            {!category.isActive && <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">Inactive</span>}
-            {category._count.products > 0 && <span className="rounded-full bg-secondary/10 px-2 py-0.5 text-xs font-semibold text-secondary">{category._count.products} product{category._count.products === 1 ? '' : 's'}</span>}
-            {category._count.menuItems > 0 && <span className="rounded-full bg-secondary/10 px-2 py-0.5 text-xs font-semibold text-secondary">{category._count.menuItems} menu item{category._count.menuItems === 1 ? '' : 's'}</span>}
-            {category._count.assets > 0 && <span className="rounded-full bg-secondary/10 px-2 py-0.5 text-xs font-semibold text-secondary">{category._count.assets} asset{category._count.assets === 1 ? '' : 's'}</span>}
+            {!category.isActive && <StatusPill tone="muted">Inactive</StatusPill>}
+            {category._count.products > 0 && <StatusPill tone="secondary">{category._count.products} product{category._count.products === 1 ? '' : 's'}</StatusPill>}
+            {category._count.menuItems > 0 && <StatusPill tone="secondary">{category._count.menuItems} menu item{category._count.menuItems === 1 ? '' : 's'}</StatusPill>}
+            {category._count.assets > 0 && <StatusPill tone="secondary">{category._count.assets} asset{category._count.assets === 1 ? '' : 's'}</StatusPill>}
           </div>
           {category.description && <p className="mt-0.5 truncate text-xs text-muted-foreground">{category.description}</p>}
         </div>
-        <div className="flex shrink-0 items-center gap-1">
-          {category.level < MAX_LEVEL && (
-            <button onClick={() => onAddChild(category.id)} title="Add subcategory" className="rounded-sm p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary">
-              <LuPlus className="size-4" />
-            </button>
-          )}
-          <button onClick={() => onEdit(category)} title="Edit category" className="rounded-sm p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary">
-            <LuPencil className="size-4" />
-          </button>
-          <button onClick={() => onDelete(category)} title="Delete category" className="rounded-sm p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
-            <LuTrash2 className="size-4" />
-          </button>
+        <div className="flex shrink-0 items-center gap-1.5">
+          {category.level < MAX_LEVEL && <ActionButton tone="neutral" icon={<LuPlus />} title="Add subcategory" onClick={() => onAddChild(category.id)} />}
+          <ActionButton tone="neutral" icon={<LuPencil />} title="Edit category" onClick={() => onEdit(category)} />
+          <ActionButton tone="neutral" icon={<LuTrash2 />} title="Delete category" onClick={() => onDelete(category)} />
         </div>
       </div>
       {children.length > 0 && (
-        <div className="divide-y border-t">
+        <div className="divide-y border-t bg-muted/20">
           {children.map((child) => (
             <CategoryNode key={child.id} category={child} childrenOf={childrenOf} onAddChild={onAddChild} onEdit={onEdit} onDelete={onDelete} />
           ))}
