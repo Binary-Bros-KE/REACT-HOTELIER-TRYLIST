@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   LuBedDouble, LuBuilding2, LuCheck, LuChevronDown, LuCircleAlert, LuCircleCheck, LuConciergeBell, LuLoaderCircle, LuMapPin, LuMinus,
-  LuPlus, LuSearch, LuTrash2, LuUserRound,
+  LuPencil, LuPlus, LuSearch, LuTrash2, LuUserRound,
 } from 'react-icons/lu'
 import { api } from '@/lib/api'
 import { useAppSelector } from '@/store/hooks'
@@ -13,6 +13,8 @@ import ReceiptPreviewModal from '@/components/pos/ReceiptPreviewModal'
 import type { ReceiptProfile } from '@/components/pos/OrderReceipt'
 import { resolveTax, type TaxMode, type TaxTreatment } from '@/lib/tax'
 import { computeFinancialsFromRows } from '@/lib/orderTotals'
+import ServiceOptionsModal from '@/components/services/ServiceOptionsModal'
+import { chargedPrice, isOverridden, lineKey, lineTotal, linePayload, listPrice, needsOptions, type CartLine, type PosService, type PosServiceAddon } from '@/components/services/serviceTill'
 
 type ApiService = {
   id: string
@@ -20,21 +22,22 @@ type ApiService = {
   price: string | number
   unit: { name: string }
   category: { id: string; name: string }
+  durationMinutes: number | null
+  variants: { id: string; name: string; price: string | number; durationMinutes: number | null }[]
   // The service's own tax, or the property default - already resolved by the API.
   taxRate: string | number | null
   taxMode: TaxMode | null
   taxTreatment: TaxTreatment | null
 }
+type ApiAddon = { id: string; name: string; price: string | number; serviceCategoryId: string | null }
 type RestaurantLocation = { id: string; name: string; type: string | null; isActive: boolean }
 type BusinessProfile = { businessName: string; taxRate: string | null; taxMode: TaxMode; taxTreatment: TaxTreatment }
-type PosService = Omit<ApiService, 'price'> & { price: number; tax: { rate: number; mode: TaxMode; treatment: TaxTreatment } }
-type CartItem = PosService & { quantity: number }
 
 const formatKes = (price: number) => `KSh ${price.toLocaleString('en-KE', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
 
 /** Per-line tax (each service's own treatment, else the property default) - the same engine as the food till and the server. */
-function computeFinancials(cart: CartItem[], discountInput: string) {
-  return computeFinancialsFromRows(cart.map((item) => ({ sub: item.price * item.quantity, tax: item.tax })), discountInput)
+function computeFinancials(cart: CartLine[], discountInput: string) {
+  return computeFinancialsFromRows(cart.map((line) => ({ sub: lineTotal(line), tax: line.service.tax })), discountInput)
 }
 
 export default function ServicesPointOfSale() {
@@ -48,7 +51,10 @@ export default function ServicesPointOfSale() {
   const [categoryQuery, setCategoryQuery] = useState('')
   const categoryRef = useRef<HTMLDivElement>(null)
   const [search, setSearch] = useState('')
-  const [cart, setCart] = useState<CartItem[]>([])
+  const [cart, setCart] = useState<CartLine[]>([])
+  const [serviceAddons, setServiceAddons] = useState<PosServiceAddon[]>([])
+  // The options picker: a service being added, or an existing line being edited.
+  const [optionsFor, setOptionsFor] = useState<{ service: PosService; line?: CartLine } | null>(null)
   const [discount, setDiscount] = useState('0')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -63,18 +69,29 @@ export default function ServicesPointOfSale() {
   async function loadServices() {
     const query = effectiveLocationId ? `?locationId=${effectiveLocationId}` : ''
     const response = await api<{ items: ApiService[] }>(`/pos/service-items${query}`)
-    setServices(response.items.map((item) => ({ ...item, price: Number(item.price), tax: resolveTax({ taxRate: item.taxRate, taxMode: item.taxMode, taxTreatment: item.taxTreatment }) })))
+    setServices(response.items.map((item) => ({
+      id: item.id,
+      name: item.name,
+      price: Number(item.price),
+      unit: item.unit,
+      category: item.category,
+      durationMinutes: item.durationMinutes,
+      variants: item.variants.map((v) => ({ id: v.id, name: v.name, price: Number(v.price), durationMinutes: v.durationMinutes })),
+      tax: resolveTax({ taxRate: item.taxRate, taxMode: item.taxMode, taxTreatment: item.taxTreatment }),
+    })))
   }
 
   async function loadAll() {
     setLoading(true)
     setError('')
     try {
-      const [locationResponse, profileResponse, methodResponse] = await Promise.all([
+      const [locationResponse, profileResponse, methodResponse, addonResponse] = await Promise.all([
         api<{ locations: RestaurantLocation[] }>('/locations'),
         api<{ profile: BusinessProfile | null }>('/business-profile'),
         api<{ methods: (PaymentMethod & { code: string })[] }>('/payment-methods?activeOnly=true'),
+        api<{ addons: ApiAddon[] }>('/pos/service-addons'),
       ])
+      setServiceAddons(addonResponse.addons.map((a) => ({ id: a.id, name: a.name, price: Number(a.price), serviceCategoryId: a.serviceCategoryId })))
       await loadServices()
       setLocations(locationResponse.locations)
       setProfile(profileResponse.profile)
@@ -101,21 +118,29 @@ export default function ServicesPointOfSale() {
   const filteredCategories = categories.filter((c) => c.toLowerCase().includes(categoryQuery.trim().toLowerCase()))
   const visibleItems = services.filter((s) => (activeCategory === 'All items' || s.category.name === activeCategory) && (!search.trim() || s.name.toLowerCase().includes(search.trim().toLowerCase())))
   const financials = useMemo(() => computeFinancials(cart, discount), [cart, discount])
-  const itemCount = cart.reduce((sum, item) => sum + item.quantity, 0)
+  const itemCount = cart.reduce((sum, line) => sum + line.quantity, 0)
 
-  function addItem(item: PosService) {
+  /** Tapping a service: a plain one drops straight on the sale; one with options or add-ons opens the picker first. */
+  function openService(service: PosService) {
     setConfirmation(null)
+    if (needsOptions(service, serviceAddons)) { setOptionsFor({ service }); return }
+    saveLine({ key: lineKey(service.id, null, []), service, variant: null, addons: [], quantity: 1, overridePrice: '', overrideReason: '' })
+  }
+
+  /** Adds a line, merging into an identical one (same service, option, add-ons and price). */
+  function saveLine(line: CartLine, replaceKey?: string) {
     setCart((current) => {
-      const match = current.find((c) => c.id === item.id)
-      return match ? current.map((c) => c.id === item.id ? { ...c, quantity: c.quantity + 1 } : c) : [...current, { ...item, quantity: 1 }]
+      const base = replaceKey ? current.filter((c) => c.key !== replaceKey) : current
+      const match = base.find((c) => c.key === line.key)
+      return match ? base.map((c) => c.key === line.key ? { ...c, quantity: c.quantity + line.quantity } : c) : [...base, line]
     })
   }
 
-  function changeQuantity(id: string, change: number) {
-    setCart((current) => current.flatMap((item) => {
-      if (item.id !== id) return [item]
-      const quantity = item.quantity + change
-      return quantity > 0 ? [{ ...item, quantity }] : []
+  function changeQuantity(key: string, change: number) {
+    setCart((current) => current.flatMap((line) => {
+      if (line.key !== key) return [line]
+      const quantity = line.quantity + change
+      return quantity > 0 ? [{ ...line, quantity }] : []
     }))
   }
 
@@ -194,15 +219,15 @@ export default function ServicesPointOfSale() {
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {visibleItems.map((item) => (
-                <button key={item.id} onClick={() => addItem(item)} className="group relative overflow-hidden rounded-sm border border-border bg-card p-5 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-accent/50 hover:shadow-xl">
+                <button key={item.id} onClick={() => openService(item)} className="group relative overflow-hidden rounded-sm border border-border bg-card p-5 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-accent/50 hover:shadow-xl">
                   <div className="flex items-start justify-between">
                     <span className="flex size-11 items-center justify-center rounded-sm bg-accent/10 text-accent"><LuConciergeBell className="size-5" /></span>
                     <span className="rounded-sm bg-muted px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{item.category.name}</span>
                   </div>
                   <h2 className="mt-5 text-base font-semibold text-foreground">{item.name}</h2>
-                  <p className="mt-1 text-xs text-muted-foreground">Per {item.unit.name}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Per {item.unit.name}{item.variants.length > 0 ? ` · ${item.variants.length} options` : ''}{item.durationMinutes ? ` · ${item.durationMinutes} min` : ''}</p>
                   <div className="mt-4 flex items-center justify-between border-t pt-4">
-                    <span className="text-lg font-bold text-foreground">{formatKes(item.price)}</span>
+                    <span className="text-lg font-bold text-foreground">{item.variants.length > 0 ? `From ${formatKes(Math.min(...item.variants.map((v) => v.price)))}` : formatKes(item.price)}</span>
                     <span className="flex size-8 items-center justify-center rounded-sm bg-accent text-lg text-accent-foreground shadow-md transition group-hover:scale-110"><LuPlus /></span>
                   </div>
                 </button>
@@ -244,22 +269,27 @@ export default function ServicesPointOfSale() {
               </div>
             ) : (
               <div className="space-y-3">
-                {cart.map((item) => (
-                  <div key={item.id} className="rounded-sm border bg-muted/40 p-3">
+                {cart.map((line) => (
+                  <div key={line.key} className="rounded-sm border bg-muted/40 p-3">
                     <div className="flex justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium">{item.name}</p>
-                        <p className="text-xs text-muted-foreground">{item.quantity} × {formatKes(item.price)}</p>
+                        <p className="truncate text-sm font-medium">{line.service.name}{line.variant ? <span className="text-secondary"> · {line.variant.name}</span> : null}</p>
+                        <p className="text-xs text-muted-foreground">{line.quantity} × {formatKes(chargedPrice(line))}</p>
+                        {line.addons.length > 0 && <p className="text-xs text-secondary">+ {line.addons.map((a) => `${a.addon.name}${a.quantity > 1 ? ` ×${a.quantity}` : ''}`).join(', ')}</p>}
+                        {isOverridden(line) && <p className="mt-0.5 text-[11px] font-semibold text-warning">Price changed from {formatKes(listPrice(line))}: {line.overrideReason}</p>}
                       </div>
-                      <button onClick={() => changeQuantity(item.id, -item.quantity)} className="shrink-0 text-muted-foreground hover:text-destructive"><LuTrash2 className="size-4" /></button>
+                      <div className="flex shrink-0 items-start gap-1.5">
+                        <button onClick={() => setOptionsFor({ service: line.service, line })} title="Change option, add-ons or price" className="text-muted-foreground hover:text-secondary"><LuPencil className="size-4" /></button>
+                        <button onClick={() => changeQuantity(line.key, -line.quantity)} className="text-muted-foreground hover:text-destructive"><LuTrash2 className="size-4" /></button>
+                      </div>
                     </div>
                     <div className="mt-2.5 flex items-center justify-between">
                       <div className="flex items-center gap-1.5">
-                        <button onClick={() => changeQuantity(item.id, -1)} className="rounded-sm border bg-card p-1"><LuMinus className="size-3" /></button>
-                        <span className="w-6 text-center text-sm font-medium">{item.quantity}</span>
-                        <button onClick={() => changeQuantity(item.id, 1)} className="rounded-sm border bg-card p-1"><LuPlus className="size-3" /></button>
+                        <button onClick={() => changeQuantity(line.key, -1)} className="rounded-sm border bg-card p-1"><LuMinus className="size-3" /></button>
+                        <span className="w-6 text-center text-sm font-medium">{line.quantity}</span>
+                        <button onClick={() => changeQuantity(line.key, 1)} className="rounded-sm border bg-card p-1"><LuPlus className="size-3" /></button>
                       </div>
-                      <span className="text-sm font-semibold">{formatKes(item.price * item.quantity)}</span>
+                      <span className="text-sm font-semibold">{formatKes(lineTotal(line))}</span>
                     </div>
                   </div>
                 ))}
@@ -299,7 +329,8 @@ export default function ServicesPointOfSale() {
 
       {showCheckout && (
         <RetailCheckoutModal
-          items={cart}
+          items={cart.map((line) => ({ id: line.service.id, quantity: line.quantity }))}
+          lines={cart.map(linePayload)}
           total={financials.total}
           channel="SERVICES"
           locationId={effectiveLocationId || undefined}
@@ -315,6 +346,15 @@ export default function ServicesPointOfSale() {
             setReceiptOrderId(order.id)
             void loadAll()
           }}
+        />
+      )}
+      {optionsFor && (
+        <ServiceOptionsModal
+          service={optionsFor.service}
+          allAddons={serviceAddons}
+          initial={optionsFor.line}
+          onClose={() => setOptionsFor(null)}
+          onSave={(line) => { saveLine(line, optionsFor.line?.key); setOptionsFor(null) }}
         />
       )}
       {customerModalOpen && <CustomerSelectModal party={party} onChange={setParty} onClose={() => setCustomerModalOpen(false)} />}

@@ -55,11 +55,14 @@ const num = (v: string | number) => Number(v).toLocaleString('en-KE', { maximumF
  * type, never a multiple of the base recipe. Different recipe per size works too:
  * just pick another recipe.
  */
-export default function VariantStockEditor({ value, onChange, productOptions, recipes }: {
+export default function VariantStockEditor({ value, onChange, productOptions, recipes, allowOverrides = true, label = 'Stock this variant uses' }: {
   value: VariantStock
   onChange: (next: VariantStock) => void
   productOptions: { value: string; label: string; hint?: string }[]
   recipes: RecipeInfo[]
+  /** Off for a service's own stock: it just picks a recipe, with no per-ingredient changes. */
+  allowOverrides?: boolean
+  label?: string
 }) {
   const [extraProduct, setExtraProduct] = useState('')
   const recipe = recipes.find((r) => r.id === value.recipeId)
@@ -72,7 +75,7 @@ export default function VariantStockEditor({ value, onChange, productOptions, re
 
   return (
     <div className="space-y-2">
-      <label className="block text-xs font-medium">Stock this variant uses
+      <label className="block text-xs font-medium">{label}
         <select className="input mt-1" value={value.mode} onChange={(e) => onChange({ ...value, mode: e.target.value as VariantStock['mode'], overrides: [] })}>
           <option value="none">Doesn&apos;t change stock (uses the item&apos;s own)</option>
           <option value="product">A set amount of one product (e.g. 25 ml tot)</option>
@@ -101,7 +104,7 @@ export default function VariantStockEditor({ value, onChange, productOptions, re
             </span>
           </label>
 
-          {recipe && (
+          {recipe && allowOverrides && (
             <>
               <div className="flex items-center justify-between">
                 <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Ingredients for this variant</p>

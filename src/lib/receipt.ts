@@ -1,5 +1,5 @@
 import type { ReceiptOrder, ReceiptProfile } from '@/components/pos/OrderReceipt'
-import { receiptFooterText, receiptHeaderText, receiptItemName, receiptPhone, servedByName, showsTaxAsAddedOn } from '@/lib/receiptFields'
+import { receiptFooterText, receiptHeaderText, receiptItemName, receiptVariantSuffix, receiptPhone, servedByName, showsTaxAsAddedOn } from '@/lib/receiptFields'
 
 const money = (v: number | string) => `KSh ${Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const RULE = '--------------------------------'
@@ -36,7 +36,7 @@ export function receiptToText(order: ReceiptOrder, profile: ReceiptProfile, shar
   lines.push(RULE)
 
   for (const item of order.items) {
-    lines.push(`${receiptItemName(item)}${item.variant ? ` (${item.variant.name})` : ''}`)
+    lines.push(`${receiptItemName(item)}${receiptVariantSuffix(item)}`)
     lines.push(`  ${item.quantity} x ${money(item.unitPrice)} = ${money(Number(item.unitPrice) * item.quantity)}`)
     for (const a of item.addons) {
       lines.push(`  + ${a.addon.name}  ${money(Number(a.unitPrice) * a.quantity)}`)

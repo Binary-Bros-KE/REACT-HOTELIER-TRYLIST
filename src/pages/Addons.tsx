@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import { LuCircleAlert, LuImageOff, LuLoaderCircle, LuPencil, LuPlus, LuPower, LuSearch, LuTrash2 } from 'react-icons/lu'
 import { api } from '@/lib/api'
+import QuickAddModal, { QuickNewButton } from '@/components/QuickAddModal'
 import PageBanner from '@/components/ui/PageBanner'
 import ModalShell from '@/components/ui/ModalShell'
 import ActionButton from '@/components/ui/ActionButton'
@@ -19,8 +20,11 @@ type Addon = {
   price: string
   sku: string | null
   imageUrl: string | null
+  scope: 'MENU' | 'SERVICE'
   menuCategoryId: string | null
   menuCategory: { id: string; name: string } | null
+  serviceCategoryId: string | null
+  serviceCategory: { id: string; name: string } | null
   stockProductId: string | null
   stockQtyPerUnit: string | null
   stockProduct: StockProduct | null
@@ -30,8 +34,8 @@ type Addon = {
   _count: { orderItems: number }
 }
 type StockMode = 'none' | 'product' | 'recipe'
-type Form = { name: string; description: string; price: string; sku: string; imageUrl: string; menuCategoryId: string; isActive: boolean; stockMode: StockMode; stockProductId: string; stockQtyPerUnit: string; recipeId: string }
-const emptyForm: Form = { name: '', description: '', price: '', sku: '', imageUrl: '', menuCategoryId: '', isActive: true, stockMode: 'none', stockProductId: '', stockQtyPerUnit: '', recipeId: '' }
+type Form = { name: string; description: string; price: string; sku: string; imageUrl: string; menuCategoryId: string; serviceCategoryId: string; isActive: boolean; stockMode: StockMode; stockProductId: string; stockQtyPerUnit: string; recipeId: string }
+const emptyForm: Form = { name: '', description: '', price: '', sku: '', imageUrl: '', menuCategoryId: '', serviceCategoryId: '', isActive: true, stockMode: 'none', stockProductId: '', stockQtyPerUnit: '', recipeId: '' }
 
 // "750 ml bottle" / "500 ml can" — what one unit of a pack-tracked product
 // actually is, so picking a quantity per sale means something. Mirrors
@@ -47,8 +51,11 @@ const money = (v: string | number) => `KSh ${Number(v).toLocaleString('en-KE', {
 
 export default function Addons() {
   const toast = useToast()
+  // Menu add-ons show in the food POS, service add-ons in the Services POS.
+  const [scope, setScope] = useState<'MENU' | 'SERVICE'>('MENU')
   const [addons, setAddons] = useState<Addon[]>([])
   const [categories, setCategories] = useState<MenuCategory[]>([])
+  const [quickCategory, setQuickCategory] = useState(false)
   const [stockProducts, setStockProducts] = useState<StockProduct[]>([])
   const [recipes, setRecipes] = useState<{ id: string; name: string }[]>([])
   const [loading, setLoading] = useState(true)
@@ -65,7 +72,7 @@ export default function Addons() {
     setLoading(true)
     setError('')
     try {
-      const r = await api<{ addons: Addon[] }>('/addons')
+      const r = await api<{ addons: Addon[] }>(`/addons?scope=${scope}`)
       setAddons(r.addons)
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Could not load add-ons'
@@ -74,10 +81,14 @@ export default function Addons() {
     } finally {
       setLoading(false)
     }
-  }, [toast])
+  }, [toast, scope])
   useEffect(() => { void load() }, [load])
   useEffect(() => {
-    api<{ categories: MenuCategory[] }>('/menu-categories').then((r) => setCategories(r.categories)).catch(() => {})
+    setCategoryFilter('')
+    // The categories offered depend on the till: menu categories or service categories.
+    api<{ categories: MenuCategory[] }>(scope === 'SERVICE' ? '/service-categories' : '/menu-categories').then((r) => setCategories(r.categories)).catch(() => setCategories([]))
+  }, [scope])
+  useEffect(() => {
     api<{ products: StockProduct[] }>('/products?active=true').then((r) => setStockProducts(r.products)).catch(() => {})
     // Recipes need the Kitchen module - a property without it just gets no options.
     api<{ recipes: { id: string; name: string }[] }>('/recipes').then((r) => setRecipes(r.recipes)).catch(() => {})
@@ -91,7 +102,7 @@ export default function Addons() {
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase()
     return addons.filter((a) =>
-      (!categoryFilter || (categoryFilter === '__none__' ? !a.menuCategoryId : a.menuCategoryId === categoryFilter)) &&
+      (!categoryFilter || (categoryFilter === '__none__' ? !(a.menuCategoryId ?? a.serviceCategoryId) : (a.menuCategoryId ?? a.serviceCategoryId) === categoryFilter)) &&
       (!q || a.name.toLowerCase().includes(q) || (a.sku ?? '').toLowerCase().includes(q)),
     )
   }, [addons, search, categoryFilter])
@@ -100,7 +111,7 @@ export default function Addons() {
   function openEdit(a: Addon) {
     setEditing(a)
     setForm({
-      name: a.name, description: a.description ?? '', price: String(Number(a.price)), sku: a.sku ?? '', imageUrl: a.imageUrl ?? '', menuCategoryId: a.menuCategoryId ?? '', isActive: a.isActive,
+      name: a.name, description: a.description ?? '', price: String(Number(a.price)), sku: a.sku ?? '', imageUrl: a.imageUrl ?? '', menuCategoryId: a.menuCategoryId ?? '', serviceCategoryId: a.serviceCategoryId ?? '', isActive: a.isActive,
       stockMode: a.recipeId ? 'recipe' : a.stockProductId ? 'product' : 'none',
       stockProductId: a.stockProductId ?? '',
       stockQtyPerUnit: a.stockQtyPerUnit != null ? String(Number(a.stockQtyPerUnit)) : '',
@@ -120,7 +131,9 @@ export default function Addons() {
         price: Number(form.price),
         sku: form.sku.trim() || undefined,
         imageUrl: form.imageUrl.trim() || undefined,
-        menuCategoryId: form.menuCategoryId || null,
+        scope,
+        menuCategoryId: scope === 'MENU' ? form.menuCategoryId || null : null,
+        serviceCategoryId: scope === 'SERVICE' ? form.serviceCategoryId || null : null,
         isActive: form.isActive,
         stockProductId: form.stockMode === 'product' ? form.stockProductId || null : null,
         stockQtyPerUnit: form.stockMode === 'product' && form.stockQtyPerUnit !== '' ? Number(form.stockQtyPerUnit) : null,
@@ -163,7 +176,13 @@ export default function Addons() {
 
   return (
     <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
-      <PageBanner kicker="Menu" title="Add-ons" />
+      <PageBanner kicker={scope === 'SERVICE' ? 'Service center' : 'Menu'} title="Add-ons" />
+
+      <div className="mt-6 flex w-fit border bg-card">
+        {([['MENU', 'Menu add-ons'], ['SERVICE', 'Service add-ons']] as const).map(([value, label]) => (
+          <button key={value} type="button" onClick={() => setScope(value)} className={cn('px-4 py-2 text-xs font-bold uppercase tracking-wider transition', scope === value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}>{label}</button>
+        ))}
+      </div>
 
       {error && (
         <div className="mt-5 flex items-center gap-2 border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive">
@@ -174,9 +193,11 @@ export default function Addons() {
       <section className="mt-6 overflow-hidden border bg-card shadow-sm">
         <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center">
           <div className="border-l-4 border-accent pl-3 lg:mr-auto">
-            <h2 className="font-display text-xl font-semibold leading-tight">Extras a cashier can attach to any item</h2>
+            <h2 className="font-display text-xl font-semibold leading-tight">{scope === 'SERVICE' ? 'Extras a cashier can attach to a service' : 'Extras a cashier can attach to any item'}</h2>
             <p className="max-w-xl text-xs text-muted-foreground">
-              One record per extra. Tag each with a menu category so the POS add-on picker can filter to it; leave it blank to keep it general.
+              {scope === 'SERVICE'
+                ? 'e.g. Hot stones on a massage, Engine wash on a car wash. Tie each to a service category, or leave it blank to offer it on every service.'
+                : 'One record per extra. Tag each with a menu category so the POS add-on picker can filter to it; leave it blank to keep it general.'}
             </p>
           </div>
           <label className="relative">
@@ -225,11 +246,13 @@ export default function Addons() {
                       </p>
                       {a.stockProduct ? (
                         <p className="mt-0.5 text-xs font-medium text-secondary">→ {Number(a.stockQtyPerUnit ?? 1)} {a.stockProduct.packUnit?.name ?? a.stockProduct.unit} of {a.stockProduct.name}</p>
+                      ) : a.recipe ? (
+                        <p className="mt-0.5 text-xs font-medium text-secondary">→ recipe: {a.recipe.name}</p>
                       ) : (
                         <p className="mt-0.5 text-xs italic text-warning">No stock impact</p>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground">{a.menuCategory?.name ?? <span className="text-xs italic">Any</span>}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{a.menuCategory?.name ?? a.serviceCategory?.name ?? <span className="text-xs italic">Any</span>}</td>
                     <td className="px-4 py-3 text-right font-medium tabular-nums">{money(a.price)}</td>
                     <td className="px-4 py-3"><StatusPill tone={a.isActive ? 'success' : 'muted'}>{a.isActive ? 'Active' : 'Inactive'}</StatusPill></td>
                     <td className="px-4 py-3">
@@ -270,12 +293,16 @@ export default function Addons() {
                 <Field label="Price (KSh)" required><input required type="number" min="0" step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className="input" /></Field>
                 <Field label="SKU"><input placeholder="Optional" value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value })} className="input" /></Field>
               </div>
-              <Field label="Menu category">
-                <select value={form.menuCategoryId} onChange={(e) => setForm({ ...form, menuCategoryId: e.target.value })} className="input">
-                  <option value="">Any — shows for every item</option>
+              <Field label={scope === 'SERVICE' ? 'Service category' : 'Menu category'}>
+                <div className="flex gap-2"><select
+                  value={scope === 'SERVICE' ? form.serviceCategoryId : form.menuCategoryId}
+                  onChange={(e) => setForm(scope === 'SERVICE' ? { ...form, serviceCategoryId: e.target.value } : { ...form, menuCategoryId: e.target.value })}
+                  className="input"
+                >
+                  <option value="">{scope === 'SERVICE' ? 'Any: offered on every service' : 'Any — shows for every item'}</option>
                   {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-                <span className="mt-1 block text-xs text-muted-foreground">The POS add-on picker opens filtered to the menu item's category.</span>
+                </select><QuickNewButton onClick={() => setQuickCategory(true)} /></div>
+                <span className="mt-1 block text-xs text-muted-foreground">{scope === 'SERVICE' ? "The Services POS only offers this add-on on services in this category." : "The POS add-on picker opens filtered to the menu item's category."}</span>
               </Field>
               <Field label="Stock deduction">
                 <select className="input" value={form.stockMode} onChange={(e) => setForm({ ...form, stockMode: e.target.value as StockMode })}>
@@ -342,6 +369,10 @@ export default function Addons() {
             </div>
           </form>
         </ModalShell>
+      )}
+      {quickCategory && (
+        <QuickAddModal title={scope === 'SERVICE' ? 'New service category' : 'New menu category'} label="Category name" placeholder="e.g. Sides" endpoint={scope === 'SERVICE' ? '/service-categories' : '/menu-categories'} responseKey="category" onClose={() => setQuickCategory(false)}
+          onCreated={(c) => { setCategories((cur) => [...cur, { id: c.id, name: c.name, isActive: true }]); setForm((f) => (scope === 'SERVICE' ? { ...f, serviceCategoryId: c.id } : { ...f, menuCategoryId: c.id })); setQuickCategory(false) }} />
       )}
     </div>
   )

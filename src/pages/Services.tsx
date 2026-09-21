@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
-import { LuCircleAlert, LuLoaderCircle, LuPencil, LuPlus, LuSearch, LuSettings2, LuTrash2 } from 'react-icons/lu'
+import { LuCircleAlert, LuLayers, LuLoaderCircle, LuPencil, LuPlus, LuSearch, LuSettings2, LuTrash2 } from 'react-icons/lu'
 import { api } from '@/lib/api'
+import QuickAddModal, { QuickNewButton } from '@/components/QuickAddModal'
 import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
 import PageBanner from '@/components/ui/PageBanner'
 import ModalShell from '@/components/ui/ModalShell'
 import ActionButton from '@/components/ui/ActionButton'
 import StatusPill from '@/components/ui/StatusPill'
+import ServiceVariantsModal from '@/components/services/ServiceVariantsModal'
+import VariantStockEditor, { emptyVariantStock, type RecipeInfo, type VariantStock } from '@/components/menu/VariantStockEditor'
 import { TAX_CHOICES, taxChoiceLabel, taxChoiceOf, taxPayload, type BizTax, type TaxChoice } from '@/lib/taxChoices'
 import { taxCategoryText, type TaxMode, type TaxTreatment } from '@/lib/tax'
 
@@ -27,6 +30,11 @@ type Service = {
   taxRate: string | number | null
   taxMode: TaxMode | null
   taxTreatment: TaxTreatment | null
+  durationMinutes: number | null
+  productId: string | null
+  stockQtyPerUnit: string | number | null
+  recipeId: string | null
+  variants: { id: string; name: string; price: string | number; isActive: boolean }[]
   description: string | null
   isActive: boolean
   locations: Location[]
@@ -39,11 +47,13 @@ type ServiceForm = {
   cost: string
   taxChoice: TaxChoice
   taxRate: string
+  duration: string
+  stock: VariantStock
   description: string
   isActive: boolean
   locationIds: string[]
 }
-const emptyForm: ServiceForm = { name: '', categoryId: '', unitId: '', price: '', cost: '', taxChoice: 'INHERIT', taxRate: '', description: '', isActive: true, locationIds: [] }
+const emptyForm: ServiceForm = { name: '', categoryId: '', unitId: '', price: '', cost: '', taxChoice: 'INHERIT', taxRate: '', duration: '', stock: emptyVariantStock, description: '', isActive: true, locationIds: [] }
 
 const formatKes = (value: number) => `KSh ${value.toLocaleString('en-KE', { maximumFractionDigits: 2 })}`
 const TH = 'px-5 py-3 text-xs font-bold uppercase tracking-wider'
@@ -54,9 +64,13 @@ export default function Services() {
   const kicker = useLocation().pathname.startsWith('/reception') ? 'Reception' : 'Service center'
   const [services, setServices] = useState<Service[]>([])
   const [categories, setCategories] = useState<ServiceCategory[]>([])
+  const [quickAdd, setQuickAdd] = useState<'category' | 'unit' | null>(null)
   const [units, setUnits] = useState<UnitOfMeasure[]>([])
   const [locations, setLocations] = useState<Location[]>([])
   const [bizTax, setBizTax] = useState<BizTax | null>(null)
+  const [recipes, setRecipes] = useState<RecipeInfo[]>([])
+  const [productOptions, setProductOptions] = useState<{ value: string; label: string; hint?: string }[]>([])
+  const [variantsFor, setVariantsFor] = useState<Service | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
@@ -90,7 +104,12 @@ export default function Services() {
   }, [toast])
 
   useEffect(() => { void load() }, [load])
-  useEffect(() => { api<{ profile: BizTax | null }>('/business-profile').then((r) => setBizTax(r.profile)).catch(() => {}) }, [])
+  useEffect(() => {
+    api<{ profile: BizTax | null }>('/business-profile').then((r) => setBizTax(r.profile)).catch(() => {})
+    // Recipes need the Kitchen module - a property without it just gets no options.
+    api<{ recipes: RecipeInfo[] }>('/recipes').then((r) => setRecipes(r.recipes)).catch(() => {})
+    api<{ products: { id: string; name: string; unit: string }[] }>('/products?active=true').then((r) => setProductOptions(r.products.map((p) => ({ value: p.id, label: p.name, hint: p.unit })))).catch(() => {})
+  }, [])
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -113,6 +132,12 @@ export default function Services() {
       cost: service.cost != null ? String(Number(service.cost)) : '',
       taxChoice: taxChoiceOf(service),
       taxRate: service.taxRate != null ? String(Number(service.taxRate)) : '',
+      duration: service.durationMinutes ? String(service.durationMinutes) : '',
+      stock: service.recipeId
+        ? { mode: 'recipe', stockProductId: '', stockQtyPerUnit: '', recipeId: service.recipeId, overrides: [] }
+        : service.productId
+          ? { mode: 'product', stockProductId: service.productId, stockQtyPerUnit: service.stockQtyPerUnit != null ? String(Number(service.stockQtyPerUnit)) : '', recipeId: '', overrides: [] }
+          : emptyVariantStock,
       description: service.description ?? '',
       isActive: service.isActive,
       locationIds: service.locations.map((l) => l.id),
@@ -139,6 +164,11 @@ export default function Services() {
           // Blank cost = not costed (null), never 0.
           cost: form.cost.trim() === '' ? null : Number(form.cost),
           ...taxPayload(form.taxChoice, form.taxRate),
+          durationMinutes: form.duration.trim() === '' ? null : Number(form.duration),
+          // Stock a unit consumes: one product + quantity, or a recipe - never both.
+          productId: form.stock.mode === 'product' ? form.stock.stockProductId || null : null,
+          stockQtyPerUnit: form.stock.mode === 'product' && form.stock.stockQtyPerUnit !== '' ? Number(form.stock.stockQtyPerUnit) : null,
+          recipeId: form.stock.mode === 'recipe' ? form.stock.recipeId || null : null,
           description: form.description,
           isActive: form.isActive,
           locationIds: form.locationIds,
@@ -224,7 +254,7 @@ export default function Services() {
                 {visible.map((service) => (
                   <tr key={service.id} className="align-middle even:bg-muted/30">
                     <td className="px-5 py-3.5">
-                      <p className="font-semibold">{service.name}</p>
+                      <p className="font-semibold">{service.name}{service.variants.length > 0 && <span className="ml-2 text-xs font-normal text-secondary">{service.variants.length} option{service.variants.length === 1 ? '' : 's'}</span>}</p>
                       {service.description && <p className="max-w-xs truncate text-xs text-muted-foreground">{service.description}</p>}
                     </td>
                     <td className="px-5 py-3.5 text-muted-foreground">{service.category.name}</td>
@@ -236,6 +266,7 @@ export default function Services() {
                     <td className="px-5 py-3.5"><StatusPill tone={service.isActive ? 'success' : 'muted'}>{service.isActive ? 'Active' : 'Inactive'}</StatusPill></td>
                     <td className="px-5 py-3.5">
                       <div className="flex justify-end gap-1.5">
+                        <ActionButton tone="neutral" icon={<LuLayers />} title="Options (sizes / durations)" onClick={() => setVariantsFor(service)} />
                         <ActionButton tone="neutral" icon={<LuPencil />} title="Edit service" onClick={() => openEdit(service)} />
                         <ActionButton tone="neutral" icon={<LuTrash2 />} title="Delete service" onClick={() => void deleteService(service)} />
                       </div>
@@ -268,16 +299,16 @@ export default function Services() {
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Name" required className="sm:col-span-2"><input required placeholder="e.g. Airport Transfer" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="input" /></Field>
               <Field label="Category" required>
-                <select required className="input" value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })}>
+                <div className="flex gap-2"><select required className="input" value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })}>
                   <option value="" disabled>Select category</option>
                   {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
+                </select><QuickNewButton onClick={() => setQuickAdd('category')} /></div>
               </Field>
               <Field label="Unit" required>
-                <select required className="input" value={form.unitId} onChange={(e) => setForm({ ...form, unitId: e.target.value })}>
+                <div className="flex gap-2"><select required className="input" value={form.unitId} onChange={(e) => setForm({ ...form, unitId: e.target.value })}>
                   <option value="" disabled>Select unit</option>
                   {units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                </select>
+                </select><QuickNewButton onClick={() => setQuickAdd('unit')} /></div>
               </Field>
               <Field label="Price" required><input required type="number" min="0" step="0.01" placeholder="e.g. 2500" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className="input" /></Field>
               <Field label="Cost (optional)">
@@ -298,6 +329,13 @@ export default function Services() {
                   className="input"
                 />
               </Field>
+              <Field label="Duration (minutes, optional)">
+                <input type="number" min="1" step="1" placeholder="e.g. 60. Times an active service." value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} className="input" />
+              </Field>
+              <div className="sm:col-span-2">
+                <VariantStockEditor value={form.stock} onChange={(stock) => setForm({ ...form, stock })} productOptions={productOptions} recipes={recipes} allowOverrides={false} label="Stock used per unit sold (optional)" />
+                <p className="mt-1 text-xs text-muted-foreground">e.g. a bottle of lotion per massage. Options and add-ons can use their own stock instead.</p>
+              </div>
               <Field label="Active">
                 <label className="flex items-center gap-2 border bg-background px-3 py-2.5">
                   <input type="checkbox" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} className="size-4 accent-secondary" />
@@ -329,12 +367,30 @@ export default function Services() {
         </ModalShell>
       )}
 
+      {variantsFor && (
+        <ServiceVariantsModal
+          service={variantsFor}
+          productOptions={productOptions}
+          recipes={recipes}
+          onClose={() => setVariantsFor(null)}
+          onChanged={load}
+        />
+      )}
+
       {showCategories && (
         <ManageCategoriesModal
           categories={categories}
           onClose={() => setShowCategories(false)}
           onChanged={load}
         />
+      )}
+      {quickAdd === 'category' && (
+        <QuickAddModal title="New service category" label="Category name" placeholder="e.g. Spa" endpoint="/service-categories" responseKey="category" onClose={() => setQuickAdd(null)}
+          onCreated={(c) => { setCategories((cur) => [...cur, { id: c.id, name: c.name, isActive: true, _count: { services: 0 } }]); setForm((f) => ({ ...f, categoryId: c.id })); setQuickAdd(null) }} />
+      )}
+      {quickAdd === 'unit' && (
+        <QuickAddModal title="New unit of measure" label="Unit name" placeholder="e.g. session" endpoint="/units-of-measure" responseKey="unit" onClose={() => setQuickAdd(null)}
+          onCreated={(u) => { setUnits((cur) => [...cur, { id: u.id, name: u.name }]); setForm((f) => ({ ...f, unitId: u.id })); setQuickAdd(null) }} />
       )}
     </div>
   )

@@ -11,6 +11,12 @@ export function receiptItemName(item: { menuItem?: { name: string } | null; serv
   return item.menuItem?.name ?? item.service?.name ?? item.product?.name ?? 'Item'
 }
 
+/** " (60 mins)" for a line sold with an option (a menu variant or a service option), else "". */
+export function receiptVariantSuffix(item: { variant?: { name: string } | null; serviceVariant?: { name: string } | null }): string {
+  const name = item.variant?.name ?? item.serviceVariant?.name
+  return name ? ` (${name})` : ''
+}
+
 /** Location's own phone(s) — primary[/secondary] — else the business's. */
 export function receiptPhone(order: ReceiptOrder, profile: ReceiptProfile): string | null {
   const loc = order.location

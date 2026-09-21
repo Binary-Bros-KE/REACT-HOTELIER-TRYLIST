@@ -64,6 +64,7 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
   const [employeeFilter, setEmployeeFilter] = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  const [overridesOnly, setOverridesOnly] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [manageId, setManageId] = useState<string | null>(null)
@@ -77,6 +78,7 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
     try {
       let query = effectiveLocationId ? `&locationId=${effectiveLocationId}` : ''
       if (channel) query += `&channel=${channel}`
+      if (overridesOnly) query += '&overridden=true'
       if (employeeFilter) query += `&employeeId=${employeeFilter}`
       if (dateFrom) query += `&from=${dateFrom}`
       if (dateTo) query += `&to=${dateTo}`
@@ -106,7 +108,7 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
     } finally {
       setLoading(false)
     }
-  }, [effectiveLocationId, channel, statusFilter, employeeFilter, dateFrom, dateTo, toast])
+  }, [effectiveLocationId, channel, overridesOnly, statusFilter, employeeFilter, dateFrom, dateTo, toast])
 
   useEffect(() => { void load() }, [load])
 
@@ -207,6 +209,13 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
               </label>
             )}
 
+            {isServices && (
+              <label className="flex items-center gap-2 self-end border bg-background px-3 py-2.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                <input type="checkbox" checked={overridesOnly} onChange={(e) => setOverridesOnly(e.target.checked)} className="size-4 accent-secondary" />
+                Price changed only
+              </label>
+            )}
+
             <label className="flex flex-col gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
               From
               <span className="relative">
@@ -249,7 +258,7 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
                   const owed = Math.max(0, order.total - order.paid)
                   return (
                     <tr key={order.id} className="cursor-pointer align-middle transition even:bg-muted/30 hover:bg-muted/60" onClick={() => setManageId(order.id)}>
-                      <td className="px-5 py-3.5 font-semibold">#{order.orderNumber}</td>
+                      <td className="px-5 py-3.5 font-semibold">#{order.orderNumber}{order.items.some((i) => i.listPrice) && <span className="mt-1 block"><StatusPill tone="warning">Price changed</StatusPill></span>}</td>
                       <td className="px-5 py-3.5 text-muted-foreground">
                         {order.table?.label ?? (isServices ? '' : 'Takeaway')}
                         {order.createdBy && staffNames[order.createdBy] && (

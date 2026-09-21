@@ -14,8 +14,10 @@ const formatKes = (price: number) => `KSh ${price.toLocaleString('en-KE', { mini
  * screens — neither has a kitchen step, so creating the order and settling
  * it happen back-to-back behind one button, unlike the food POS's separate
  * send-to-kitchen / take-payment steps. */
-export default function RetailCheckoutModal({ items, total, channel, locationId, discount, methods, party: controlledParty, onPartyChange, onClose, onComplete }: {
+export default function RetailCheckoutModal({ items, lines, total, channel, locationId, discount, methods, party: controlledParty, onPartyChange, onClose, onComplete }: {
   items: { id: string; quantity: number }[]
+  /** Full line payloads (option, add-ons, price change) when a till builds them itself; otherwise built from `items`. */
+  lines?: Record<string, unknown>[]
   total: number
   channel: 'PRODUCTS' | 'SERVICES'
   locationId: string | undefined
@@ -87,7 +89,7 @@ export default function RetailCheckoutModal({ items, total, channel, locationId,
             locationId,
             discount,
             customerId: party.kind === 'WALK_IN' ? undefined : party.customer.id,
-            items: items.map((item) => channel === 'PRODUCTS' ? { productId: item.id, quantity: item.quantity } : { serviceId: item.id, quantity: item.quantity }),
+            items: lines ?? items.map((item) => channel === 'PRODUCTS' ? { productId: item.id, quantity: item.quantity } : { serviceId: item.id, quantity: item.quantity }),
           }),
         })
       savedOrder.current = orderResponse.order
