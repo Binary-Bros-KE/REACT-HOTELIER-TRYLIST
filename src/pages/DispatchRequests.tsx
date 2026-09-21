@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
-import { LuBan, LuCircleAlert, LuLoaderCircle, LuPackageCheck, LuRefreshCw, LuStore } from 'react-icons/lu'
+import { LuBan, LuCircleAlert, LuLoaderCircle, LuPackageCheck, LuPrinter, LuRefreshCw, LuStore } from 'react-icons/lu'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { printDispatchSlip, type DispatchSlip } from '@/lib/thermalPrinter'
+import type { ReceiptProfile } from '@/components/pos/OrderReceipt'
 import { useToast } from '@/components/ui/Toast'
 import ActionButton from '@/components/ui/ActionButton'
 import Button from '@/components/ui/Button'
@@ -10,7 +12,7 @@ import PageBanner from '@/components/ui/PageBanner'
 import StatCard from '@/components/ui/StatCard'
 import StatusPill from '@/components/ui/StatusPill'
 
-type Item = { id: string; productName: string; requestedQty: string | number; dispatchedQty: string | number | null; storeQty?: number }
+type Item = { id: string; productName: string; requestedQty: string | number; dispatchedQty: string | number | null; storeQty?: number; product?: { unit: string } }
 type Request = {
   id: string
   requestNo: string
@@ -47,6 +49,25 @@ export default function DispatchRequests() {
   const [rejecting, setRejecting] = useState<Request | null>(null)
   const seen = useState(() => ({ ids: null as Set<string> | null }))[0]
 
+  // Manual print: this device's thermal printer if it has one, else the browser print sheet.
+  async function printSlip(request: Request) {
+    const slip: DispatchSlip = {
+      requestNo: request.requestNo,
+      orderNumber: request.orderNumber,
+      table: request.order.table?.label ?? null,
+      from: request.fromLocation.name,
+      to: request.toLocation.name,
+      requestedByName: request.requestedByName,
+      requestedAt: request.requestedAt,
+      note: request.note,
+      items: request.items.map((i) => ({ name: i.productName, quantity: Number(i.requestedQty), unit: i.product?.unit ?? '' })),
+    }
+    try {
+      const { profile } = await api<{ profile: ReceiptProfile }>('/business-profile').catch(() => ({ profile: null as unknown as ReceiptProfile }))
+      await printDispatchSlip(slip, profile ?? null)
+    } catch (cause) { toast.error(cause instanceof Error ? cause.message : 'Could not print the slip') }
+  }
+
   const load = useCallback(async (quiet = false) => {
     if (quiet) setRefreshing(true); else setLoading(true)
     try {
@@ -80,7 +101,7 @@ export default function DispatchRequests() {
         <ActionButton tone="neutral" icon={<LuRefreshCw className={refreshing ? 'animate-spin' : ''} />} title="Refresh" onClick={() => void load(true)} />
       </PageBanner>
 
-      <p className="mt-4 text-sm text-muted-foreground">Kitchens ask the store for the ingredients of an order here. Dispatching moves the stock from the store to the kitchen and lets the chef start cooking.</p>
+      <p className="mt-4 text-sm text-muted-foreground">Every order posted at a kitchen that uses the store lands here automatically. Dispatching moves the stock from the store to the kitchen and lets the chef start cooking. Print the slip to pick and hand over the items.</p>
 
       <div className="mt-5 flex w-fit border bg-card p-1">
         {([['pending', 'Waiting for you'], ['history', 'History']] as const).map(([key, label]) => (
@@ -126,12 +147,11 @@ export default function DispatchRequests() {
                   {request.status !== 'REQUESTED' && request.respondedAt ? ` · ${STATUS_LABEL[request.status].toLowerCase()} ${when(request.respondedAt)}${request.respondedByName ? ` by ${request.respondedByName}` : ''}` : ''}
                 </p>
                 {request.rejectReason && <p className="mt-1 text-xs text-destructive">Reason: {request.rejectReason}</p>}
-                {request.status === 'REQUESTED' && (
-                  <div className="mt-auto flex flex-wrap gap-2 pt-4">
-                    <ActionButton tone="success" icon={<LuPackageCheck />} onClick={() => setDispatching(request)}>Dispatch</ActionButton>
-                    <ActionButton tone="danger" icon={<LuBan />} onClick={() => setRejecting(request)}>Reject</ActionButton>
-                  </div>
-                )}
+                <div className="mt-auto flex flex-wrap gap-2 pt-4">
+                  {request.status === 'REQUESTED' && <ActionButton tone="success" icon={<LuPackageCheck />} onClick={() => setDispatching(request)}>Dispatch</ActionButton>}
+                  {request.status === 'REQUESTED' && <ActionButton tone="danger" icon={<LuBan />} onClick={() => setRejecting(request)}>Reject</ActionButton>}
+                  <ActionButton tone="neutral" icon={<LuPrinter />} onClick={() => void printSlip(request)}>Print slip</ActionButton>
+                </div>
               </article>
             ))}
           </div>

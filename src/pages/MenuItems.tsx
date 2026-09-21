@@ -1,3 +1,4 @@
+import VariantStockEditor, { emptyVariantStock, stockFromVariant, stockPayload, type RecipeInfo, type VariantStock } from '@/components/menu/VariantStockEditor'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import {
@@ -39,7 +40,7 @@ type StockProduct = {
   packLabel: string | null
   packUnit: { id: string; name: string } | null
 }
-type Recipe = { id: string; name: string }
+type Recipe = RecipeInfo
 
 type MenuItem = {
   id: string
@@ -84,9 +85,14 @@ type Variant = {
   stockProductId: string | null
   stockQtyPerUnit: string | null
   stockProduct: StockProduct | null
+  recipeId: string | null
+  recipe: { id: string; name: string } | null
+  ingredientOverrides: { productId: string; quantity: string | number; isRemoved: boolean; product: { id: string; name: string; unit: string } }[]
   isActive: boolean
   sortOrder: number
 }
+type StagedVariant = { name: string; price: string; sku: string; stock: VariantStock }
+const emptyStaged: StagedVariant = { name: '', price: '', sku: '', stock: emptyVariantStock }
 
 // "750 ml bottle" / "500 ml can" — what one unit of a pack-tracked product
 // actually is, so picking a serving size means something.
@@ -176,8 +182,8 @@ export default function MenuItems() {
   const [showForm, setShowForm] = useState(false)
   const [showCategoryModal, setShowCategoryModal] = useState(false)
   // Variants staged in the create form — POSTed after the item is created.
-  const [newVariants, setNewVariants] = useState<{ name: string; price: string; sku: string; stockProductId: string; stockQtyPerUnit: string }[]>([])
-  const [variantDraft, setVariantDraft] = useState({ name: '', price: '', sku: '', stockProductId: '', stockQtyPerUnit: '' })
+  const [newVariants, setNewVariants] = useState<StagedVariant[]>([])
+  const [variantDraft, setVariantDraft] = useState<StagedVariant>(emptyStaged)
   const [saving, setSaving] = useState(false)
   const [busy, setBusy] = useState(false)
   const [variantsFor, setVariantsFor] = useState<MenuItem | null>(null)
@@ -233,19 +239,13 @@ export default function MenuItems() {
 
   function resetVariantStaging() {
     setNewVariants([])
-    setVariantDraft({ name: '', price: '', sku: '', stockProductId: '', stockQtyPerUnit: '' })
+    setVariantDraft(emptyStaged)
   }
 
   function addStagedVariant() {
     if (!variantDraft.name.trim() || variantDraft.price === '') return
-    setNewVariants((v) => [...v, {
-      name: variantDraft.name.trim(),
-      price: variantDraft.price,
-      sku: variantDraft.sku.trim(),
-      stockProductId: variantDraft.stockProductId,
-      stockQtyPerUnit: variantDraft.stockQtyPerUnit,
-    }])
-    setVariantDraft({ name: '', price: '', sku: '', stockProductId: '', stockQtyPerUnit: '' })
+    setNewVariants((v) => [...v, { name: variantDraft.name.trim(), price: variantDraft.price, sku: variantDraft.sku.trim(), stock: variantDraft.stock }])
+    setVariantDraft(emptyStaged)
   }
 
   function openCreate() {
@@ -323,8 +323,7 @@ export default function MenuItems() {
                 name: v.name,
                 price: Number(v.price),
                 sku: v.sku || undefined,
-                stockProductId: v.stockProductId || undefined,
-                stockQtyPerUnit: v.stockQtyPerUnit !== '' ? Number(v.stockQtyPerUnit) : undefined,
+                ...stockPayload(v.stock),
               }),
             }),
           ))
@@ -806,15 +805,19 @@ export default function MenuItems() {
                 {newVariants.length > 0 && (
                   <div className="mb-3 space-y-1.5">
                     {newVariants.map((v, i) => {
-                      const p = stockProducts.find((x) => x.id === v.stockProductId)
+                      const p = stockProducts.find((x) => x.id === v.stock.stockProductId)
+                      const stagedRecipe = recipes.find((r) => r.id === v.stock.recipeId)
                       return (
                         <div key={i} className="flex items-center justify-between gap-3 rounded-sm border bg-muted/40 px-3 py-2 text-sm">
                           <span className="min-w-0 flex-1 truncate">
                             <span className="font-medium">{v.name}</span>
-                            {p && (
+                            {v.stock.mode === 'product' && p && (
                               <span className="ml-2 text-xs text-secondary">
-                                → {v.stockQtyPerUnit || 1} {p.packUnit?.name ?? p.unit} of {p.name}
+                                → {v.stock.stockQtyPerUnit || 1} {p.packUnit?.name ?? p.unit} of {p.name}
                               </span>
+                            )}
+                            {v.stock.mode === 'recipe' && stagedRecipe && (
+                              <span className="ml-2 text-xs text-secondary">→ {stagedRecipe.name}{v.stock.overrides.length ? ` (${v.stock.overrides.length} changed)` : ''}</span>
                             )}
                           </span>
                           <span className="flex shrink-0 items-center gap-3">
@@ -853,23 +856,7 @@ export default function MenuItems() {
                     </label>
                     <button type="button" onClick={addStagedVariant} disabled={!variantDraft.name.trim() || variantDraft.price === ''} className="rounded-sm bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-60">Add</button>
                   </div>
-                  <div className="grid grid-cols-[1fr_8rem] items-end gap-2">
-                    <label className="text-xs font-medium">Stock (optional) — e.g. a 25ml Tot vs. a 750ml Bottle
-                      <span className="mt-1 block">
-                        <SearchableSelect
-                          options={stockProductOptions}
-                          value={variantDraft.stockProductId}
-                          onChange={(value) => setVariantDraft({ ...variantDraft, stockProductId: value })}
-                          placeholder="No product — doesn't deduct"
-                          searchPlaceholder="Search products…"
-                          emptyText="No products match."
-                        />
-                      </span>
-                    </label>
-                    <label className="text-xs font-medium">Consumes
-                      <input type="number" min="0" step="0.001" placeholder="e.g. 25" value={variantDraft.stockQtyPerUnit} onChange={(e) => setVariantDraft({ ...variantDraft, stockQtyPerUnit: e.target.value })} className="input mt-1" />
-                    </label>
-                  </div>
+                  <VariantStockEditor value={variantDraft.stock} onChange={(stock) => setVariantDraft({ ...variantDraft, stock })} productOptions={stockProductOptions} recipes={recipes} />
                 </div>
               </div>
             )}
@@ -919,6 +906,7 @@ export default function MenuItems() {
       {variantsFor && (
         <VariantsModal
           item={variantsFor}
+          recipes={recipes}
           stockProductOptions={stockProductOptions}
           onClose={() => setVariantsFor(null)}
           onChanged={load}
@@ -984,19 +972,20 @@ function NewMenuCategoryModal({ onClose, onCreated }: { onClose: () => void; onC
 
 type VariantsModalProps = {
   item: MenuItem
+  recipes: Recipe[]
   stockProductOptions: { value: string; label: string; hint?: string }[]
   onClose: () => void
   onChanged: () => Promise<void>
 }
 
-function VariantsModal({ item, stockProductOptions, onClose, onChanged }: VariantsModalProps) {
+function VariantsModal({ item, recipes, stockProductOptions, onClose, onChanged }: VariantsModalProps) {
   const toast = useToast()
   const [variants, setVariants] = useState<Variant[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
-  const [draft, setDraft] = useState({ name: '', price: '', sku: '', stockProductId: '', stockQtyPerUnit: '' })
+  const [draft, setDraft] = useState<StagedVariant>(emptyStaged)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [editDraft, setEditDraft] = useState({ name: '', price: '', sku: '', stockProductId: '', stockQtyPerUnit: '' })
+  const [editDraft, setEditDraft] = useState<StagedVariant>(emptyStaged)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -1022,11 +1011,10 @@ function VariantsModal({ item, stockProductOptions, onClose, onChanged }: Varian
           name: draft.name.trim(),
           price: Number(draft.price),
           sku: draft.sku.trim() || undefined,
-          stockProductId: draft.stockProductId || undefined,
-          stockQtyPerUnit: draft.stockQtyPerUnit !== '' ? Number(draft.stockQtyPerUnit) : undefined,
+          ...stockPayload(draft.stock),
         }),
       })
-      setDraft({ name: '', price: '', sku: '', stockProductId: '', stockQtyPerUnit: '' })
+      setDraft(emptyStaged)
       await load()
       await onChanged()
     } catch (cause) {
@@ -1046,8 +1034,7 @@ function VariantsModal({ item, stockProductOptions, onClose, onChanged }: Varian
           name: editDraft.name.trim(),
           price: Number(editDraft.price),
           sku: editDraft.sku.trim() || undefined,
-          stockProductId: editDraft.stockProductId || null,
-          stockQtyPerUnit: editDraft.stockQtyPerUnit !== '' ? Number(editDraft.stockQtyPerUnit) : null,
+          ...stockPayload(editDraft.stock),
         }),
       })
       setEditingId(null)
@@ -1120,24 +1107,7 @@ function VariantsModal({ item, stockProductOptions, onClose, onChanged }: Varian
             <label className="text-xs font-medium">SKU<input value={draft.sku} onChange={(e) => setDraft({ ...draft, sku: e.target.value })} placeholder="opt." className="input mt-1" /></label>
             <button disabled={busy || !draft.name.trim() || draft.price === ''} className="rounded-sm bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-60">Add</button>
           </div>
-          <div className="grid grid-cols-[1fr_8rem] items-end gap-2">
-            <label className="text-xs font-medium">
-              Stock (optional) — e.g. a 25ml Tot vs. a 750ml Bottle
-              <span className="mt-1 block">
-                <SearchableSelect
-                  options={stockProductOptions}
-                  value={draft.stockProductId}
-                  onChange={(value) => setDraft({ ...draft, stockProductId: value })}
-                  placeholder="No product — doesn't deduct"
-                  searchPlaceholder="Search products…"
-                  emptyText="No products match."
-                />
-              </span>
-            </label>
-            <label className="text-xs font-medium">Consumes
-              <input type="number" min="0" step="0.001" placeholder="e.g. 25" value={draft.stockQtyPerUnit} onChange={(e) => setDraft({ ...draft, stockQtyPerUnit: e.target.value })} className="input mt-1" />
-            </label>
-          </div>
+          <VariantStockEditor value={draft.stock} onChange={(stock) => setDraft({ ...draft, stock })} productOptions={stockProductOptions} recipes={recipes} />
         </form>
 
         <div className="mt-5 space-y-2">
@@ -1158,23 +1128,7 @@ function VariantsModal({ item, stockProductOptions, onClose, onChanged }: Varian
                       <button onClick={() => setEditingId(null)} className="rounded-sm border px-2.5 py-2 text-xs font-semibold hover:bg-muted">Cancel</button>
                     </div>
                   </div>
-                  <div className="grid grid-cols-[1fr_8rem] items-end gap-2">
-                    <label className="text-xs font-medium">Stock (optional)
-                      <span className="mt-1 block">
-                        <SearchableSelect
-                          options={stockProductOptions}
-                          value={editDraft.stockProductId}
-                          onChange={(value) => setEditDraft({ ...editDraft, stockProductId: value })}
-                          placeholder="No product — doesn't deduct"
-                          searchPlaceholder="Search products…"
-                          emptyText="No products match."
-                        />
-                      </span>
-                    </label>
-                    <label className="text-xs font-medium">Consumes
-                      <input type="number" min="0" step="0.001" value={editDraft.stockQtyPerUnit} onChange={(e) => setEditDraft({ ...editDraft, stockQtyPerUnit: e.target.value })} className="input mt-1" />
-                    </label>
-                  </div>
+                  <VariantStockEditor value={editDraft.stock} onChange={(stock) => setEditDraft({ ...editDraft, stock })} productOptions={stockProductOptions} recipes={recipes} />
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
@@ -1190,6 +1144,11 @@ function VariantsModal({ item, stockProductOptions, onClose, onChanged }: Varian
                         → {v.stockQtyPerUnit != null ? Number(v.stockQtyPerUnit).toLocaleString() : 1} {v.stockProduct.packUnit?.name ?? v.stockProduct.unit} of {v.stockProduct.name}
                       </p>
                     )}
+                    {v.recipe && (
+                      <p className="truncate text-xs text-secondary">
+                        → recipe: {v.recipe.name}{v.ingredientOverrides.length > 0 ? ` (${v.ingredientOverrides.filter((o) => o.isRemoved).length} left out, ${v.ingredientOverrides.filter((o) => !o.isRemoved).length} changed or extra)` : ''}
+                      </p>
+                    )}
                   </div>
                   <span className="tabular-nums text-sm font-medium">{money(v.price)}</span>
                   <button onClick={() => void patchVariant(v, { isActive: !v.isActive })} disabled={busy} title={v.isActive ? 'Deactivate' : 'Activate'} className={cn('rounded-md p-1.5 hover:bg-muted', v.isActive ? 'text-muted-foreground' : 'text-success')}><LuPower className="size-3.5" /></button>
@@ -1200,8 +1159,7 @@ function VariantsModal({ item, stockProductOptions, onClose, onChanged }: Varian
                         name: v.name,
                         price: String(Number(v.price)),
                         sku: v.sku ?? '',
-                        stockProductId: v.stockProductId ?? '',
-                        stockQtyPerUnit: v.stockQtyPerUnit != null ? String(Number(v.stockQtyPerUnit)) : '',
+                        stock: stockFromVariant(v),
                       })
                     }}
                     className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"

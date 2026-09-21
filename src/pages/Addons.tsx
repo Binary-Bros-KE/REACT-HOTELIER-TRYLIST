@@ -24,12 +24,14 @@ type Addon = {
   stockProductId: string | null
   stockQtyPerUnit: string | null
   stockProduct: StockProduct | null
+  recipeId: string | null
+  recipe: { id: string; name: string } | null
   isActive: boolean
   _count: { orderItems: number }
 }
-type StockMode = 'none' | 'product'
-type Form = { name: string; description: string; price: string; sku: string; imageUrl: string; menuCategoryId: string; isActive: boolean; stockMode: StockMode; stockProductId: string; stockQtyPerUnit: string }
-const emptyForm: Form = { name: '', description: '', price: '', sku: '', imageUrl: '', menuCategoryId: '', isActive: true, stockMode: 'none', stockProductId: '', stockQtyPerUnit: '' }
+type StockMode = 'none' | 'product' | 'recipe'
+type Form = { name: string; description: string; price: string; sku: string; imageUrl: string; menuCategoryId: string; isActive: boolean; stockMode: StockMode; stockProductId: string; stockQtyPerUnit: string; recipeId: string }
+const emptyForm: Form = { name: '', description: '', price: '', sku: '', imageUrl: '', menuCategoryId: '', isActive: true, stockMode: 'none', stockProductId: '', stockQtyPerUnit: '', recipeId: '' }
 
 // "750 ml bottle" / "500 ml can" — what one unit of a pack-tracked product
 // actually is, so picking a quantity per sale means something. Mirrors
@@ -48,6 +50,7 @@ export default function Addons() {
   const [addons, setAddons] = useState<Addon[]>([])
   const [categories, setCategories] = useState<MenuCategory[]>([])
   const [stockProducts, setStockProducts] = useState<StockProduct[]>([])
+  const [recipes, setRecipes] = useState<{ id: string; name: string }[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
@@ -76,6 +79,8 @@ export default function Addons() {
   useEffect(() => {
     api<{ categories: MenuCategory[] }>('/menu-categories').then((r) => setCategories(r.categories)).catch(() => {})
     api<{ products: StockProduct[] }>('/products?active=true').then((r) => setStockProducts(r.products)).catch(() => {})
+    // Recipes need the Kitchen module - a property without it just gets no options.
+    api<{ recipes: { id: string; name: string }[] }>('/recipes').then((r) => setRecipes(r.recipes)).catch(() => {})
   }, [])
 
   const stockProductOptions = useMemo(
@@ -96,9 +101,10 @@ export default function Addons() {
     setEditing(a)
     setForm({
       name: a.name, description: a.description ?? '', price: String(Number(a.price)), sku: a.sku ?? '', imageUrl: a.imageUrl ?? '', menuCategoryId: a.menuCategoryId ?? '', isActive: a.isActive,
-      stockMode: a.stockProductId ? 'product' : 'none',
+      stockMode: a.recipeId ? 'recipe' : a.stockProductId ? 'product' : 'none',
       stockProductId: a.stockProductId ?? '',
       stockQtyPerUnit: a.stockQtyPerUnit != null ? String(Number(a.stockQtyPerUnit)) : '',
+      recipeId: a.recipeId ?? '',
     })
     setShowForm(true)
   }
@@ -118,6 +124,7 @@ export default function Addons() {
         isActive: form.isActive,
         stockProductId: form.stockMode === 'product' ? form.stockProductId || null : null,
         stockQtyPerUnit: form.stockMode === 'product' && form.stockQtyPerUnit !== '' ? Number(form.stockQtyPerUnit) : null,
+        recipeId: form.stockMode === 'recipe' ? form.recipeId || null : null,
       }
       await api(editing ? `/addons/${editing.id}` : '/addons', { method: editing ? 'PATCH' : 'POST', body: JSON.stringify(payload) })
       toast.success(editing ? 'Add-on updated.' : 'Add-on created.')
@@ -274,9 +281,23 @@ export default function Addons() {
                 <select className="input" value={form.stockMode} onChange={(e) => setForm({ ...form, stockMode: e.target.value as StockMode })}>
                   <option value="none">Doesn't affect stock</option>
                   <option value="product">Consumes a set amount of one product</option>
+                  <option value="recipe">Uses a recipe (several ingredients)</option>
                 </select>
                 <span className="mt-1 block text-xs text-muted-foreground">e.g. "Extra Red Bull" consuming 1 can, or "Double shot" consuming 25ml of the same spirit. Without this link, this add-on never touches stock — model mixers/extra pours here, not as a bare add-on.</span>
               </Field>
+              {form.stockMode === 'recipe' && (
+                <Field label="Recipe">
+                  <SearchableSelect
+                    options={recipes.map((r) => ({ value: r.id, label: r.name }))}
+                    value={form.recipeId}
+                    onChange={(value) => setForm({ ...form, recipeId: value })}
+                    placeholder={recipes.length ? 'Select a recipe' : 'No recipes yet - add one under Kitchen > Recipes'}
+                    searchPlaceholder="Search recipes…"
+                    emptyText="No recipes match."
+                  />
+                  <span className="mt-1 block text-xs text-muted-foreground">One unit of this add-on uses everything in the recipe, multiplied by how many are ordered.</span>
+                </Field>
+              )}
               {form.stockMode === 'product' && (
                 <>
                   <Field label="Product">

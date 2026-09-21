@@ -417,6 +417,96 @@ export function buildReceiptBytes(order: ReceiptOrder, profile: ReceiptProfile, 
   return e.encode()
 }
 
+// ---------------------------------------------------------------- store dispatch slip
+
+/** What the store needs in hand to pick and hand over a kitchen's ingredients. */
+export type DispatchSlip = {
+  requestNo: string
+  orderNumber: number
+  table: string | null
+  from: string
+  to: string
+  requestedByName: string | null
+  requestedAt: string
+  note: string | null
+  items: { name: string; quantity: number; unit: string }[]
+}
+
+const qtyText = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 3 })
+
+export function buildDispatchSlipBytes(slip: DispatchSlip, profile: ReceiptProfile | null, s: ThermalSettings): Uint8Array {
+  const cols = Math.max(24, Math.min(64, Math.round(s.columns) || 48))
+  const compact = cols <= 35
+  const e = new ReceiptPrinterEncoder({
+    language: 'esc-pos',
+    columns: cols,
+    feedBeforeCut: compact ? 2 : 4,
+    ...(s.model && s.model !== 'generic' ? { printerModel: s.model } : {}),
+  })
+  e.initialize().codepage('cp437')
+  const rule = '-'.repeat(cols)
+  if (profile?.businessName) { e.bold(true); e.line(center(profile.businessName.toUpperCase(), cols)); e.bold(false) }
+  e.bold(true)
+  e.line(center('STORE DISPATCH REQUEST', cols))
+  e.bold(false)
+  e.line(rule)
+  e.line(`Request:  ${slip.requestNo}`)
+  e.line(`Order:    #${slip.orderNumber}${slip.table ? ` (${slip.table})` : ''}`)
+  e.line(`For:      ${slip.to}`)
+  e.line(`From:     ${slip.from}`)
+  if (slip.requestedByName) e.line(`By:       ${slip.requestedByName}`)
+  e.line(`Time:     ${new Date(slip.requestedAt).toLocaleString()}`)
+  e.line(rule)
+  const qtyW = compact ? 12 : 16
+  const nameW = cols - qtyW - 1
+  e.bold(true)
+  e.table([{ width: nameW, align: 'left' }, { width: qtyW, align: 'right' }], [['ITEM', 'QTY']])
+  e.bold(false)
+  for (const item of slip.items) {
+    e.table([{ width: nameW, align: 'left' }, { width: qtyW, align: 'right' }], [[item.name, `${qtyText(item.quantity)} ${item.unit}`]])
+  }
+  e.line(rule)
+  if (slip.note) for (const l of wrapWords(slip.note, cols)) e.line(l)
+  e.newline(1)
+  e.line('Dispatched by: ______________')
+  e.newline(1)
+  e.line('Received by:   ______________')
+  e.newline(4).cut()
+  return e.encode()
+}
+
+/** Browser print sheet with the slip, for a store computer without a thermal printer. */
+function printSlipViaWindow(slip: DispatchSlip): void {
+  const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string)
+  const rows = slip.items.map((i) => `<tr><td>${esc(i.name)}</td><td style="text-align:right;white-space:nowrap">${qtyText(i.quantity)} ${esc(i.unit)}</td></tr>`).join('')
+  const win = window.open('', '_blank', 'width=420,height=640')
+  if (!win) throw new Error('Allow pop-ups to print the slip')
+  win.document.write(`<!doctype html><title>${esc(slip.requestNo)}</title><style>@page{size:80mm auto;margin:4mm}body{font:13px/1.4 monospace;margin:0}h1{font-size:15px;text-align:center;margin:0 0 6px}table{width:100%;border-collapse:collapse}td{padding:2px 0;border-bottom:1px dotted #999}hr{border:0;border-top:1px dashed #000}</style>
+<h1>STORE DISPATCH REQUEST</h1><hr>
+<div>Request: ${esc(slip.requestNo)}</div><div>Order: #${slip.orderNumber}${slip.table ? ' (' + esc(slip.table) + ')' : ''}</div>
+<div>For: ${esc(slip.to)}</div><div>From: ${esc(slip.from)}</div>${slip.requestedByName ? '<div>By: ' + esc(slip.requestedByName) + '</div>' : ''}
+<div>Time: ${esc(new Date(slip.requestedAt).toLocaleString())}</div><hr>
+<table>${rows}</table><hr>${slip.note ? '<div>' + esc(slip.note) + '</div><hr>' : ''}
+<p>Dispatched by: ____________</p><p>Received by: ____________</p>`)
+  win.document.close()
+  win.focus()
+  win.print()
+}
+
+/**
+ * Manual print of a dispatch slip from the store screen: straight to this
+ * device's thermal printer when one is connected, else the browser print sheet.
+ */
+export async function printDispatchSlip(slip: DispatchSlip, profile: ReceiptProfile | null): Promise<'thermal' | 'dialog'> {
+  const s = getThermalSettings()
+  if (s.enabled && (s.connection === 'usb' || s.connection === 'bluetooth' || s.connection === 'bridge')) {
+    await sendLocal(buildDispatchSlipBytes(slip, profile, s), s)
+    return 'thermal'
+  }
+  printSlipViaWindow(slip)
+  return 'dialog'
+}
+
 // ---------------------------------------------------------------- dialog fallback
 
 export function printViaDialog(): void {

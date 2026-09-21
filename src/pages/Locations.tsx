@@ -70,6 +70,7 @@ type LocationRow = {
   canSellProducts: boolean
   serveMode: ServeMode
   requireStoreDispatch: boolean
+  dispatchAutoPrint: boolean
   dispatchFromLocationId: string | null
   receiptHeader: string | null
   receiptFooter: string | null
@@ -97,6 +98,7 @@ type LocationForm = {
   canSellProducts: boolean
   serveMode: ServeMode
   requireStoreDispatch: boolean
+  dispatchAutoPrint: boolean
   dispatchFromLocationId: string
   receiptHeader: string
   receiptFooter: string
@@ -112,6 +114,7 @@ const emptyLocationForm: LocationForm = {
   canSellRooms: true, canSellMenu: true, canSellServices: true, canSellProducts: true,
   serveMode: 'KITCHEN',
   requireStoreDispatch: false,
+  dispatchAutoPrint: true,
   dispatchFromLocationId: '',
   receiptHeader: '', receiptFooter: '', invoiceHeader: '', invoiceFooter: '', quotationHeader: '', quotationFooter: '',
 }
@@ -176,6 +179,7 @@ export default function Locations() {
       canSellProducts: location.canSellProducts,
       serveMode: location.serveMode,
       requireStoreDispatch: location.requireStoreDispatch,
+      dispatchAutoPrint: location.dispatchAutoPrint,
       dispatchFromLocationId: location.dispatchFromLocationId ?? '',
       receiptHeader: location.receiptHeader ?? '',
       receiptFooter: location.receiptFooter ?? '',
@@ -461,9 +465,18 @@ export default function Locations() {
                       <input type="checkbox" checked={form.requireStoreDispatch} onChange={(e) => setForm({ ...form, requireStoreDispatch: e.target.checked })} className="mt-0.5 size-4 accent-secondary" />
                       <span>
                         <span className="block text-sm font-semibold">Kitchen needs store approval for ingredients</span>
-                        <span className="block text-xs text-muted-foreground">The chef requests the recipe&apos;s ingredients from the store, and the storekeeper dispatches them, before a ticket can be started. Leave off if the kitchen keeps its own stock.</span>
+                        <span className="block text-xs text-muted-foreground">Every order posted here goes straight to the store, and the storekeeper dispatches the recipe&apos;s ingredients before the chef can start. Leave off if the kitchen keeps its own stock.</span>
                       </span>
                     </label>
+                    {form.requireStoreDispatch && (
+                      <label className="mt-3 flex cursor-pointer items-start gap-2.5 border bg-card p-3">
+                        <input type="checkbox" checked={form.dispatchAutoPrint} onChange={(e) => setForm({ ...form, dispatchAutoPrint: e.target.checked })} className="mt-0.5 size-4 accent-secondary" />
+                        <span>
+                          <span className="block text-sm font-semibold">Print the dispatch slip automatically at the store</span>
+                          <span className="block text-xs text-muted-foreground">The store&apos;s printer prints what to dispatch as soon as an order is posted. Off = the storekeeper prints it with the Print button. Needs a printer set up on the store computer.</span>
+                        </span>
+                      </label>
+                    )}
                     {form.requireStoreDispatch && (
                       <label className="mt-3 block text-sm font-medium">Supplying store
                         <select className="input mt-1.5" value={form.dispatchFromLocationId} onChange={(e) => setForm({ ...form, dispatchFromLocationId: e.target.value })}>

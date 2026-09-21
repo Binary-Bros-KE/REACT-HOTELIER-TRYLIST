@@ -11,7 +11,7 @@ import StatusPill from '@/components/ui/StatusPill'
 type Product = { id: string; name: string; unit: string; stocks: { quantity: string | number }[] }
 type Ingredient = { quantity: string | number; product: Product }
 type MenuItem = { id: string; name: string; category: { name: string }; product: Product | null; recipe: { ingredients: Ingredient[] } | null }
-type OrderItem = { id: string; quantity: number; menuItem: MenuItem; variant: { name: string } | null; addons: { id: string; addon: { name: string } }[]; addedAfterSend: boolean }
+type OrderItem = { id: string; needsDispatch?: boolean; quantity: number; menuItem: MenuItem; variant: { name: string } | null; addons: { id: string; addon: { name: string } }[]; addedAfterSend: boolean }
 // Where this ticket's ingredients stand with the store (only when its location requires store dispatch).
 type Dispatch = { required: boolean; state: 'NOT_REQUIRED' | 'NOTHING_NEEDED' | 'NEEDS_REQUEST' | 'WAITING' | 'DISPATCHED'; clear: boolean; uncovered: number; waiting?: boolean; rejectReason: string | null }
 type Order = { id: string; orderNumber: number; dispatch?: Dispatch; table: { label: string } | null; notes: string | null; status: 'OPEN' | 'PREPARING' | 'READY' | 'SERVED'; createdAt: string; updatedAt: string; items: OrderItem[] }
@@ -157,7 +157,7 @@ function DispatchPanel({ dispatch, working, onDispatch, compact }: { dispatch: D
   if (dispatch.state === 'WAITING') {
     return (
       <div className="mt-3 flex items-center justify-between gap-2 border border-warning/40 bg-warning/10 p-2.5 text-xs font-semibold text-warning">
-        <span className="flex items-center gap-2"><LuStore /> Waiting for the store to dispatch…</span>
+        <span className="flex items-center gap-2"><LuStore /> Waiting for store approval…</span>
         <button type="button" disabled={working} onClick={() => onDispatch('cancel-dispatch')} className="underline disabled:opacity-60">Withdraw</button>
       </div>
     )
@@ -165,7 +165,7 @@ function DispatchPanel({ dispatch, working, onDispatch, compact }: { dispatch: D
   return (
     <div className="mt-3 space-y-2">
       {dispatch.rejectReason && <p className="flex items-start gap-2 border border-destructive/30 bg-destructive/10 p-2.5 text-xs text-destructive"><LuCircleAlert className="mt-0.5 shrink-0" /><span><strong>Store said:</strong> {dispatch.rejectReason}</span></p>}
-      {compact && <button type="button" disabled={working} onClick={() => onDispatch('request-dispatch')} className="flex w-full items-center justify-center gap-2 border border-secondary py-2 text-xs font-bold uppercase tracking-wide text-secondary hover:bg-secondary/10 disabled:opacity-60">{working ? <LuLoaderCircle className="animate-spin" /> : <LuStore />} Request from store</button>}
+      {compact && <button type="button" disabled={working} onClick={() => onDispatch('request-dispatch')} className="flex w-full items-center justify-center gap-2 border border-secondary py-2 text-xs font-bold uppercase tracking-wide text-secondary hover:bg-secondary/10 disabled:opacity-60">{working ? <LuLoaderCircle className="animate-spin" /> : <LuStore />} Send to the store</button>}
     </div>
   )
 }
@@ -194,7 +194,7 @@ function Ticket({ order, now, working, onAdvance, onDispatch }: { order: Order; 
             <div key={item.id} className="flex gap-3">
               <span className="flex size-7 shrink-0 items-center justify-center bg-primary text-xs font-bold text-primary-foreground">{item.quantity}</span>
               <div>
-                <p className="text-sm font-semibold">{item.menuItem.name}{item.variant ? <span className="ml-1.5 font-medium text-secondary">· {item.variant.name}</span> : null}</p>
+                <p className="text-sm font-semibold">{item.menuItem.name}{item.variant ? <span className="ml-1.5 font-medium text-secondary">· {item.variant.name}</span> : null}{item.needsDispatch && <span className="ml-2 border border-warning/60 px-1.5 py-0.5 text-[10px] font-bold uppercase text-warning">Not requested</span>}</p>
                 {item.addons.length > 0 && <p className="mt-0.5 text-xs text-secondary">+ {item.addons.map((addon) => addon.addon.name).join(', ')}</p>}
                 <p className="mt-1 text-[11px] text-muted-foreground">{item.menuItem.recipe?.ingredients.length ? `Recipe: ${item.menuItem.recipe.ingredients.map((ingredient) => `${ingredient.product.name} ${ingredient.quantity}${ingredient.product.unit}`).join(' · ')}` : item.menuItem.product ? `Product: ${item.menuItem.product.name}` : 'No stock recipe linked'}</p>
               </div>
@@ -204,10 +204,10 @@ function Ticket({ order, now, working, onAdvance, onDispatch }: { order: Order; 
         {order.notes && <p className="mt-3 border border-warning/30 bg-warning/10 p-3 text-xs text-warning"><strong>Note:</strong> {order.notes}</p>}
         {dispatch && <DispatchPanel dispatch={dispatch} working={working} onDispatch={onDispatch} />}
         {waitingOnStore ? (
-          <button disabled className="mt-4 flex w-full items-center justify-center gap-2 bg-muted py-3 text-sm font-bold uppercase tracking-wide text-muted-foreground"><LuStore /> Waiting for the store</button>
+          <button disabled className="mt-4 flex w-full items-center justify-center gap-2 bg-muted py-3 text-sm font-bold uppercase tracking-wide text-muted-foreground"><LuStore /> Waiting for store approval</button>
         ) : needsRequest ? (
           <button disabled={working} onClick={() => onDispatch('request-dispatch')} className="mt-4 flex w-full items-center justify-center gap-2 bg-secondary py-3 text-sm font-bold uppercase tracking-wide text-secondary-foreground transition hover:brightness-110 disabled:opacity-60">
-            {working ? <LuLoaderCircle className="animate-spin" /> : <LuStore />}{working ? 'Requesting…' : order.status === 'OPEN' ? 'Request ingredients' : 'Request added items'}
+            {working ? <LuLoaderCircle className="animate-spin" /> : <LuStore />}{working ? 'Requesting…' : order.status === 'OPEN' ? 'Send to the store' : 'Send added items to the store'}
           </button>
         ) : (
         <button
@@ -242,14 +242,14 @@ function UpdatedTicket({ order, acking, onAck, working, onDispatch }: { order: O
             <div key={item.id} className="flex gap-3">
               <span className="flex size-7 shrink-0 items-center justify-center bg-warning text-xs font-bold text-warning-foreground">{item.quantity}</span>
               <div>
-                <p className="text-sm font-semibold">{item.menuItem.name}{item.variant ? <span className="ml-1.5 font-medium text-secondary">· {item.variant.name}</span> : null}</p>
+                <p className="text-sm font-semibold">{item.menuItem.name}{item.variant ? <span className="ml-1.5 font-medium text-secondary">· {item.variant.name}</span> : null}{item.needsDispatch && <span className="ml-2 border border-warning/60 px-1.5 py-0.5 text-[10px] font-bold uppercase text-warning">Not requested</span>}</p>
                 {item.addons.length > 0 && <p className="mt-0.5 text-xs text-secondary">+ {item.addons.map((addon) => addon.addon.name).join(', ')}</p>}
               </div>
             </div>
           ))}
         </div>
         {order.dispatch && <DispatchPanel dispatch={order.dispatch} working={working} onDispatch={onDispatch} compact />}
-        <button disabled={acking} onClick={onAck} className="mt-4 flex w-full items-center justify-center gap-2 bg-success py-3 text-sm font-bold uppercase tracking-wide text-success-foreground transition hover:brightness-110 disabled:opacity-60">
+        <button disabled={acking || (order.status === 'SERVED' && Boolean(order.dispatch?.required) && !order.dispatch?.clear)} onClick={onAck} className="mt-4 flex w-full items-center justify-center gap-2 bg-success py-3 text-sm font-bold uppercase tracking-wide text-success-foreground transition hover:brightness-110 disabled:opacity-60">
           {acking ? <LuLoaderCircle className="animate-spin" /> : <LuCheck />}{acking ? 'Updating…' : 'Mark prepared'}
         </button>
       </div>

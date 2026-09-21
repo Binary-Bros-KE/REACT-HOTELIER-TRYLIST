@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useAppSelector, useAppDispatch } from '@/store/hooks'
 import { api } from '@/lib/api'
-import { getThermalSettings, buildReceiptBytes, sendLocal } from '@/lib/thermalPrinter'
+import { getThermalSettings, buildDispatchSlipBytes, buildReceiptBytes, sendLocal } from '@/lib/thermalPrinter'
 import { listPendingPrintJobs, claimPrintJob, completePrintJob, failPrintJob } from '@/lib/printRelay'
 import type { ReceiptOrder, ReceiptProfile } from '@/components/pos/OrderReceipt'
 import { setPrintJobCounts } from '@/store/printJobsSlice'
@@ -53,8 +53,15 @@ export function usePrintRelayHost(): void {
               const { profile } = await api<{ profile: ReceiptProfile }>('/business-profile')
               profileRef.current = profile
             }
-            const { order } = await api<{ order: ReceiptOrder }>(`/pos/orders/${claimed.orderId}`)
-            const bytes = buildReceiptBytes(order, profileRef.current ?? null, s)
+            let bytes: Uint8Array
+            if (claimed.kind === 'DISPATCH') {
+              // The store's slip for a kitchen's ingredient request - the slip itself came with the claim.
+              if (!claimed.slip) throw new Error('This dispatch request is no longer available')
+              bytes = buildDispatchSlipBytes(claimed.slip, profileRef.current ?? null, s)
+            } else {
+              const { order } = await api<{ order: ReceiptOrder }>(`/pos/orders/${claimed.orderId}`)
+              bytes = buildReceiptBytes(order, profileRef.current ?? null, s)
+            }
             await sendLocal(bytes, s)
             await completePrintJob(job.id)
           } catch (cause) {

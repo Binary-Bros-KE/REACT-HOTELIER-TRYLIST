@@ -1,4 +1,5 @@
 import { api } from '@/lib/api'
+import type { DispatchSlip } from '@/lib/thermalPrinter'
 
 /**
  * A Bluetooth thermal printer only ever holds one connection — usually the
@@ -10,7 +11,7 @@ import { api } from '@/lib/api'
  */
 
 export type PrintJobStatus = 'PENDING' | 'CLAIMED' | 'DONE' | 'FAILED'
-export type PendingPrintJob = { id: string; orderId: string; createdAt: string; nudgedAt: string | null }
+export type PendingPrintJob = { id: string; orderId: string; kind: 'RECEIPT' | 'DISPATCH'; createdAt: string; nudgedAt: string | null }
 
 export async function createPrintJob(orderId: string): Promise<{ id: string; status: PrintJobStatus }> {
   const response = await api<{ job: { id: string; status: PrintJobStatus; createdAt: string } }>(`/pos/orders/${orderId}/print-jobs`, { method: 'POST', body: '{}' })
@@ -36,10 +37,10 @@ export async function nudgePrintJob(id: string): Promise<void> {
 
 /** Atomically claims a job before printing it — returns null if another
  * device already claimed it first (a normal race, not an error). */
-export async function claimPrintJob(id: string): Promise<{ id: string; orderId: string } | null> {
+export async function claimPrintJob(id: string): Promise<{ id: string; orderId: string; kind: 'RECEIPT' | 'DISPATCH'; slip: DispatchSlip | null } | null> {
   try {
-    const response = await api<{ job: { id: string; orderId: string } }>(`/pos/print-jobs/${id}/claim`, { method: 'POST', body: '{}' })
-    return response.job
+    const response = await api<{ job: { id: string; orderId: string; kind: 'RECEIPT' | 'DISPATCH' }; slip?: DispatchSlip | null }>(`/pos/print-jobs/${id}/claim`, { method: 'POST', body: '{}' })
+    return { ...response.job, slip: response.slip ?? null }
   } catch {
     return null
   }
