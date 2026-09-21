@@ -3,7 +3,6 @@ import type { FormEvent, ReactNode } from 'react'
 import {
   LuBanknote,
   LuCircleAlert,
-  LuCircleCheck,
   LuLoaderCircle,
   LuMail,
   LuPencil,
@@ -14,7 +13,8 @@ import {
   LuTruck,
 } from 'react-icons/lu'
 import { api, hasApiTenant } from '@/lib/api'
-import Button from '@/components/ui/Button'
+import PageBanner from '@/components/ui/PageBanner'
+import ActionButton from '@/components/ui/ActionButton'
 import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
 import StatCard from '@/components/ui/StatCard'
@@ -89,7 +89,6 @@ export default function Suppliers() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
   const [paying, setPaying] = useState<Supplier | null>(null)
 
   const load = useCallback(async () => {
@@ -143,7 +142,6 @@ export default function Suppliers() {
     event.preventDefault()
     setSaving(true)
     setError('')
-    setNotice('')
     try {
       const payload = {
         name: form.name.trim(),
@@ -160,7 +158,6 @@ export default function Suppliers() {
         ...(editing ? {} : { balance: form.balance.trim() ? Number(form.balance) : undefined }),
       }
       await api(editing ? `/suppliers/${editing.id}` : '/suppliers', { method: editing ? 'PATCH' : 'POST', body: JSON.stringify(payload) })
-      setNotice(editing ? 'Supplier updated.' : 'Supplier added.')
       toast.success(editing ? 'Supplier updated.' : 'Supplier added.')
       setShowForm(false)
       await load()
@@ -176,10 +173,8 @@ export default function Suppliers() {
   async function deleteSupplier(supplier: Supplier) {
     if (!window.confirm(`Permanently delete ${supplier.name}?`)) return
     setError('')
-    setNotice('')
     try {
       await api(`/suppliers/${supplier.id}`, { method: 'DELETE' })
-      setNotice('Supplier deleted.')
       toast.success('Supplier deleted.')
       await load()
     } catch (cause) {
@@ -192,19 +187,10 @@ export default function Suppliers() {
   if (!hasApiTenant()) return <SetupMessage />
 
   return (
-    <div className="mx-auto max-w-7xl px-6 py-8 sm:px-8 lg:px-10">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-sm font-semibold text-secondary">Inventory</p>
-          <h1 className="mt-1 font-display text-3xl font-semibold">Suppliers</h1>
-          <p className="mt-2 text-sm text-muted-foreground">Vendors the property buys stock from — contacts, tax details, and payment terms in one place.</p>
-        </div>
-        <Button onClick={openCreate}>
-          <LuPlus /> Add supplier
-        </Button>
-      </header>
+    <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
+      <PageBanner kicker="Inventory" title="Suppliers" />
 
-      <section className="mt-7 grid gap-3 sm:grid-cols-3">
+      <section className="mt-6 grid gap-3 sm:grid-cols-3">
         {([
           ['Total suppliers', summary.total],
           ['Active', summary.active],
@@ -220,12 +206,6 @@ export default function Suppliers() {
           {error}
         </div>
       )}
-      {notice && (
-        <div className="mt-5 flex items-center gap-2 rounded-sm border border-success/25 bg-success/10 p-3 text-sm text-success">
-          <LuCircleCheck />
-          {notice}
-        </div>
-      )}
 
       <section className="mt-6 overflow-hidden rounded-sm border bg-card shadow-sm">
         <div className="flex flex-col gap-3 border-b p-4 sm:flex-row sm:items-center">
@@ -238,6 +218,7 @@ export default function Suppliers() {
             <option value="true">Active only</option>
             <option value="false">Inactive only</option>
           </select>
+          <ActionButton tone="primary" icon={<LuPlus />} onClick={openCreate}>Add supplier</ActionButton>
         </div>
 
         {loading ? (
@@ -247,15 +228,15 @@ export default function Suppliers() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+              <thead className="bg-primary text-xs uppercase tracking-wider text-primary-foreground">
                 <tr>
-                  <th className="px-5 py-3">Supplier</th>
-                  <th className="px-5 py-3">Contact</th>
-                  <th className="px-5 py-3">City</th>
-                  <th className="px-5 py-3">Terms</th>
-                  <th className="px-5 py-3 text-right">Balance</th>
-                  <th className="px-5 py-3">Status</th>
-                  <th className="px-5 py-3 text-right">Actions</th>
+                  <th className="px-5 py-3 font-bold">Supplier</th>
+                  <th className="px-5 py-3 font-bold">Contact</th>
+                  <th className="px-5 py-3 font-bold">City</th>
+                  <th className="px-5 py-3 font-bold">Terms</th>
+                  <th className="px-5 py-3 font-bold text-right">Balance</th>
+                  <th className="px-5 py-3 font-bold">Status</th>
+                  <th className="px-5 py-3 font-bold text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -279,17 +260,17 @@ export default function Suppliers() {
                     </td>
                     <td className="px-5 py-4">
                       <span className={cn(
-                        'rounded-full px-2 py-0.5 text-xs font-semibold',
-                        supplier.isActive ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground',
+                        'keep-round border border-dashed px-2 py-0.5 text-xs font-semibold',
+                        supplier.isActive ? 'border-success/70 text-success' : 'border-muted-foreground/50 text-muted-foreground',
                       )}>
                         {supplier.isActive ? 'Active' : 'Inactive'}
                       </span>
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex justify-end gap-1">
-                        <button onClick={() => setPaying(supplier)} title="Record a payment" className="rounded-sm p-2 text-muted-foreground hover:bg-success/10 hover:text-success"><LuBanknote /></button>
-                        <button onClick={() => openEdit(supplier)} title="Edit supplier" className="rounded-sm p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuPencil /></button>
-                        <button onClick={() => void deleteSupplier(supplier)} title="Delete supplier" className="rounded-sm p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><LuTrash2 /></button>
+                        <ActionButton tone="neutral" icon={<LuBanknote />} title="Record a payment" onClick={() => setPaying(supplier)} />
+                        <ActionButton tone="neutral" icon={<LuPencil />} title="Edit supplier" onClick={() => openEdit(supplier)} />
+                        <ActionButton tone="neutral" icon={<LuTrash2 />} title="Delete supplier" onClick={() => void deleteSupplier(supplier)} />
                       </div>
                     </td>
                   </tr>
@@ -301,10 +282,10 @@ export default function Suppliers() {
       </section>
 
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
-          <form onSubmit={saveSupplier} className="max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-sm border bg-card p-6 shadow-2xl">
-            <div>
-              <p className="text-sm font-semibold text-secondary">{editing ? 'Edit supplier' : 'New supplier'}</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <form onSubmit={saveSupplier} className="max-h-[88vh] w-full max-w-2xl overflow-y-auto border-2 border-foreground/25 bg-card p-6 shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+            <div className="-mx-6 -mt-6 mb-5 border-b-4 border-accent bg-muted/60 px-6 py-4">
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">{editing ? 'Edit supplier' : 'New supplier'}</p>
               <h2 className="mt-1 font-display text-2xl font-semibold">{editing ? editing.name : 'Add a supplier'}</h2>
             </div>
 
@@ -359,8 +340,8 @@ export default function Suppliers() {
             )}
 
             <div className="mt-6 flex justify-end gap-2 border-t pt-5">
-              <button type="button" onClick={() => setShowForm(false)} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Cancel</button>
-              <button disabled={saving} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+              <button type="button" onClick={() => setShowForm(false)} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted">Cancel</button>
+              <button disabled={saving} className="inline-flex items-center gap-2 bg-primary px-5 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground disabled:opacity-60">
                 {saving && <LuLoaderCircle className="animate-spin" />}
                 {editing ? 'Save changes' : 'Add supplier'}
               </button>
@@ -435,10 +416,10 @@ function PaySupplierModal({ supplier, onClose, onPaid }: { supplier: Supplier; o
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
-      <form onSubmit={submit} className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-sm border bg-card p-6 shadow-2xl">
-        <div>
-          <p className="text-sm font-semibold text-secondary">Supplier payment</p>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <form onSubmit={submit} className="max-h-[90vh] w-full max-w-lg overflow-y-auto border-2 border-foreground/25 bg-card p-6 shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+        <div className="-mx-6 -mt-6 mb-5 border-b-4 border-accent bg-muted/60 px-6 py-4">
+          <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">Supplier payment</p>
           <h2 className="mt-1 font-display text-2xl font-semibold">Pay {supplier.name}</h2>
           <p className="mt-1 text-sm text-muted-foreground">Currently owed: <span className="font-semibold">{formatKes(Number(supplier.balance))}</span></p>
         </div>
@@ -463,8 +444,8 @@ function PaySupplierModal({ supplier, onClose, onPaid }: { supplier: Supplier; o
         {error && <div className="mt-5 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert />{error}</div>}
 
         <div className="mt-6 flex justify-end gap-2 border-t pt-5">
-          <button type="button" onClick={onClose} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Close</button>
-          <button disabled={saving} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+          <button type="button" onClick={onClose} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted">Close</button>
+          <button disabled={saving} className="inline-flex items-center gap-2 bg-primary px-5 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground disabled:opacity-60">
             {saving && <LuLoaderCircle className="animate-spin" />} Record payment
           </button>
         </div>

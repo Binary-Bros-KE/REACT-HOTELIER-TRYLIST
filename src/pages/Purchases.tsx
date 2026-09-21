@@ -2,7 +2,6 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react
 import type { FormEvent, ReactNode } from 'react'
 import {
   LuCircleAlert,
-  LuCircleCheck,
   LuLoaderCircle,
   LuPackageCheck,
   LuPencil,
@@ -16,7 +15,8 @@ import {
   LuX,
 } from 'react-icons/lu'
 import { api, hasApiTenant } from '@/lib/api'
-import Button from '@/components/ui/Button'
+import PageBanner from '@/components/ui/PageBanner'
+import ActionButton from '@/components/ui/ActionButton'
 import { useToast } from '@/components/ui/Toast'
 import StatCard from '@/components/ui/StatCard'
 import { cn } from '@/lib/utils'
@@ -28,11 +28,11 @@ const DocumentViewer = lazy(() => import('@/components/documents/DocumentViewer'
 
 type Status = 'DRAFT' | 'ORDERED' | 'PARTIALLY_RECEIVED' | 'RECEIVED' | 'CANCELLED'
 const STATUS_META: Record<Status, { label: string; className: string }> = {
-  DRAFT: { label: 'Draft', className: 'bg-muted text-muted-foreground' },
-  ORDERED: { label: 'Ordered', className: 'bg-secondary/10 text-secondary' },
-  PARTIALLY_RECEIVED: { label: 'Partially received', className: 'bg-warning/10 text-warning' },
-  RECEIVED: { label: 'Received', className: 'bg-success/10 text-success' },
-  CANCELLED: { label: 'Cancelled', className: 'bg-destructive/10 text-destructive' },
+  DRAFT: { label: 'Draft', className: 'border-muted-foreground/50 text-muted-foreground' },
+  ORDERED: { label: 'Ordered', className: 'border-secondary/70 text-secondary' },
+  PARTIALLY_RECEIVED: { label: 'Partially received', className: 'border-warning/70 text-warning' },
+  RECEIVED: { label: 'Received', className: 'border-success/70 text-success' },
+  CANCELLED: { label: 'Cancelled', className: 'border-destructive/70 text-destructive' },
 }
 // Manual status changes only — PARTIALLY_RECEIVED/RECEIVED are computed from
 // real goods receipts (see the "Receive goods" action), never set by hand.
@@ -51,9 +51,9 @@ type TaxTreatment = 'STANDARD' | 'ZERO_RATED' | 'EXEMPT'
 type TaxMode = 'INCLUSIVE' | 'EXCLUSIVE'
 type PaymentStatus = 'UNPAID' | 'PARTIAL' | 'PAID'
 const PAYMENT_META: Record<PaymentStatus, { label: string; className: string }> = {
-  UNPAID: { label: 'Unpaid', className: 'bg-warning/10 text-warning' },
-  PARTIAL: { label: 'Partially paid', className: 'bg-secondary/10 text-secondary' },
-  PAID: { label: 'Paid', className: 'bg-success/10 text-success' },
+  UNPAID: { label: 'Unpaid', className: 'border-warning/70 text-warning' },
+  PARTIAL: { label: 'Partially paid', className: 'border-secondary/70 text-secondary' },
+  PAID: { label: 'Paid', className: 'border-success/70 text-success' },
 }
 // A price-editable target surfaced from a product's menu links — either a
 // menu item with no variants (base price is used on POS) or one specific
@@ -215,7 +215,7 @@ export default function Purchases() {
   const [statusFilter, setStatusFilter] = useState<'all' | Status>('all')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
+  const setNotice = (message: string) => { if (message) toast.success(message) }
 
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<Purchase | null>(null)
@@ -442,19 +442,10 @@ export default function Purchases() {
   if (!hasApiTenant()) return <SetupMessage />
 
   return (
-    <div className="mx-auto max-w-7xl px-6 py-8 sm:px-8 lg:px-10">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-sm font-semibold text-secondary">Inventory</p>
-          <h1 className="mt-1 font-display text-3xl font-semibold">Purchases</h1>
-          <p className="mt-2 text-sm text-muted-foreground">Purchase orders raised against a supplier. Receiving goods moves real stock into the location you choose.</p>
-        </div>
-        <Button onClick={openCreate}>
-          <LuPlus /> New purchase
-        </Button>
-      </header>
+    <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
+      <PageBanner kicker="Inventory" title="Purchases" />
 
-      <section className="mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <section className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {([
           ['Total', summary.total, <LuShoppingBag key="i" />],
           ['Draft', summary.byStatus.DRAFT, <LuPencil key="i" />],
@@ -466,7 +457,6 @@ export default function Purchases() {
       </section>
 
       {error && <div className="mt-5 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert />{error}</div>}
-      {notice && <div className="mt-5 flex items-center gap-2 rounded-sm border border-success/25 bg-success/10 p-3 text-sm text-success"><LuCircleCheck />{notice}</div>}
 
       <section className="mt-6 overflow-hidden rounded-sm border bg-card shadow-sm">
         <div className="flex flex-col gap-3 border-b p-4 sm:flex-row sm:items-center">
@@ -478,6 +468,7 @@ export default function Purchases() {
             <option value="all">All statuses</option>
             {(Object.keys(STATUS_META) as Status[]).map((s) => <option key={s} value={s}>{STATUS_META[s].label}</option>)}
           </select>
+          <ActionButton tone="primary" icon={<LuPlus />} onClick={openCreate}>New purchase</ActionButton>
         </div>
 
         {loading ? (
@@ -487,14 +478,14 @@ export default function Purchases() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+              <thead className="bg-primary text-xs uppercase tracking-wider text-primary-foreground">
                 <tr>
-                  <th className="px-5 py-3">Purchase</th>
-                  <th className="px-5 py-3">Supplier</th>
-                  <th className="px-5 py-3">Items</th>
-                  <th className="px-5 py-3 text-right">Total</th>
-                  <th className="px-5 py-3">Status</th>
-                  <th className="px-5 py-3 text-right">Actions</th>
+                  <th className="px-5 py-3 font-bold">Purchase</th>
+                  <th className="px-5 py-3 font-bold">Supplier</th>
+                  <th className="px-5 py-3 font-bold">Items</th>
+                  <th className="px-5 py-3 font-bold text-right">Total</th>
+                  <th className="px-5 py-3 font-bold">Status</th>
+                  <th className="px-5 py-3 font-bold text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -511,25 +502,25 @@ export default function Purchases() {
                     <td className="px-5 py-4 text-muted-foreground">{p.items.length}</td>
                     <td className="px-5 py-4 text-right font-semibold tabular-nums">{formatKes(Number(p.total))}</td>
                     <td className="px-5 py-4">
-                      <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', STATUS_META[p.status].className)}>{STATUS_META[p.status].label}</span>
-                      <span className={cn('ml-1 rounded-full px-2 py-0.5 text-xs font-semibold', PAYMENT_META[p.paymentStatus].className)}>{PAYMENT_META[p.paymentStatus].label}</span>
+                      <span className={cn('keep-round border border-dashed px-2 py-0.5 text-xs font-semibold', STATUS_META[p.status].className)}>{STATUS_META[p.status].label}</span>
+                      <span className={cn('ml-1 keep-round border border-dashed px-2 py-0.5 text-xs font-semibold', PAYMENT_META[p.paymentStatus].className)}>{PAYMENT_META[p.paymentStatus].label}</span>
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => setPrinting(p)} title="Print / PDF" className="rounded-sm p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuPrinter /></button>
+                        <ActionButton tone="neutral" icon={<LuPrinter />} title="Print / PDF" onClick={() => setPrinting(p)} />
                         {(p.status === 'ORDERED' || p.status === 'PARTIALLY_RECEIVED') && (
-                          <button onClick={() => setReceiving(p)} className="inline-flex items-center gap-1 rounded-sm border border-secondary/40 px-2.5 py-1.5 text-xs font-semibold text-secondary hover:bg-secondary/10"><LuPackageCheck className="size-3.5" /> Receive</button>
+                          <ActionButton tone="secondary" icon={<LuPackageCheck />} onClick={() => setReceiving(p)}>Receive</ActionButton>
                         )}
                         {(p.status === 'PARTIALLY_RECEIVED' || p.status === 'RECEIVED') && p.paymentStatus !== 'PAID' && (
-                          <button onClick={() => setPaying(p)} className="inline-flex items-center gap-1 rounded-sm border px-2.5 py-1.5 text-xs font-semibold hover:bg-muted"><LuWallet className="size-3.5" /> Pay</button>
+                          <ActionButton tone="neutral" icon={<LuWallet />} onClick={() => setPaying(p)}>Pay</ActionButton>
                         )}
                         {NEXT_ACTIONS[p.status].filter((a) => a.to !== 'CANCELLED').map((a) => (
-                          <button key={a.to} onClick={() => void changeStatus(p, a.to)} disabled={working} className="rounded-sm border px-2.5 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-50">{a.label}</button>
+                          <ActionButton key={a.to} tone="neutral" onClick={() => void changeStatus(p, a.to)} disabled={working}>{a.label}</ActionButton>
                         ))}
                         {(p.status === 'DRAFT' || (p.status === 'ORDERED' && p.payments.length === 0 && p.items.every((i) => Number(i.receivedQuantity) <= 0))) && (
                           <>
-                            <button onClick={() => openEdit(p)} title="Edit" className="rounded-sm p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuPencil /></button>
-                            {p.status === 'DRAFT' && <button onClick={() => void deletePurchase(p)} title="Delete" className="rounded-sm p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><LuTrash2 /></button>}
+                            <ActionButton tone="neutral" icon={<LuPencil />} title="Edit" onClick={() => openEdit(p)} />
+                            {p.status === 'DRAFT' && <ActionButton tone="neutral" icon={<LuTrash2 />} title="Delete" onClick={() => void deletePurchase(p)} />}
                           </>
                         )}
                       </div>
@@ -543,10 +534,10 @@ export default function Purchases() {
       </section>
 
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
-          <form onSubmit={savePurchase} className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-sm border bg-card p-6 shadow-2xl">
-            <div>
-              <p className="text-sm font-semibold text-secondary">{editing ? 'Edit purchase' : 'New purchase'}</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <form onSubmit={savePurchase} className="max-h-[90vh] w-full max-w-5xl overflow-y-auto border-2 border-foreground/25 bg-card p-6 shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+            <div className="-mx-6 -mt-6 mb-5 border-b-4 border-accent bg-muted/60 px-6 py-4">
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">{editing ? 'Edit purchase' : 'New purchase'}</p>
               <h2 className="mt-1 font-display text-2xl font-semibold">{editing ? editing.purchaseNo : 'Raise a purchase order'}</h2>
               <p className="mt-1 text-sm text-muted-foreground">Buying, selling and VAT changes are saved on this order and applied to products only when goods are received.</p>
             </div>
@@ -733,14 +724,14 @@ export default function Purchases() {
             {formError && <div className="mt-5 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert />{formError}</div>}
 
             <div className="mt-6 flex justify-end gap-2 border-t pt-5">
-              <button type="button" onClick={() => setShowForm(false)} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Cancel</button>
+              <button type="button" onClick={() => setShowForm(false)} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted">Cancel</button>
               {!editing && (
-                <button type="button" disabled={saving} onClick={(event) => void savePurchase(event as unknown as FormEvent, 'DRAFT')} className="inline-flex items-center gap-2 rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted disabled:opacity-60">
+                <button type="button" disabled={saving} onClick={(event) => void savePurchase(event as unknown as FormEvent, 'DRAFT')} className="inline-flex items-center gap-2 border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted disabled:opacity-60">
                   {saving && <LuLoaderCircle className="animate-spin" />}
                   Save draft
                 </button>
               )}
-              <button disabled={saving} onClick={(event) => !editing && void savePurchase(event as unknown as FormEvent, 'ORDERED')} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+              <button disabled={saving} onClick={(event) => !editing && void savePurchase(event as unknown as FormEvent, 'ORDERED')} className="inline-flex items-center gap-2 bg-primary px-5 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground disabled:opacity-60">
                 {saving && <LuLoaderCircle className="animate-spin" />}
                 {editing ? 'Save changes' : 'Save as ordered'}
               </button>
@@ -763,23 +754,23 @@ export default function Purchases() {
       )}
 
       {detail && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-sm border bg-card p-6 shadow-2xl">
-            <div className="flex items-start justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto border-2 border-foreground/25 bg-card p-6 shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+            <div className="flex items-start justify-between -mx-6 -mt-6 mb-5 border-b-4 border-accent bg-muted/60 px-6 py-4">
               <div>
-                <p className="text-sm font-semibold text-secondary">Purchase</p>
+                <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">Purchase</p>
                 <h2 className="mt-1 font-display text-2xl font-semibold">{detail.purchaseNo}</h2>
                 <p className="mt-1 text-xs text-muted-foreground">{detail.supplier.name} · ordered {new Date(detail.orderDate).toLocaleDateString()}{detail.requisition && <> · from requisition {detail.requisition.requisitionNo}</>}</p>
               </div>
               <div className="flex flex-wrap justify-end gap-1">
-                <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', STATUS_META[detail.status].className)}>{STATUS_META[detail.status].label}</span>
-                <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', PAYMENT_META[detail.paymentStatus].className)}>{PAYMENT_META[detail.paymentStatus].label}</span>
+                <span className={cn('keep-round border border-dashed px-2 py-0.5 text-xs font-semibold', STATUS_META[detail.status].className)}>{STATUS_META[detail.status].label}</span>
+                <span className={cn('keep-round border border-dashed px-2 py-0.5 text-xs font-semibold', PAYMENT_META[detail.paymentStatus].className)}>{PAYMENT_META[detail.paymentStatus].label}</span>
               </div>
             </div>
 
             <div className="mt-5 overflow-hidden rounded-sm border">
               <table className="w-full text-left text-sm">
-                <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+                <thead className="bg-primary text-xs uppercase tracking-wider text-primary-foreground">
                   <tr><th className="px-4 py-2">Product</th><th className="px-4 py-2 text-right">Qty</th><th className="px-4 py-2 text-right">Received</th><th className="px-4 py-2 text-right">Unit cost</th><th className="px-4 py-2 text-right">Line total</th></tr>
                 </thead>
                 <tbody>
@@ -861,14 +852,14 @@ export default function Purchases() {
             </p>
 
             <div className="mt-6 flex flex-wrap justify-end gap-2 border-t pt-5">
-              <button onClick={() => setPrinting(detail)} className="mr-auto inline-flex items-center gap-1.5 rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted"><LuPrinter className="size-4" /> Print</button>
-              <button onClick={() => setDetail(null)} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Close</button>
-              {(detail.status === 'DRAFT' || (detail.status === 'ORDERED' && detail.payments.length === 0 && detail.items.every((i) => Number(i.receivedQuantity) <= 0))) && <button onClick={() => { const d = detail; setDetail(null); openEdit(d) }} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Edit</button>}
+              <button onClick={() => setPrinting(detail)} className="mr-auto inline-flex items-center gap-1.5 border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted"><LuPrinter className="size-4" /> Print</button>
+              <button onClick={() => setDetail(null)} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted">Close</button>
+              {(detail.status === 'DRAFT' || (detail.status === 'ORDERED' && detail.payments.length === 0 && detail.items.every((i) => Number(i.receivedQuantity) <= 0))) && <button onClick={() => { const d = detail; setDetail(null); openEdit(d) }} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted">Edit</button>}
               {(detail.status === 'ORDERED' || detail.status === 'PARTIALLY_RECEIVED') && (
-                <button onClick={() => setReceiving(detail)} className="inline-flex items-center gap-1.5 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground"><LuPackageCheck className="size-4" /> Receive goods</button>
+                <button onClick={() => setReceiving(detail)} className="inline-flex items-center gap-1.5 bg-primary px-5 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground"><LuPackageCheck className="size-4" /> Receive goods</button>
               )}
               {(detail.status === 'PARTIALLY_RECEIVED' || detail.status === 'RECEIVED') && detail.paymentStatus !== 'PAID' && (
-                <button onClick={() => setPaying(detail)} className="inline-flex items-center gap-1.5 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground"><LuWallet className="size-4" /> Record payment</button>
+                <button onClick={() => setPaying(detail)} className="inline-flex items-center gap-1.5 bg-primary px-5 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground"><LuWallet className="size-4" /> Record payment</button>
               )}
               {NEXT_ACTIONS[detail.status].map((a) => (
                 <button key={a.to} onClick={() => void changeStatus(detail, a.to)} disabled={working}
@@ -972,10 +963,10 @@ function ReceiveGoodsModal({ purchase, locations, onClose, onReceived }: {
   }
 
   return (
-    <div className="fixed inset-0 z-[55] flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
-      <form onSubmit={submit} className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-sm border bg-card p-6 shadow-2xl">
-        <div>
-          <p className="text-sm font-semibold text-secondary">Goods receipt</p>
+    <div className="fixed inset-0 z-[55] flex items-center justify-center bg-black/60 p-4">
+      <form onSubmit={submit} className="max-h-[90vh] w-full max-w-2xl overflow-y-auto border-2 border-foreground/25 bg-card p-6 shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+        <div className="-mx-6 -mt-6 mb-5 border-b-4 border-accent bg-muted/60 px-6 py-4">
+          <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">Goods receipt</p>
           <h2 className="mt-1 font-display text-2xl font-semibold">Receive {purchase.purchaseNo}</h2>
           <p className="mt-1 text-sm text-muted-foreground">Only enter what actually arrived — the rest stays outstanding and can be received later.</p>
         </div>
@@ -1031,8 +1022,8 @@ function ReceiveGoodsModal({ purchase, locations, onClose, onReceived }: {
         {error && <div className="mt-5 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert />{error}</div>}
 
         <div className="mt-6 flex justify-end gap-2 border-t pt-5">
-          <button type="button" onClick={onClose} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Cancel</button>
-          <button disabled={saving || lines.length === 0} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+          <button type="button" onClick={onClose} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted">Cancel</button>
+          <button disabled={saving || lines.length === 0} className="inline-flex items-center gap-2 bg-primary px-5 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground disabled:opacity-60">
             {saving && <LuLoaderCircle className="animate-spin" />} Post receipt
           </button>
         </div>
@@ -1096,10 +1087,10 @@ function PurchasePaymentModal({ purchase, paymentMethods, onClose, onPaid }: {
   }
 
   return (
-    <div className="fixed inset-0 z-[55] flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
-      <form onSubmit={submit} className="w-full max-w-lg rounded-sm border bg-card p-6 shadow-2xl">
-        <div>
-          <p className="text-sm font-semibold text-secondary">Supplier payment</p>
+    <div className="fixed inset-0 z-[55] flex items-center justify-center bg-black/60 p-4">
+      <form onSubmit={submit} className="w-full max-w-lg border-2 border-foreground/25 bg-card p-6 shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+        <div className="-mx-6 -mt-6 mb-5 border-b-4 border-accent bg-muted/60 px-6 py-4">
+          <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">Supplier payment</p>
           <h2 className="mt-1 font-display text-2xl font-semibold">Pay {purchase.purchaseNo}</h2>
           <p className="mt-1 text-sm text-muted-foreground">Outstanding received balance: {formatKes(outstanding)}</p>
         </div>
@@ -1120,8 +1111,8 @@ function PurchasePaymentModal({ purchase, paymentMethods, onClose, onPaid }: {
         {error && <div className="mt-5 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert />{error}</div>}
 
         <div className="mt-6 flex justify-end gap-2 border-t pt-5">
-          <button type="button" onClick={onClose} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Cancel</button>
-          <button disabled={saving || outstanding <= 0} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+          <button type="button" onClick={onClose} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted">Cancel</button>
+          <button disabled={saving || outstanding <= 0} className="inline-flex items-center gap-2 bg-primary px-5 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground disabled:opacity-60">
             {saving && <LuLoaderCircle className="animate-spin" />} Record payment
           </button>
         </div>

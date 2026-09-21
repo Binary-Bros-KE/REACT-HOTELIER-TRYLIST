@@ -24,7 +24,7 @@ const TONES: Record<Tone, string> = {
 export default function ActionButton({
   icon, children, tone = 'primary', iconClassName, labelClassName, loading, disabled, onClick, title, className,
 }: {
-  icon: ReactNode
+  icon?: ReactNode
   children?: ReactNode
   tone?: Tone
   iconClassName?: string
@@ -51,9 +51,11 @@ export default function ActionButton({
         className,
       )}
     >
-      <span className={cn('flex items-center justify-center text-sm', iconOnly ? 'w-9' : 'w-9 bg-black/15', iconClassName)}>
-        {loading ? <LuLoaderCircle className="size-4 animate-spin" /> : icon}
-      </span>
+      {(icon || loading) && (
+        <span className={cn('flex items-center justify-center text-sm', iconOnly ? 'w-9' : 'w-9 bg-black/15', iconClassName)}>
+          {loading ? <LuLoaderCircle className="size-4 animate-spin" /> : icon}
+        </span>
+      )}
       {!iconOnly && <span className="flex items-center whitespace-nowrap px-3.5">{children}</span>}
     </button>
   )

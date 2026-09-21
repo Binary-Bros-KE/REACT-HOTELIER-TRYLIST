@@ -15,7 +15,8 @@ import {
   LuX,
 } from 'react-icons/lu'
 import { api, hasApiTenant } from '@/lib/api'
-import Button from '@/components/ui/Button'
+import PageBanner from '@/components/ui/PageBanner'
+import ActionButton from '@/components/ui/ActionButton'
 import { useToast } from '@/components/ui/Toast'
 import StatCard from '@/components/ui/StatCard'
 import { useAppSelector } from '@/store/hooks'
@@ -28,12 +29,12 @@ const DocumentViewer = lazy(() => import('@/components/documents/DocumentViewer'
 
 type Status = 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | 'CONVERTED' | 'CANCELLED'
 const STATUS_META: Record<Status, { label: string; className: string }> = {
-  DRAFT: { label: 'Draft', className: 'bg-muted text-muted-foreground' },
-  SUBMITTED: { label: 'Submitted', className: 'bg-accent/10 text-accent' },
-  APPROVED: { label: 'Approved', className: 'bg-secondary/10 text-secondary' },
-  REJECTED: { label: 'Rejected', className: 'bg-destructive/10 text-destructive' },
-  CONVERTED: { label: 'Converted', className: 'bg-success/10 text-success' },
-  CANCELLED: { label: 'Cancelled', className: 'bg-muted text-muted-foreground' },
+  DRAFT: { label: 'Draft', className: 'border-muted-foreground/50 text-muted-foreground' },
+  SUBMITTED: { label: 'Submitted', className: 'border-accent/70 text-accent' },
+  APPROVED: { label: 'Approved', className: 'border-secondary/70 text-secondary' },
+  REJECTED: { label: 'Rejected', className: 'border-destructive/70 text-destructive' },
+  CONVERTED: { label: 'Converted', className: 'border-success/70 text-success' },
+  CANCELLED: { label: 'Cancelled', className: 'border-muted-foreground/50 text-muted-foreground' },
 }
 
 type Supplier = SupplierOption
@@ -107,7 +108,7 @@ export default function PurchaseRequisitions() {
   const [statusFilter, setStatusFilter] = useState<'all' | Status>('all')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
+  const setNotice = (message: string) => { if (message) toast.success(message) }
 
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<Requisition | null>(null)
@@ -338,14 +339,13 @@ export default function PurchaseRequisitions() {
   }
 
   function rowActions(r: Requisition): ReactNode {
-    const btn = 'rounded-sm border px-2.5 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-50'
-    switch (r.status) {
+        switch (r.status) {
       case 'DRAFT':
         return canCreate ? (
           <>
-            <button onClick={() => void changeStatus(r, 'SUBMITTED')} disabled={working} className={btn}>Submit</button>
-            <button onClick={() => openEdit(r)} title="Edit" className="rounded-sm p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuPencil /></button>
-            <button onClick={() => void deleteRequisition(r)} title="Delete" className="rounded-sm p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><LuTrash2 /></button>
+            <ActionButton tone="neutral" onClick={() => void changeStatus(r, 'SUBMITTED')} disabled={working}>Submit</ActionButton>
+            <ActionButton tone="neutral" icon={<LuPencil />} title="Edit" onClick={() => openEdit(r)} />
+            <ActionButton tone="neutral" icon={<LuTrash2 />} title="Delete" onClick={() => void deleteRequisition(r)} />
           </>
         ) : null
       case 'SUBMITTED':
@@ -353,14 +353,14 @@ export default function PurchaseRequisitions() {
         // that happens in the detail view, not a one-click list action.
         return canApprove ? (
           <>
-            <button onClick={() => openDetail(r)} className={btn}>Review</button>
-            <button onClick={() => void changeStatus(r, 'REJECTED', { promptReason: true })} disabled={working} className={cn(btn, 'text-destructive')}>Reject</button>
+            <ActionButton tone="neutral" onClick={() => openDetail(r)}>Review</ActionButton>
+            <ActionButton tone="danger" onClick={() => void changeStatus(r, 'REJECTED', { promptReason: true })} disabled={working}>Reject</ActionButton>
           </>
         ) : <span className="text-xs text-muted-foreground">Awaiting review</span>
       case 'APPROVED':
-        return canApprove ? <button onClick={() => openConvert(r)} disabled={working} className={btn}>Convert to purchase</button> : null
+        return canApprove ? <ActionButton tone="neutral" onClick={() => openConvert(r)} disabled={working}>Convert to purchase</ActionButton> : null
       case 'REJECTED':
-        return canCreate ? <button onClick={() => void changeStatus(r, 'DRAFT')} disabled={working} className={btn}>Reopen</button> : null
+        return canCreate ? <ActionButton tone="neutral" onClick={() => void changeStatus(r, 'DRAFT')} disabled={working}>Reopen</ActionButton> : null
       default:
         return null
     }
@@ -369,21 +369,10 @@ export default function PurchaseRequisitions() {
   if (!hasApiTenant()) return <SetupMessage />
 
   return (
-    <div className="mx-auto max-w-7xl px-6 py-8 sm:px-8 lg:px-10">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-sm font-semibold text-secondary">Inventory</p>
-          <h1 className="mt-1 font-display text-3xl font-semibold">Purchase Requisitions</h1>
-          <p className="mt-2 text-sm text-muted-foreground">Request items to be bought — product and quantity only. Whoever can approve sets the cost, then converts it to a purchase order.</p>
-        </div>
-        {canCreate && (
-          <Button onClick={openCreate}>
-            <LuPlus /> New requisition
-          </Button>
-        )}
-      </header>
+    <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
+      <PageBanner kicker="Inventory" title="Purchase Requisitions" />
 
-      <section className="mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <section className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {([
           ['Total', summary.total, <LuClipboardList key="i" />],
           ['Awaiting review', summary.awaitingReview, <LuHourglass key="i" />],
@@ -395,7 +384,6 @@ export default function PurchaseRequisitions() {
       </section>
 
       {error && <div className="mt-5 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert />{error}</div>}
-      {notice && <div className="mt-5 flex items-center gap-2 rounded-sm border border-success/25 bg-success/10 p-3 text-sm text-success"><LuCircleCheck />{notice}</div>}
 
       <section className="mt-6 overflow-hidden rounded-sm border bg-card shadow-sm">
         <div className="flex flex-col gap-3 border-b p-4 sm:flex-row sm:items-center">
@@ -407,6 +395,7 @@ export default function PurchaseRequisitions() {
             <option value="all">All statuses</option>
             {(Object.keys(STATUS_META) as Status[]).map((s) => <option key={s} value={s}>{STATUS_META[s].label}</option>)}
           </select>
+          {canCreate && <ActionButton tone="primary" icon={<LuPlus />} onClick={openCreate}>New requisition</ActionButton>}
         </div>
 
         {loading ? (
@@ -416,14 +405,14 @@ export default function PurchaseRequisitions() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+              <thead className="bg-primary text-xs uppercase tracking-wider text-primary-foreground">
                 <tr>
-                  <th className="px-5 py-3">Requisition</th>
-                  <th className="px-5 py-3">Purpose</th>
-                  <th className="px-5 py-3">Items</th>
-                  <th className="px-5 py-3 text-right">Est. total</th>
-                  <th className="px-5 py-3">Status</th>
-                  <th className="px-5 py-3 text-right">Actions</th>
+                  <th className="px-5 py-3 font-bold">Requisition</th>
+                  <th className="px-5 py-3 font-bold">Purpose</th>
+                  <th className="px-5 py-3 font-bold">Items</th>
+                  <th className="px-5 py-3 font-bold text-right">Est. total</th>
+                  <th className="px-5 py-3 font-bold">Status</th>
+                  <th className="px-5 py-3 font-bold text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -439,9 +428,9 @@ export default function PurchaseRequisitions() {
                     <td className="px-5 py-4 text-muted-foreground">{r.purpose ?? '—'}</td>
                     <td className="px-5 py-4 text-muted-foreground">{r.items.length}</td>
                     <td className="px-5 py-4 text-right font-semibold tabular-nums">{formatCost(r.estimatedTotal)}</td>
-                    <td className="px-5 py-4"><span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', STATUS_META[r.status].className)}>{STATUS_META[r.status].label}</span></td>
+                    <td className="px-5 py-4"><span className={cn('keep-round border border-dashed px-2 py-0.5 text-xs font-semibold', STATUS_META[r.status].className)}>{STATUS_META[r.status].label}</span></td>
                     <td className="px-5 py-4"><div className="flex items-center justify-end gap-1">
-                      <button onClick={() => setPrinting(r)} title="Print / PDF" className="rounded-sm p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuPrinter /></button>
+                      <ActionButton tone="neutral" icon={<LuPrinter />} title="Print / PDF" onClick={() => setPrinting(r)} />
                       {rowActions(r)}
                     </div></td>
                   </tr>
@@ -453,10 +442,10 @@ export default function PurchaseRequisitions() {
       </section>
 
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
-          <form onSubmit={saveRequisition} className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-sm border bg-card p-6 shadow-2xl">
-            <div>
-              <p className="text-sm font-semibold text-secondary">{editing ? 'Edit requisition' : 'New requisition'}</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <form onSubmit={saveRequisition} className="max-h-[90vh] w-full max-w-3xl overflow-y-auto border-2 border-foreground/25 bg-card p-6 shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+            <div className="-mx-6 -mt-6 mb-5 border-b-4 border-accent bg-muted/60 px-6 py-4">
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">{editing ? 'Edit requisition' : 'New requisition'}</p>
               <h2 className="mt-1 font-display text-2xl font-semibold">{editing ? editing.requisitionNo : 'Raise a purchase requisition'}</h2>
             </div>
 
@@ -561,8 +550,8 @@ export default function PurchaseRequisitions() {
             {formError && <div className="mt-5 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert />{formError}</div>}
 
             <div className="mt-6 flex justify-end gap-2 border-t pt-5">
-              <button type="button" onClick={() => setShowForm(false)} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Cancel</button>
-              <button disabled={saving} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+              <button type="button" onClick={() => setShowForm(false)} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted">Cancel</button>
+              <button disabled={saving} className="inline-flex items-center gap-2 bg-primary px-5 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground disabled:opacity-60">
                 {saving && <LuLoaderCircle className="animate-spin" />}
                 {editing ? 'Save changes' : 'Create requisition'}
               </button>
@@ -572,11 +561,11 @@ export default function PurchaseRequisitions() {
       )}
 
       {detail && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-sm border bg-card p-6 shadow-2xl">
-            <div className="flex items-start justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto border-2 border-foreground/25 bg-card p-6 shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+            <div className="flex items-start justify-between -mx-6 -mt-6 mb-5 border-b-4 border-accent bg-muted/60 px-6 py-4">
               <div>
-                <p className="text-sm font-semibold text-secondary">Requisition</p>
+                <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">Requisition</p>
                 <h2 className="mt-1 font-display text-2xl font-semibold">{detail.requisitionNo}</h2>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Raised {new Date(detail.requisitionDate).toLocaleDateString()}
@@ -584,7 +573,7 @@ export default function PurchaseRequisitions() {
                   {detail.neededBy && <> · needed by {new Date(detail.neededBy).toLocaleDateString()}</>}
                 </p>
               </div>
-              <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', STATUS_META[detail.status].className)}>{STATUS_META[detail.status].label}</span>
+              <span className={cn('keep-round border border-dashed px-2 py-0.5 text-xs font-semibold', STATUS_META[detail.status].className)}>{STATUS_META[detail.status].label}</span>
             </div>
 
             {detail.purpose && <p className="mt-4 text-sm">{detail.purpose}</p>}
@@ -595,7 +584,7 @@ export default function PurchaseRequisitions() {
                 <>
                   <div className="mt-5 overflow-hidden rounded-sm border">
                     <table className="w-full text-left text-sm">
-                      <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+                      <thead className="bg-primary text-xs uppercase tracking-wider text-primary-foreground">
                         <tr>
                           <th className="px-4 py-2">Product</th>
                           <th className="px-4 py-2 text-right">Qty</th>
@@ -638,7 +627,7 @@ export default function PurchaseRequisitions() {
 
             {detail.suggestedSupplier && <p className="mt-3 text-xs text-muted-foreground">Suggested supplier: {detail.suggestedSupplier.name}</p>}
             {detail.reviewedByEmployee && (
-              <p className={cn('mt-3 rounded-sm p-3 text-sm', detail.status === 'REJECTED' ? 'bg-destructive/10 text-destructive' : 'bg-muted/50 text-muted-foreground')}>
+              <p className={cn('mt-3 rounded-sm p-3 text-sm', detail.status === 'REJECTED' ? 'border-destructive/70 text-destructive' : 'bg-muted/50 text-muted-foreground')}>
                 {detail.status === 'REJECTED' ? 'Rejected' : 'Approved'} by {detail.reviewedByEmployee.firstName} {detail.reviewedByEmployee.lastName}
                 {detail.reviewedAt && <> on {new Date(detail.reviewedAt).toLocaleDateString()}</>}
                 {detail.reviewNote && <> — “{detail.reviewNote}”</>}
@@ -648,25 +637,25 @@ export default function PurchaseRequisitions() {
             {detail.notes && <p className="mt-3 rounded-sm bg-muted/50 p-3 text-sm text-muted-foreground">{detail.notes}</p>}
 
             <div className="mt-6 flex flex-wrap justify-end gap-2 border-t pt-5">
-              <button onClick={() => setPrinting(detail)} className="mr-auto inline-flex items-center gap-1.5 rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted"><LuPrinter className="size-4" /> Print</button>
-              <button onClick={() => setDetail(null)} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Close</button>
+              <button onClick={() => setPrinting(detail)} className="mr-auto inline-flex items-center gap-1.5 border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted"><LuPrinter className="size-4" /> Print</button>
+              <button onClick={() => setDetail(null)} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted">Close</button>
               {detail.status === 'DRAFT' && canCreate && (
                 <>
-                  <button onClick={() => { const d = detail; setDetail(null); openEdit(d) }} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Edit</button>
-                  <button onClick={() => void changeStatus(detail, 'SUBMITTED')} disabled={working} className="rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">Submit</button>
+                  <button onClick={() => { const d = detail; setDetail(null); openEdit(d) }} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted">Edit</button>
+                  <button onClick={() => void changeStatus(detail, 'SUBMITTED')} disabled={working} className="bg-primary px-5 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground disabled:opacity-60">Submit</button>
                 </>
               )}
               {detail.status === 'SUBMITTED' && canApprove && (
                 <>
                   <button onClick={() => void changeStatus(detail, 'REJECTED', { promptReason: true })} disabled={working} className="rounded-sm border px-4 py-2.5 text-sm font-semibold text-destructive hover:bg-destructive/10 disabled:opacity-60">Reject</button>
-                  <button onClick={() => void approveWithCosts(detail)} disabled={working} className="rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">Approve</button>
+                  <button onClick={() => void approveWithCosts(detail)} disabled={working} className="bg-primary px-5 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground disabled:opacity-60">Approve</button>
                 </>
               )}
               {detail.status === 'APPROVED' && canApprove && (
-                <button onClick={() => openConvert(detail)} disabled={working} className="rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">Convert to purchase</button>
+                <button onClick={() => openConvert(detail)} disabled={working} className="bg-primary px-5 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground disabled:opacity-60">Convert to purchase</button>
               )}
               {detail.status === 'REJECTED' && canCreate && (
-                <button onClick={() => void changeStatus(detail, 'DRAFT')} disabled={working} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted disabled:opacity-60">Reopen</button>
+                <button onClick={() => void changeStatus(detail, 'DRAFT')} disabled={working} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted disabled:opacity-60">Reopen</button>
               )}
             </div>
           </div>
@@ -674,11 +663,13 @@ export default function PurchaseRequisitions() {
       )}
 
       {converting && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
-          <form onSubmit={submitConvert} className="w-full max-w-md rounded-sm border bg-card p-6 shadow-2xl">
-            <p className="text-sm font-semibold text-secondary">Convert to purchase</p>
-            <h2 className="mt-1 font-display text-xl font-semibold">{converting.requisitionNo}</h2>
-            <p className="mt-1 text-xs text-muted-foreground">Creates a draft purchase order with these items. Estimated costs become the starting unit costs.</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <form onSubmit={submitConvert} className="w-full max-w-md border-2 border-foreground/25 bg-card p-6 shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+            <div className="-mx-6 -mt-6 mb-5 border-b-4 border-accent bg-muted/60 px-6 py-4">
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">Convert to purchase</p>
+              <h2 className="mt-1 font-display text-xl font-semibold">{converting.requisitionNo}</h2>
+              <p className="mt-1 text-xs text-muted-foreground">Creates a draft purchase order with these items. Estimated costs become the starting unit costs.</p>
+            </div>
             <div className="mt-5 space-y-4">
               <Field label="Supplier" required>
                 <button
@@ -703,8 +694,8 @@ export default function PurchaseRequisitions() {
               <Field label="Reference"><input value={convertForm.reference} onChange={(e) => setConvertForm({ ...convertForm, reference: e.target.value })} className="input" /></Field>
             </div>
             <div className="mt-6 flex justify-end gap-2 border-t pt-5">
-              <button type="button" onClick={() => setConverting(null)} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Cancel</button>
-              <button disabled={working || !convertForm.supplierId} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+              <button type="button" onClick={() => setConverting(null)} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted">Cancel</button>
+              <button disabled={working || !convertForm.supplierId} className="inline-flex items-center gap-2 bg-primary px-5 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground disabled:opacity-60">
                 {working && <LuLoaderCircle className="animate-spin" />}
                 Create purchase
               </button>
