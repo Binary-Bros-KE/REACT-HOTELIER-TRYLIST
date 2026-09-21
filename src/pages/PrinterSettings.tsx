@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import { LuPrinter } from 'react-icons/lu'
+import { LuPlug, LuPrinter, LuRefreshCw } from 'react-icons/lu'
 import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
+import PageBanner from '@/components/ui/PageBanner'
+import ActionButton from '@/components/ui/ActionButton'
 import {
   getThermalSettings, saveThermalSettings, pairUsbPrinter, pairBluetoothPrinter,
   webUsbAvailable, webBluetoothAvailable, PRINTER_MODELS,
@@ -25,7 +27,7 @@ const CONNECTIONS: { value: ThermalConnection; label: string }[] = [
 ]
 
 function Label({ children }: { children: ReactNode }) {
-  return <p className="mt-5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{children}</p>
+  return <p className="mt-5 border-l-4 border-accent pl-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">{children}</p>
 }
 
 export default function PrinterSettings() {
@@ -82,23 +84,20 @@ export default function PrinterSettings() {
     (s.connection === 'bluetooth' && !webBluetoothAvailable())
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-8 sm:px-8 lg:px-10">
-      <header className="mb-8">
-        <p className="text-sm font-medium text-secondary">Sales</p>
-        <h1 className="mt-1 font-display text-2xl font-semibold text-foreground">Printer Settings</h1>
-        <p className="mt-2 max-w-2xl text-sm text-muted-foreground">How receipts print from this device. Every device sets its own — if a printer stops working here, this is always the place to check, whoever's on shift.</p>
-      </header>
+    <div className="dashboard-square mx-auto max-w-3xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
+      <PageBanner kicker="Sales" title="Printer Settings" />
+      <p className="mb-6 mt-5 max-w-2xl text-sm text-muted-foreground">How receipts print from this device. Every device sets its own — if a printer stops working here, this is always the place to check, whoever's on shift.</p>
 
-      <section className="rounded-sm border border-border bg-card p-6 shadow-sm">
+      <section className="border border-border bg-card p-6 shadow-sm">
         <div className="flex items-center gap-2.5">
-          <span className="flex size-8 items-center justify-center rounded-sm bg-secondary/10 text-secondary"><LuPrinter className="size-4" /></span>
-          <div>
+          <span className="flex size-8 items-center justify-center bg-secondary/10 text-secondary"><LuPrinter className="size-4" /></span>
+          <div className="border-l-4 border-accent pl-3">
             <h2 className="font-semibold text-foreground">Receipt Printer</h2>
             <p className="mt-0.5 text-sm text-muted-foreground">Configure the ESC/POS thermal printer used to print receipts at checkout.</p>
           </div>
         </div>
 
-        <label className="mt-5 flex cursor-pointer items-start gap-2.5 rounded-sm border bg-muted/40 p-3">
+        <label className="mt-5 flex cursor-pointer items-start gap-2.5 border bg-muted/40 p-3">
           <input type="checkbox" checked={s.enabled} onChange={(e) => patch({ enabled: e.target.checked })} className="mt-0.5 size-4 accent-secondary" />
           <span>
             <span className="block text-sm font-semibold">Enable receipt printing</span>
@@ -124,7 +123,7 @@ export default function PrinterSettings() {
             </div>
 
             {s.connection === 'relay' && (
-              <p className="mt-5 max-w-xl rounded-sm border border-secondary/30 bg-secondary/5 p-3 text-xs text-muted-foreground">
+              <p className="mt-5 max-w-xl border border-secondary/30 bg-secondary/5 p-3 text-xs text-muted-foreground">
                 This device has no printer of its own. Clicking Print here just queues the receipt — any other device at the same location that <span className="font-semibold text-foreground">does</span> have a printer connected (bridge, USB, or Bluetooth) picks it up in the background and prints it automatically, as long as that device's tab is open. Nothing else to set up on that end.
               </p>
             )}
@@ -133,13 +132,13 @@ export default function PrinterSettings() {
               <>
                 <div className="mt-5 flex flex-wrap items-center gap-3">
                   <span className={cn(
-                    'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold',
-                    bridge.up ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive',
+                    'keep-round inline-flex items-center gap-1.5 border border-dashed px-2.5 py-1 text-xs font-semibold',
+                    bridge.up ? 'border-success/70 text-success' : 'border-destructive/70 text-destructive',
                   )}>
-                    <span className={cn('size-1.5 rounded-full', bridge.up ? 'bg-success' : 'bg-destructive')} />
+                    <span className={cn('keep-round size-1.5 rounded-full', bridge.up ? 'bg-success' : 'bg-destructive')} />
                     {bridge.checking ? 'Checking…' : bridge.up ? `Bridge running · v${bridge.up.version} · ${bridge.up.host}` : 'Bridge not detected'}
                   </span>
-                  <button type="button" onClick={() => void checkBridge(s.bridgeUrl)} className="rounded-sm border px-3 py-1.5 text-xs font-semibold hover:bg-muted">Recheck</button>
+                  <ActionButton tone="neutral" icon={<LuRefreshCw />} onClick={() => void checkBridge(s.bridgeUrl)}>Recheck</ActionButton>
                 </div>
 
                 {bridge.up ? (
@@ -173,15 +172,8 @@ export default function PrinterSettings() {
               <>
                 <Label>Connected printer</Label>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <span className="rounded-sm border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">{s.address || 'None — connect one'}</span>
-                  <button
-                    type="button"
-                    onClick={() => void connect()}
-                    disabled={pairing || transportMissing}
-                    className="rounded-sm bg-primary px-3 py-2 text-xs font-bold text-primary-foreground disabled:opacity-50"
-                  >
-                    {pairing ? 'Connecting…' : s.address ? 'Reconnect' : `Connect ${s.connection === 'bluetooth' ? 'Bluetooth' : 'USB'} printer`}
-                  </button>
+                  <span className="border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">{s.address || 'None — connect one'}</span>
+                  <ActionButton tone="primary" icon={<LuPlug />} loading={pairing} disabled={transportMissing} onClick={() => void connect()}>{pairing ? 'Connecting…' : s.address ? 'Reconnect' : `Connect ${s.connection === 'bluetooth' ? 'Bluetooth' : 'USB'} printer`}</ActionButton>
                 </div>
                 {transportMissing && (
                   <p className="mt-2 text-xs font-medium text-warning">
@@ -202,7 +194,7 @@ export default function PrinterSettings() {
               Content prints at its true size (not shrunk to fit), so setting this too high cuts off the right edge. 32 suits 58&nbsp;mm paper, 48 suits 80&nbsp;mm. The moment a column or a total gets clipped, drop back to the last value that printed cleanly.
             </p>
 
-            <label className="mt-5 flex cursor-pointer items-start gap-2.5 rounded-sm border bg-muted/40 p-3">
+            <label className="mt-5 flex cursor-pointer items-start gap-2.5 border bg-muted/40 p-3">
               <input type="checkbox" checked={s.autoPrint} onChange={(e) => patch({ autoPrint: e.target.checked })} className="mt-0.5 size-4 accent-secondary" />
               <span>
                 <span className="block text-sm font-semibold">Print automatically after each sale</span>

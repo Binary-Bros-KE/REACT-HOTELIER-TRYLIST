@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import { LuCircleAlert, LuLoaderCircle, LuPencil, LuPlus, LuPrinter, LuReceiptText, LuTable2, LuTrash2, LuX } from 'react-icons/lu'
 import { api } from '@/lib/api'
-import Button from '@/components/ui/Button'
+import PageBanner from '@/components/ui/PageBanner'
+import ActionButton from '@/components/ui/ActionButton'
 import { useToast } from '@/components/ui/Toast'
 import { useWorkingLocation } from '@/lib/useWorkingLocation'
 import { cn } from '@/lib/utils'
@@ -31,10 +32,10 @@ const emptyForm: TableForm = { label: '', area: '', capacity: '2', locationId: '
 type PaymentMethod = { id: string; name: string; requiresReference: boolean }
 
 const STATUS_STYLES: Record<TableStatus, string> = {
-  AVAILABLE: 'bg-success/10 text-success',
-  OCCUPIED: 'bg-warning/15 text-warning',
-  RESERVED: 'bg-secondary/10 text-secondary',
-  OUT_OF_SERVICE: 'bg-muted text-muted-foreground',
+  AVAILABLE: 'border-success/70 text-success',
+  OCCUPIED: 'border-warning/70 text-warning',
+  RESERVED: 'border-secondary/70 text-secondary',
+  OUT_OF_SERVICE: 'border-muted-foreground/50 text-muted-foreground',
 }
 
 // orderId is null while showing the "pick which order" list for a table
@@ -151,25 +152,24 @@ export default function Tables() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-8 sm:px-8 lg:px-10">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-sm font-semibold text-secondary">Sales</p>
-          <h1 className="mt-1 font-display text-3xl font-semibold">Tables</h1>
-          <p className="mt-2 text-sm text-muted-foreground">See who's seated, follow their order, and settle the bill.</p>
+    <div className="dashboard-square mx-auto max-w-6xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
+      <PageBanner kicker="Sales" title="Tables" />
+
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border bg-card p-4 shadow-sm">
+        <div className="border-l-4 border-accent pl-3">
+          <h2 className="font-display text-xl font-semibold leading-tight">Floor</h2>
+          <p className="text-xs text-muted-foreground">See who's seated, follow their order, and settle the bill.</p>
         </div>
         <div className="flex items-center gap-2">
           {!fixedLocation && pickableLocations.length > 0 && (
-            <select aria-label="Filter by location" value={selectedLocationId} onChange={(e) => setLocation(e.target.value)} className="rounded-sm border bg-card px-3 py-2.5 text-sm shadow-sm outline-none">
+            <select aria-label="Filter by location" value={selectedLocationId} onChange={(e) => setLocation(e.target.value)} className="border bg-background px-3 py-2 text-sm outline-none">
               <option value="">All locations</option>
               {pickableLocations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
             </select>
           )}
-          <Button onClick={openCreate}>
-            <LuPlus /> Add table
-          </Button>
+          <ActionButton tone="primary" icon={<LuPlus />} onClick={openCreate}>Add table</ActionButton>
         </div>
-      </header>
+      </div>
 
       {error && (
         <div className="mt-5 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive">
@@ -185,27 +185,27 @@ export default function Tables() {
       ) : (
         <section className="mt-7 grid gap-4 sm:grid-cols-3 lg:grid-cols-4">
           {tables.map((table) => (
-            <article key={table.id} className={cn('rounded-sm border bg-card p-5 shadow-sm', table.status === 'OCCUPIED' && 'border-2 border-warning')}>
+            <article key={table.id} className={cn('border border-l-4 border-l-accent bg-card p-5 shadow-sm', table.status === 'OCCUPIED' && 'border-warning border-l-warning')}>
               <div className="flex items-start justify-between">
-                <span className="flex size-9 items-center justify-center rounded-sm bg-secondary/10 text-secondary"><LuTable2 className="size-4" /></span>
-                <span className={cn('rounded-full px-2.5 py-1 text-xs font-semibold', STATUS_STYLES[table.status])}>{table.status.replace('_', ' ')}</span>
+                <span className="flex size-9 items-center justify-center bg-secondary/10 text-secondary"><LuTable2 className="size-4" /></span>
+                <span className={cn('keep-round border border-dashed px-2.5 py-1 text-xs font-semibold', STATUS_STYLES[table.status])}>{table.status.replace('_', ' ')}</span>
               </div>
               <h2 className="mt-4 font-semibold">{table.label}</h2>
               <p className="mt-1 text-xs text-muted-foreground">{[table.area, `Seats ${table.capacity}`].filter(Boolean).join(' · ')}</p>
               <p className="mt-1 text-xs">
-                <span className={cn('rounded-full px-2 py-0.5 font-semibold', table.location ? 'bg-secondary/10 text-secondary' : 'bg-muted text-muted-foreground')}>
+                <span className={cn('keep-round border border-dashed px-2 py-0.5 font-semibold', table.location ? 'border-secondary/70 text-secondary' : 'border-muted-foreground/50 text-muted-foreground')}>
                   {table.location ? table.location.name : 'Shared'}
                 </span>
               </p>
               {table.activeOrders.length === 1 && <p className="mt-2 text-xs font-semibold text-warning">Order #{table.activeOrders[0].orderNumber} · {table.activeOrders[0].status}</p>}
               {table.activeOrders.length > 1 && <p className="mt-2 text-xs font-semibold text-warning">{table.activeOrders.length} active orders</p>}
               <div className="mt-4 flex flex-wrap gap-2">
-                <button onClick={() => openTable(table)} className="inline-flex items-center gap-1.5 rounded-sm border px-3 py-1.5 text-xs font-semibold hover:bg-muted"><LuReceiptText className="size-3.5" /> {table.activeOrders.length > 0 ? 'View orders' : 'Details'}</button>
+                <ActionButton tone="neutral" icon={<LuReceiptText />} onClick={() => openTable(table)}>{table.activeOrders.length > 0 ? 'View orders' : 'Details'}</ActionButton>
                 {table.activeOrders.length === 1 && (
-                  <button onClick={() => setReceiptOrderId(table.activeOrders[0].id)} title="View / print receipt" className="rounded-sm border p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"><LuPrinter className="size-3.5" /></button>
+                  <ActionButton tone="neutral" icon={<LuPrinter />} title="View / print receipt" onClick={() => setReceiptOrderId(table.activeOrders[0].id)} />
                 )}
-                <button onClick={() => openEditForm(table)} className="rounded-sm border p-1.5 text-muted-foreground hover:bg-muted"><LuPencil className="size-3.5" /></button>
-                <button onClick={() => void deleteTable(table)} className="rounded-sm border border-destructive/30 p-1.5 text-destructive hover:bg-destructive/10"><LuTrash2 className="size-3.5" /></button>
+                <ActionButton tone="neutral" icon={<LuPencil />} title="Edit table" onClick={() => openEditForm(table)} />
+                <ActionButton tone="neutral" icon={<LuTrash2 />} title="Delete table" onClick={() => void deleteTable(table)} />
               </div>
             </article>
           ))}
@@ -213,13 +213,13 @@ export default function Tables() {
       )}
 
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
-          <form onSubmit={saveTable} className="w-full max-w-md rounded-sm border bg-card p-6 shadow-2xl">
-            <div>
-              <p className="text-sm font-semibold text-secondary">{editing ? 'Edit table' : 'New table'}</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <form onSubmit={saveTable} className="w-full max-w-md border-2 border-foreground/25 bg-card p-6 shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+            <div className="-mx-6 -mt-6 mb-5 border-b-4 border-accent bg-muted/60 px-6 py-4">
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">{editing ? 'Edit table' : 'New table'}</p>
               <h2 className="mt-1 font-display text-2xl font-semibold">{editing ? editing.label : 'Add a table'}</h2>
             </div>
-            <div className="mt-6 space-y-4">
+            <div className="space-y-4">
               <Field label="Label" required><input required placeholder="e.g. T1" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} className="input" /></Field>
               <Field label="Area"><input placeholder="e.g. Main Hall, Patio" value={form.area} onChange={(e) => setForm({ ...form, area: e.target.value })} className="input" /></Field>
               <Field label="Capacity" required><input required type="number" min="1" value={form.capacity} onChange={(e) => setForm({ ...form, capacity: e.target.value })} className="input" /></Field>
@@ -235,8 +235,8 @@ export default function Tables() {
               </label>
             </div>
             <div className="mt-6 flex justify-end gap-2">
-              <button type="button" onClick={() => setShowForm(false)} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Cancel</button>
-              <button disabled={saving} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+              <button type="button" onClick={() => setShowForm(false)} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted">Cancel</button>
+              <button disabled={saving} className="inline-flex items-center gap-2 bg-primary px-5 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground disabled:opacity-60">
                 {saving && <LuLoaderCircle className="animate-spin" />}
                 {editing ? 'Save changes' : 'Create table'}
               </button>
@@ -246,21 +246,21 @@ export default function Tables() {
       )}
 
       {panel && panel.orderId === null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
-          <div className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-sm border bg-card p-6 shadow-2xl">
-            <div className="flex items-start justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="max-h-[88vh] w-full max-w-lg overflow-y-auto border-2 border-foreground/25 bg-card p-6 shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+            <div className="flex items-start justify-between -mx-6 -mt-6 mb-5 border-b-4 border-accent bg-muted/60 px-6 py-4">
               <div>
-                <p className="text-sm font-semibold text-secondary">{panel.table.label}{panel.table.area ? ` · ${panel.table.area}` : ''}</p>
+                <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">{panel.table.label}{panel.table.area ? ` · ${panel.table.area}` : ''}</p>
                 <h2 className="mt-1 font-display text-2xl font-semibold">{panel.table.activeOrders.length > 0 ? 'Choose an order' : 'No open order'}</h2>
               </div>
-              <button onClick={() => setPanel(null)} className="rounded-sm p-2 text-muted-foreground hover:bg-muted"><LuX /></button>
+              <button onClick={() => setPanel(null)} className="bg-black p-2 text-white transition hover:bg-black/80"><LuX /></button>
             </div>
             {panel.table.activeOrders.length === 0 ? (
               <p className="mt-6 text-sm text-muted-foreground">This table is free — no order is open on it right now.</p>
             ) : (
               <div className="mt-5 space-y-2">
                 {panel.table.activeOrders.map((activeOrder) => (
-                  <div key={activeOrder.id} className="flex items-stretch gap-1 rounded-sm border hover:bg-muted/40">
+                  <div key={activeOrder.id} className="flex items-stretch gap-1 border border-l-4 border-l-accent hover:bg-muted/40">
                     <button onClick={() => selectOrderInPanel(activeOrder.id)} className="min-w-0 flex-1 p-3 text-left text-sm">
                       <span className="flex items-center justify-between">
                         <span className="font-semibold">Order #{activeOrder.orderNumber}</span>
@@ -273,7 +273,7 @@ export default function Tables() {
                         {activeOrder.customer && <span>Client: {activeOrder.customer.firstName} {activeOrder.customer.lastName ?? ''}</span>}
                       </span>
                     </button>
-                    <button onClick={() => setReceiptOrderId(activeOrder.id)} title="View / print receipt" className="shrink-0 self-center rounded-sm p-2 text-muted-foreground hover:bg-muted hover:text-foreground"><LuPrinter className="size-4" /></button>
+                    <ActionButton tone="neutral" icon={<LuPrinter />} title="View / print receipt" onClick={() => setReceiptOrderId(activeOrder.id)} className="mr-2 shrink-0 self-center" />
                   </div>
                 ))}
               </div>
@@ -293,7 +293,7 @@ export default function Tables() {
             onChanged={() => void load()}
           />
           {panel.table.activeOrders.length > 1 && (
-            <button onClick={backToOrderList} className="fixed left-4 top-4 z-[70] rounded-sm border bg-card px-3 py-1.5 text-xs font-semibold shadow-lg hover:bg-muted">
+            <button onClick={backToOrderList} className="fixed left-4 top-4 z-[70] border-2 border-foreground/20 bg-card px-3 py-2 text-xs font-bold uppercase tracking-wider shadow-lg hover:bg-muted">
               ← Back to order list
             </button>
           )}
