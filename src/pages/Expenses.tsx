@@ -3,6 +3,7 @@ import type { FormEvent, ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
 import { LuArchive, LuArchiveRestore, LuBan, LuCalendarDays, LuCalendarRange, LuCircleAlert, LuLoaderCircle, LuLock, LuPencil, LuPlus, LuReceiptText, LuSearch, LuSettings2, LuTrash2, LuWallet } from 'react-icons/lu'
 import { api } from '@/lib/api'
+import QuickAddModal, { QuickNewButton } from '@/components/QuickAddModal'
 import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
 import StatCard from '@/components/ui/StatCard'
@@ -62,6 +63,7 @@ export default function Expenses() {
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [summary, setSummary] = useState<{ total: number; byCategory: CategoryBucket[] }>({ total: 0, byCategory: [] })
   const [categories, setCategories] = useState<ExpenseCategory[]>([])
+  const [quickCategory, setQuickCategory] = useState(false)
   const [methods, setMethods] = useState<PaymentMethod[]>([])
   const [locations, setLocations] = useState<Location[]>([])
   const [search, setSearch] = useState('')
@@ -300,10 +302,10 @@ export default function Expenses() {
           <form id="expense-form" onSubmit={saveExpense} className="p-5">
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Category" required>
-                <select required className="input" value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })}>
+                <div className="flex gap-2"><select required className="input" value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })}>
                   <option value="" disabled>Select category</option>
                   {activeCategories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
+                </select><QuickNewButton onClick={() => setQuickCategory(true)} /></div>
               </Field>
               <Field label="Date" required><input required type="date" value={form.expenseDate} onChange={(e) => setForm({ ...form, expenseDate: e.target.value })} className="input" /></Field>
               <Field label="Amount" required><input required type="number" min="0" step="0.01" placeholder="e.g. 500" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className="input" /></Field>
@@ -342,6 +344,10 @@ export default function Expenses() {
           onClose={() => setShowCategories(false)}
           onChanged={async () => { await loadLookups(); await loadExpenses(); }}
         />
+      )}
+      {quickCategory && (
+        <QuickAddModal title="New expense category" label="Category name" placeholder="e.g. Utilities" endpoint="/expense-categories" responseKey="category" onClose={() => setQuickCategory(false)}
+          onCreated={(c) => { setCategories((cur) => [...cur, { id: c.id, name: c.name, description: null, isActive: true, _count: { expenses: 0 } }]); setForm((f) => ({ ...f, categoryId: c.id })); setQuickCategory(false) }} />
       )}
     </div>
   )

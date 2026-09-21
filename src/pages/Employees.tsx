@@ -13,6 +13,7 @@ import {
 } from 'react-icons/lu'
 
 import { api } from '@/lib/api'
+import QuickAddModal, { QuickNewButton } from '@/components/QuickAddModal'
 import PageBanner from '@/components/ui/PageBanner'
 import ActionButton from '@/components/ui/ActionButton'
 import { useToast } from '@/components/ui/Toast'
@@ -134,6 +135,7 @@ export default function Employees() {
   const [roles, setRoles] = useState<{ id: string; name: string }[]>([])
   const [locations, setLocations] = useState<{ id: string; name: string }[]>([])
   const [departmentOptions, setDepartmentOptions] = useState<DeptOption[]>([])
+  const [quickDepartment, setQuickDepartment] = useState(false)
   const [summary, setSummary] = useState<Summary>({ total: 0, active: 0, onLeave: 0, suspended: 0, terminated: 0 })
   const [search, setSearch] = useState('')
   const [departmentFilter, setDepartmentFilter] = useState('')
@@ -414,7 +416,7 @@ export default function Employees() {
 
             <FieldGroup title="Employment">
               <Field label="Department" required>
-                <select required value={form.departmentId} onChange={(e) => {
+                <div className="flex gap-2"><select required value={form.departmentId} onChange={(e) => {
                   const departmentId = e.target.value
                   const isHousekeeping = departmentOptions.find((d) => d.id === departmentId)?.name.toLowerCase() === 'housekeeping'
                   const housekeepingRole = roles.find((r) => r.name === 'Housekeeping')
@@ -423,7 +425,7 @@ export default function Employees() {
                 }} className="input">
                   <option value="" disabled>Select department</option>
                   {departmentOptions.map((d) => <option key={d.id} value={d.id}>{d.name}{d.isActive ? '' : ' (inactive)'}</option>)}
-                </select>
+                </select><QuickNewButton onClick={() => setQuickDepartment(true)} /></div>
               </Field>
               <Field label="Job Title" required><input required placeholder="e.g. Chef, Storekeeper" value={form.jobTitle} onChange={(e) => setForm({ ...form, jobTitle: e.target.value })} className="input" /></Field>
               <Field label="Employment Type">
@@ -535,6 +537,10 @@ export default function Employees() {
             </div>
           </form>
         </div>
+      )}
+      {quickDepartment && (
+        <QuickAddModal title="New department" label="Department name" placeholder="e.g. Front Office" endpoint="/departments" responseKey="department" onClose={() => setQuickDepartment(false)}
+          onCreated={(d) => { setDepartmentOptions((cur) => [...cur, { id: d.id, name: d.name, isActive: true }]); setForm((f) => ({ ...f, departmentId: d.id })); setQuickDepartment(false) }} />
       )}
     </div>
   )

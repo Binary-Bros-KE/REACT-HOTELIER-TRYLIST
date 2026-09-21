@@ -13,6 +13,7 @@ import {
   LuTrash2,
 } from 'react-icons/lu'
 import { api, hasApiTenant } from '@/lib/api'
+import QuickAddModal, { QuickNewButton } from '@/components/QuickAddModal'
 import PageBanner from '@/components/ui/PageBanner'
 import ActionButton from '@/components/ui/ActionButton'
 import { useToast } from '@/components/ui/Toast'
@@ -84,6 +85,7 @@ export default function Assets() {
   const [assets, setAssets] = useState<Asset[]>([])
   const [summary, setSummary] = useState<Summary>({ total: 0, totalValue: 0 })
   const [categories, setCategories] = useState<Category[]>([])
+  const [quickCategory, setQuickCategory] = useState(false)
   const [locations, setLocations] = useState<Location[]>([])
   const [methods, setMethods] = useState<PaymentMethod[]>([])
   const [search, setSearch] = useState('')
@@ -326,10 +328,10 @@ export default function Assets() {
             <FieldGroup title="Identity">
               <Field label="Name" required className="sm:col-span-2"><input required placeholder="e.g. Dining Chair" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="input" /></Field>
               <Field label="Category">
-                <select className="input" value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })}>
+                <div className="flex gap-2"><select className="input" value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })}>
                   <option value="">Uncategorized</option>
                   {categories.map((c) => <option key={c.id} value={c.id}>{categoryLabel(c)}</option>)}
-                </select>
+                </select><QuickNewButton onClick={() => setQuickCategory(true)} /></div>
               </Field>
               <Field label="Unit" required>
                 <select required className="input" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value as AssetForm['unit'] })}>
@@ -463,6 +465,10 @@ export default function Assets() {
             </div>
           </form>
         </div>
+      )}
+      {quickCategory && (
+        <QuickAddModal title="New category" label="Category name" placeholder="e.g. Furniture" endpoint="/categories" extraBody={{ scope: 'ASSETS' }} responseKey="category" onClose={() => setQuickCategory(false)}
+          onCreated={(c) => { setCategories((cur) => [...cur, { id: c.id, name: c.name, level: Number(c.level ?? 1) }]); setForm((f) => ({ ...f, categoryId: c.id })); setQuickCategory(false) }} />
       )}
     </div>
   )

@@ -16,6 +16,7 @@ import {
   LuTrash2,
 } from 'react-icons/lu'
 import { api, hasApiTenant } from '@/lib/api'
+import QuickAddModal, { QuickNewButton } from '@/components/QuickAddModal'
 import PageBanner from '@/components/ui/PageBanner'
 import ActionButton from '@/components/ui/ActionButton'
 import { useToast } from '@/components/ui/Toast'
@@ -141,6 +142,7 @@ export default function Products() {
   const [products, setProducts] = useState<Product[]>([])
   const [summary, setSummary] = useState<Summary>({ total: 0, active: 0, inactive: 0, lowStock: 0 })
   const [categories, setCategories] = useState<Category[]>([])
+  const [quickAdd, setQuickAdd] = useState<'category' | 'unit' | 'packUnit' | null>(null)
   const [locations, setLocations] = useState<Location[]>([])
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
@@ -564,20 +566,20 @@ export default function Products() {
               <Field label="Barcode"><input placeholder="e.g. 5449000000996" value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} className="input" /></Field>
               <Field label="Brand"><input placeholder="e.g. Coca-Cola" value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} className="input" /></Field>
               <Field label="Category">
-                <select className="input" value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })}>
+                <div className="flex gap-2"><select className="input" value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })}>
                   <option value="">Uncategorized</option>
                   {categories.map((c) => <option key={c.id} value={c.id}>{categoryLabel(c)}</option>)}
-                </select>
+                </select><QuickNewButton onClick={() => setQuickAdd('category')} /></div>
               </Field>
               <Field label="Description" className="sm:col-span-2"><input placeholder="e.g. 500ml glass bottle" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="input" /></Field>
             </FieldGroup>
 
             <FieldGroup title="Classification">
               <Field label="Unit of Measure" required>
-                <select required className="input" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })}>
+                <div className="flex gap-2"><select required className="input" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })}>
                   <option value="" disabled>Select a unit of measure…</option>
                   {units.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}
-                </select>
+                </select><QuickNewButton onClick={() => setQuickAdd('unit')} /></div>
               </Field>
               <Field label="Shelf Life (days)"><input type="number" min="0" placeholder="e.g. 180" value={form.shelfLifeDays} onChange={(e) => setForm({ ...form, shelfLifeDays: e.target.value })} className="input" /></Field>
               <label className="flex items-center gap-2 text-sm font-medium sm:col-span-2">
@@ -598,6 +600,7 @@ export default function Products() {
                     <option value="">Select a unit of measure…</option>
                     {units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                   </select>
+                  <QuickNewButton onClick={() => setQuickAdd('packUnit')} />
                   <button type="button" onClick={() => setShowUnits(true)} className="shrink-0 rounded-sm border px-3 text-sm font-medium hover:bg-muted">Manage</button>
                 </div>
               </Field>
@@ -856,6 +859,14 @@ export default function Products() {
         </div>
       )}
 
+      {quickAdd === 'category' && (
+        <QuickAddModal title="New category" label="Category name" placeholder="e.g. Beverages" endpoint="/categories" extraBody={{ scope: 'STORE' }} responseKey="category" onClose={() => setQuickAdd(null)}
+          onCreated={(c) => { setCategories((cur) => [...cur, { id: c.id, name: c.name, level: Number(c.level ?? 1), parentId: null }]); setForm((f) => ({ ...f, categoryId: c.id })); setQuickAdd(null) }} />
+      )}
+      {(quickAdd === 'unit' || quickAdd === 'packUnit') && (
+        <QuickAddModal title="New unit of measure" label="Unit name" placeholder="e.g. box" endpoint="/units-of-measure" responseKey="unit" onClose={() => setQuickAdd(null)}
+          onCreated={(u) => { setUnits((cur) => [...cur, { id: u.id, name: u.name }]); setForm((f) => (quickAdd === 'unit' ? { ...f, unit: u.name } : { ...f, packUnitId: u.id })); setQuickAdd(null) }} />
+      )}
       <UnitsOfMeasureModal open={showUnits} onClose={() => setShowUnits(false)} />
     </div>
   )
