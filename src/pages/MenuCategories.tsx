@@ -13,7 +13,10 @@ import {
   LuTrash2,
 } from 'react-icons/lu'
 import { api } from '@/lib/api'
-import Button from '@/components/ui/Button'
+import PageBanner from '@/components/ui/PageBanner'
+import ModalShell from '@/components/ui/ModalShell'
+import ActionButton from '@/components/ui/ActionButton'
+import StatusPill from '@/components/ui/StatusPill'
 import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
 
@@ -30,6 +33,7 @@ type MenuCategory = {
 }
 type Form = { name: string; description: string; imageUrl: string; isActive: boolean }
 const emptyForm: Form = { name: '', description: '', imageUrl: '', isActive: true }
+const TH = 'px-4 py-3 text-xs font-bold uppercase tracking-wider'
 
 export default function MenuCategories() {
   const toast = useToast()
@@ -133,38 +137,29 @@ export default function MenuCategories() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-6 py-8 sm:px-8 lg:px-10">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-widest text-secondary">{categories.length} · Menu</p>
-        <h1 className="mt-1 font-display text-3xl font-semibold">Menu Categories</h1>
-      </div>
+    <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
+      <PageBanner kicker="Menu" title="Menu Categories" />
 
       {error && (
-        <div className="mt-5 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive">
+        <div className="mt-5 flex items-center gap-2 border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive">
           <LuCircleAlert />
           {error}
         </div>
       )}
 
-      <section className="mt-6 overflow-hidden rounded-lg border bg-card shadow-sm">
-        <div className="flex flex-col gap-4 border-b p-5 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-secondary">Categories</p>
-            <h2 className="mt-1 font-display text-xl font-semibold">Organise the menu</h2>
-            <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-              The groups a menu item can sit under — Hot Drinks, Bakery, Cocktails. Order sets how they appear on the menu; an inactive category is hidden but keeps its items.
+      <section className="mt-6 overflow-hidden border bg-card shadow-sm">
+        <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center">
+          <div className="border-l-4 border-accent pl-3 lg:mr-auto">
+            <h2 className="font-display text-xl font-semibold leading-tight">Organise the menu</h2>
+            <p className="max-w-xl text-xs text-muted-foreground">
+              The groups a menu item can sit under. Order sets how they appear on the menu; an inactive category is hidden but keeps its items.
             </p>
           </div>
-          <Button onClick={openCreate} className="shrink-0">
-            <LuPlus /> New category
-          </Button>
-        </div>
-
-        <div className="border-b p-4">
-          <label className="relative block">
+          <label className="relative">
             <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search categories…" className="w-full rounded-sm border bg-background py-2.5 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search categories…" className="w-full border bg-background py-2.5 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring lg:w-64" />
           </label>
+          <ActionButton tone="primary" icon={<LuPlus />} onClick={openCreate}>New category</ActionButton>
         </div>
 
         {loading ? (
@@ -173,42 +168,28 @@ export default function MenuCategories() {
           <div className="min-h-64 p-16 text-center text-sm text-muted-foreground">{search.trim() ? 'No categories match your search.' : 'No menu categories yet.'}</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] text-left text-sm">
+            <table className="w-full min-w-[720px] text-left text-sm">
               <thead className="bg-primary text-primary-foreground">
-                <tr className="[&>th]:px-4 [&>th]:py-3 [&>th]:text-xs [&>th]:font-semibold [&>th]:uppercase [&>th]:tracking-wide">
-                  <th className="w-16 text-center">Order</th>
+                <tr>
+                  <th className={cn(TH, 'w-28 text-center')}>Order</th>
                   <th className="w-14" aria-label="Image" />
-                  <th>Category</th>
-                  <th className="text-right">Items</th>
-                  <th>Status</th>
-                  <th className="text-right">Actions</th>
+                  <th className={TH}>Category</th>
+                  <th className={cn(TH, 'text-right')}>Items</th>
+                  <th className={TH}>Status</th>
+                  <th className={cn(TH, 'text-right')}>Actions</th>
                 </tr>
               </thead>
-              <tbody className="[&>tr]:border-b [&>tr:last-child]:border-0">
+              <tbody className="divide-y">
                 {visible.map((category, index) => (
-                  <tr key={category.id} className="align-middle transition hover:bg-muted/40">
+                  <tr key={category.id} className="align-middle transition even:bg-muted/30 hover:bg-muted/60">
                     <td className="px-4 py-3">
-                      <div className="flex items-center justify-center gap-0.5">
-                        <button
-                          onClick={() => void move(index, -1)}
-                          disabled={reordering || index === 0 || !!search.trim()}
-                          title={search.trim() ? 'Clear search to reorder' : 'Move up'}
-                          className="rounded-sm p-1 text-muted-foreground hover:bg-muted disabled:opacity-25"
-                        >
-                          <LuChevronUp className="size-4" />
-                        </button>
-                        <button
-                          onClick={() => void move(index, 1)}
-                          disabled={reordering || index === visible.length - 1 || !!search.trim()}
-                          title={search.trim() ? 'Clear search to reorder' : 'Move down'}
-                          className="rounded-sm p-1 text-muted-foreground hover:bg-muted disabled:opacity-25"
-                        >
-                          <LuChevronDown className="size-4" />
-                        </button>
+                      <div className="flex items-center justify-center gap-1">
+                        <ActionButton tone="neutral" icon={<LuChevronUp />} title={search.trim() ? 'Clear search to reorder' : 'Move up'} disabled={reordering || index === 0 || !!search.trim()} onClick={() => void move(index, -1)} />
+                        <ActionButton tone="neutral" icon={<LuChevronDown />} title={search.trim() ? 'Clear search to reorder' : 'Move down'} disabled={reordering || index === visible.length - 1 || !!search.trim()} onClick={() => void move(index, 1)} />
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="flex size-10 items-center justify-center overflow-hidden rounded-md border bg-muted/50 text-muted-foreground">
+                      <span className="flex size-10 items-center justify-center overflow-hidden border bg-muted/50 text-muted-foreground">
                         {category.imageUrl
                           ? <img src={category.imageUrl} alt="" className="size-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none' }} />
                           : <LuImageOff className="size-4" />}
@@ -219,26 +200,12 @@ export default function MenuCategories() {
                       {category.description && <p className="max-w-sm truncate text-xs text-muted-foreground">{category.description}</p>}
                     </td>
                     <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">{category._count.menuItems}</td>
+                    <td className="px-4 py-3"><StatusPill tone={category.isActive ? 'success' : 'muted'}>{category.isActive ? 'Active' : 'Inactive'}</StatusPill></td>
                     <td className="px-4 py-3">
-                      <span className={cn(
-                        'inline-flex whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide',
-                        category.isActive ? 'border-success/40 text-success' : 'border-muted-foreground/30 text-muted-foreground',
-                      )}>
-                        {category.isActive ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => openEdit(category)} title="Edit" className="rounded-md p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuPencil className="size-4" /></button>
-                        <button onClick={() => void toggleActive(category)} title={category.isActive ? 'Deactivate' : 'Activate'} className={cn('rounded-md p-2 hover:bg-muted', category.isActive ? 'text-muted-foreground' : 'text-success')}><LuPower className="size-4" /></button>
-                        <button
-                          onClick={() => void remove(category)}
-                          disabled={category._count.menuItems > 0}
-                          title={category._count.menuItems > 0 ? 'In use — deactivate instead' : 'Delete'}
-                          className="rounded-md p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive disabled:opacity-30"
-                        >
-                          <LuTrash2 className="size-4" />
-                        </button>
+                      <div className="flex items-center justify-end gap-1.5">
+                        <ActionButton tone="neutral" icon={<LuPencil />} title="Edit" onClick={() => openEdit(category)} />
+                        <ActionButton tone="neutral" icon={<LuPower />} title={category.isActive ? 'Deactivate' : 'Activate'} onClick={() => void toggleActive(category)} />
+                        <ActionButton tone="neutral" icon={<LuTrash2 />} title={category._count.menuItems > 0 ? 'In use — deactivate instead' : 'Delete'} disabled={category._count.menuItems > 0} onClick={() => void remove(category)} />
                       </div>
                     </td>
                   </tr>
@@ -250,43 +217,42 @@ export default function MenuCategories() {
       </section>
 
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
-          <form onSubmit={save} className="w-full max-w-md rounded-sm border bg-card p-6 shadow-2xl">
-            <div>
-              <p className="text-sm font-semibold text-secondary">{editing ? 'Edit category' : 'New category'}</p>
-              <h2 className="mt-1 font-display text-2xl font-semibold">{editing ? editing.name : 'Add a menu category'}</h2>
-            </div>
-
-            <div className="mt-6 space-y-4">
-              <Field label="Name" required>
-                <input required autoFocus placeholder="e.g. Hot Drinks" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="input" />
-              </Field>
-              <Field label="Description">
-                <input placeholder="Optional — a short note" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="input" />
-              </Field>
-              <Field label="Image URL">
-                <input type="url" placeholder="https://…" value={form.imageUrl} onChange={(e) => setForm({ ...form, imageUrl: e.target.value })} className="input" />
-                {form.imageUrl.trim() && (
-                  <span className="mt-2 flex size-20 items-center justify-center overflow-hidden rounded-md border bg-muted/50">
-                    <img src={form.imageUrl} alt="preview" className="size-full object-cover" onError={(e) => { e.currentTarget.style.opacity = '0.15' }} />
-                  </span>
-                )}
-              </Field>
-              <label className="flex items-center justify-between rounded-sm border bg-background px-3 py-2.5 text-sm font-medium">
-                Active
-                <input type="checkbox" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} className="size-4 accent-secondary" />
-              </label>
-            </div>
-
-            <div className="mt-6 flex justify-end gap-2 border-t pt-5">
-              <button type="button" onClick={() => setShowForm(false)} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Cancel</button>
-              <button disabled={saving || !form.name.trim()} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+        <ModalShell
+          size="sm"
+          kicker={editing ? 'Edit category' : 'New category'}
+          title={editing ? editing.name : 'Add a menu category'}
+          onClose={() => setShowForm(false)}
+          footer={
+            <>
+              <button type="button" onClick={() => setShowForm(false)} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted">Cancel</button>
+              <button form="menu-category-form" disabled={saving || !form.name.trim()} className="inline-flex items-center gap-2 bg-primary px-5 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground transition hover:brightness-110 disabled:opacity-60">
                 {saving && <LuLoaderCircle className="animate-spin" />}
                 {editing ? 'Save changes' : 'Create category'}
               </button>
-            </div>
+            </>
+          }
+        >
+          <form id="menu-category-form" onSubmit={save} className="space-y-4 p-5">
+            <Field label="Name" required>
+              <input required autoFocus placeholder="e.g. Hot Drinks" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="input" />
+            </Field>
+            <Field label="Description">
+              <input placeholder="Optional — a short note" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="input" />
+            </Field>
+            <Field label="Image URL">
+              <input type="url" placeholder="https://…" value={form.imageUrl} onChange={(e) => setForm({ ...form, imageUrl: e.target.value })} className="input" />
+              {form.imageUrl.trim() && (
+                <span className="mt-2 flex size-20 items-center justify-center overflow-hidden border bg-muted/50">
+                  <img src={form.imageUrl} alt="preview" className="size-full object-cover" onError={(e) => { e.currentTarget.style.opacity = '0.15' }} />
+                </span>
+              )}
+            </Field>
+            <label className="flex items-center justify-between border bg-background px-3 py-2.5 text-sm font-medium">
+              Active
+              <input type="checkbox" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} className="size-4 accent-secondary" />
+            </label>
           </form>
-        </div>
+        </ModalShell>
       )}
     </div>
   )

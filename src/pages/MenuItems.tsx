@@ -17,7 +17,8 @@ import {
   LuX,
 } from 'react-icons/lu'
 import { api } from '@/lib/api'
-import Button from '@/components/ui/Button'
+import PageBanner from '@/components/ui/PageBanner'
+import ActionButton from '@/components/ui/ActionButton'
 import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
 import StatCard from '@/components/ui/StatCard'
@@ -383,16 +384,8 @@ export default function MenuItems() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-8 sm:px-8 lg:px-10">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-widest text-secondary">{items.length} · Menu</p>
-          <h1 className="mt-1 font-display text-3xl font-semibold">Menu Items</h1>
-        </div>
-        <Button onClick={openCreate} disabled={categories.length === 0} className="shrink-0">
-          <LuPlus /> New item
-        </Button>
-      </header>
+    <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
+      <PageBanner kicker="Menu" title="Menu Items" />
 
       {categories.length === 0 && !loading && (
         <div className="mt-5 flex items-center gap-2 rounded-sm border border-warning/25 bg-warning/10 p-3 text-sm text-warning">
@@ -433,6 +426,7 @@ export default function MenuItems() {
             <option value="inactive">Inactive only</option>
             <option value="unavailable">Unavailable only</option>
           </select>
+          <ActionButton tone="primary" icon={<LuPlus />} disabled={categories.length === 0} onClick={openCreate}>New item</ActionButton>
         </div>
 
         {loading ? (
@@ -478,7 +472,7 @@ export default function MenuItems() {
                         onClick={() => void patch(item, { isAvailable: !item.isAvailable }, item.isAvailable ? 'Marked unavailable.' : 'Marked available.')}
                         disabled={busy}
                         className={cn(
-                          'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold transition',
+                          'keep-round inline-flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-0.5 text-xs font-semibold transition',
                           item.isAvailable ? 'border-success/40 text-success hover:bg-success/10' : 'border-warning/40 text-warning hover:bg-warning/10',
                         )}
                       >
@@ -486,7 +480,7 @@ export default function MenuItems() {
                         {item.isAvailable ? 'Available' : 'Sold out'}
                       </button>
                       <span className={cn(
-                        'inline-flex whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide',
+                        'keep-round inline-flex whitespace-nowrap rounded-full border border-dashed px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide',
                         item.isActive ? 'border-success/40 text-success' : 'border-muted-foreground/30 text-muted-foreground',
                       )}>
                         {item.isActive ? 'Active' : 'Inactive'}
@@ -505,7 +499,7 @@ export default function MenuItems() {
                       <div className="flex items-center gap-1">
                         <button onClick={() => setVariantsFor(item)} title="Variants (sizes / options)" className="relative rounded-md p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary">
                           <LuLayers className="size-4" />
-                          {item._count.variants > 0 && <span className="absolute -right-0.5 -top-0.5 flex min-w-4 items-center justify-center rounded-full bg-secondary px-1 text-[10px] font-bold leading-4 text-secondary-foreground">{item._count.variants}</span>}
+                          {item._count.variants > 0 && <span className="absolute -right-0.5 -top-0.5 keep-round flex min-w-4 items-center justify-center rounded-full bg-secondary px-1 text-[10px] font-bold leading-4 text-secondary-foreground">{item._count.variants}</span>}
                         </button>
                         <button onClick={() => openEdit(item)} title="Edit" className="rounded-md p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuPencil className="size-4" /></button>
                         <button
@@ -586,7 +580,7 @@ export default function MenuItems() {
                         onClick={() => void patch(item, { isAvailable: !item.isAvailable }, item.isAvailable ? 'Marked unavailable.' : 'Marked available.')}
                         disabled={busy}
                         className={cn(
-                          'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold transition',
+                          'keep-round inline-flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-0.5 text-xs font-semibold transition',
                           item.isAvailable ? 'border-success/40 text-success hover:bg-success/10' : 'border-warning/40 text-warning hover:bg-warning/10',
                         )}
                       >
@@ -596,7 +590,7 @@ export default function MenuItems() {
                     </td>
                     <td className="px-4 py-3">
                       <span className={cn(
-                        'inline-flex whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide',
+                        'keep-round inline-flex whitespace-nowrap rounded-full border border-dashed px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide',
                         item.isActive ? 'border-success/40 text-success' : 'border-muted-foreground/30 text-muted-foreground',
                       )}>
                         {item.isActive ? 'Active' : 'Inactive'}
@@ -606,7 +600,7 @@ export default function MenuItems() {
                       <div className="flex items-center justify-end gap-1">
                         <button onClick={() => setVariantsFor(item)} title="Variants (sizes / options)" className="relative rounded-md p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary">
                           <LuLayers className="size-4" />
-                          {item._count.variants > 0 && <span className="absolute -right-0.5 -top-0.5 flex min-w-4 items-center justify-center rounded-full bg-secondary px-1 text-[10px] font-bold leading-4 text-secondary-foreground">{item._count.variants}</span>}
+                          {item._count.variants > 0 && <span className="absolute -right-0.5 -top-0.5 keep-round flex min-w-4 items-center justify-center rounded-full bg-secondary px-1 text-[10px] font-bold leading-4 text-secondary-foreground">{item._count.variants}</span>}
                         </button>
                         <button onClick={() => openEdit(item)} title="Edit" className="rounded-md p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuPencil className="size-4" /></button>
                         <button
@@ -637,10 +631,10 @@ export default function MenuItems() {
       </section>
 
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
-          <form onSubmit={save} className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-sm border bg-card p-6 shadow-2xl">
-            <div>
-              <p className="text-sm font-semibold text-secondary">{editing ? 'Edit item' : 'New item'}</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <form onSubmit={save} className="max-h-[90vh] w-full max-w-2xl overflow-y-auto border-2 border-foreground/25 bg-card p-6 shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+            <div className="-mx-6 -mt-6 border-b-4 border-accent bg-muted/60 px-6 py-4">
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">{editing ? 'Edit item' : 'New item'}</p>
               <h2 className="mt-1 font-display text-2xl font-semibold">{editing ? editing.name : 'Add a menu item'}</h2>
             </div>
 
@@ -961,14 +955,14 @@ function NewMenuCategoryModal({ onClose, onCreated }: { onClose: () => void; onC
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
-      <form onSubmit={submit} className="w-full max-w-sm rounded-sm border bg-card p-6 shadow-2xl">
-        <div className="flex items-start justify-between">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
+      <form onSubmit={submit} className="w-full max-w-sm border-2 border-foreground/25 bg-card p-6 shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+        <div className="-mx-6 -mt-6 flex items-start justify-between border-b-4 border-accent bg-muted/60 px-6 py-4">
           <div>
-            <p className="text-sm font-semibold text-secondary">New category</p>
+            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">New category</p>
             <h2 className="mt-1 font-display text-xl font-semibold">Add a menu category</h2>
           </div>
-          <button type="button" onClick={onClose} className="rounded-sm p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"><LuX className="size-4" /></button>
+          <button type="button" onClick={onClose} title="Close" className="bg-black p-2 text-white transition hover:bg-black/80"><LuX className="size-4" /></button>
         </div>
 
         <label className="mt-5 block text-sm font-medium">
@@ -1108,15 +1102,15 @@ function VariantsModal({ item, stockProductOptions, onClose, onChanged }: Varian
   }
 
   return (
-    <div className="fixed inset-0 z-[55] flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
-      <div className="max-h-[88vh] w-full max-w-lg overflow-y-auto rounded-sm border bg-card p-6 shadow-2xl">
-        <div className="flex items-start justify-between">
+    <div className="fixed inset-0 z-[55] flex items-center justify-center bg-black/60 p-4">
+      <div className="max-h-[88vh] w-full max-w-lg overflow-y-auto border-2 border-foreground/25 bg-card p-6 shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+        <div className="-mx-6 -mt-6 flex items-start justify-between border-b-4 border-accent bg-muted/60 px-6 py-4">
           <div>
-            <p className="text-sm font-semibold text-secondary">Variants</p>
+            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">Variants</p>
             <h2 className="mt-1 font-display text-2xl font-semibold">{item.name}</h2>
             <p className="mt-1 text-sm text-muted-foreground">Sizes / options with their own price — like Small / Medium / Large. <span className="font-medium text-foreground">Not add-ons.</span></p>
           </div>
-          <button onClick={onClose} className="rounded-sm p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"><LuX className="size-4" /></button>
+          <button onClick={onClose} title="Close" className="bg-black p-2 text-white transition hover:bg-black/80"><LuX className="size-4" /></button>
         </div>
 
         <form onSubmit={add} className="mt-5 space-y-2">
@@ -1230,7 +1224,7 @@ function VariantsModal({ item, stockProductOptions, onClose, onChanged }: Varian
 function FieldGroup({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="mt-6 border-t pt-5">
-      <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
+      <p className="mb-3 border-l-4 border-accent pl-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">{title}</p>
       <div className="grid gap-4 sm:grid-cols-2">{children}</div>
     </div>
   )
