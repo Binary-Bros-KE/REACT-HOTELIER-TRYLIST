@@ -13,7 +13,8 @@ import {
   LuTrash2,
 } from 'react-icons/lu'
 import { api, hasApiTenant } from '@/lib/api'
-import Button from '@/components/ui/Button'
+import PageBanner from '@/components/ui/PageBanner'
+import ActionButton from '@/components/ui/ActionButton'
 import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
 import StatCard from '@/components/ui/StatCard'
@@ -234,17 +235,8 @@ export default function Assets() {
   if (!hasApiTenant()) return <SetupMessage />
 
   return (
-    <div className="mx-auto max-w-7xl px-6 py-8 sm:px-8 lg:px-10">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-sm font-semibold text-secondary">Assets</p>
-          <h1 className="mt-1 font-display text-3xl font-semibold">Assets</h1>
-          <p className="mt-2 text-sm text-muted-foreground">Durable equipment bought through Store — chairs, plates, cutlery — counted and tracked, not sold or consumed.</p>
-        </div>
-        <Button onClick={openCreate}>
-          <LuPlus /> Register asset
-        </Button>
-      </header>
+    <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
+      <PageBanner kicker="Inventory" title="Assets" />
 
       <section className="mt-7 grid gap-3 sm:grid-cols-2">
         {([
@@ -274,6 +266,7 @@ export default function Assets() {
             <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name or asset no…" className="w-full rounded-sm border bg-background py-2.5 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
           </label>
+          <ActionButton tone="primary" icon={<LuPlus />} onClick={openCreate}>Register asset</ActionButton>
         </div>
 
         {loading ? (
@@ -283,7 +276,7 @@ export default function Assets() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+              <thead className="bg-primary text-xs uppercase tracking-wider text-primary-foreground">
                 <tr>
                   <th className="px-5 py-3">Asset</th>
                   <th className="px-5 py-3">Category</th>
@@ -304,14 +297,14 @@ export default function Assets() {
                     <td className="px-5 py-4 text-muted-foreground">{asset.location?.name ?? '—'}</td>
                     <td className="px-5 py-4">
                       <span className="font-semibold">{Number(asset.quantity).toLocaleString()} {asset.unit}</span>
-                      {!asset.isActive && <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">Inactive</span>}
+                      {!asset.isActive && <span className="ml-2 keep-round border border-dashed border-muted-foreground/50 px-2 py-0.5 text-xs font-semibold text-muted-foreground">Inactive</span>}
                     </td>
                     <td className="px-5 py-4 text-muted-foreground">{asset.unitCost ? formatKes(Number(asset.quantity) * Number(asset.unitCost)) : '—'}</td>
                     <td className="px-5 py-4">
                       <div className="flex justify-end gap-1">
-                        <button onClick={() => openMovement(asset)} title="Record movement" className="rounded-sm p-2 text-muted-foreground hover:bg-accent/10 hover:text-accent"><LuPackageSearch /></button>
-                        <button onClick={() => openEdit(asset)} title="Edit asset" className="rounded-sm p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuPencil /></button>
-                        <button onClick={() => void deleteAsset(asset)} title="Delete asset" className="rounded-sm p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><LuTrash2 /></button>
+                        <ActionButton tone="neutral" icon={<LuPackageSearch />} title="Record movement" onClick={() => openMovement(asset)} />
+                        <ActionButton tone="neutral" icon={<LuPencil />} title="Edit asset" onClick={() => openEdit(asset)} />
+                        <ActionButton tone="neutral" icon={<LuTrash2 />} title="Delete asset" onClick={() => void deleteAsset(asset)} />
                       </div>
                     </td>
                   </tr>
@@ -323,10 +316,10 @@ export default function Assets() {
       </section>
 
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
-          <form onSubmit={saveAsset} className="max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-sm border bg-card p-6 shadow-2xl">
-            <div>
-              <p className="text-sm font-semibold text-secondary">{editing ? 'Edit asset' : 'New asset'}</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <form onSubmit={saveAsset} className="max-h-[88vh] w-full max-w-2xl overflow-y-auto border-2 border-foreground/25 bg-card p-6 shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+            <div className="-mx-6 -mt-6 border-b-4 border-accent bg-muted/60 px-6 py-4">
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">{editing ? 'Edit asset' : 'New asset'}</p>
               <h2 className="mt-1 font-display text-2xl font-semibold">{editing ? editing.name : 'Register an asset'}</h2>
             </div>
 
@@ -414,10 +407,10 @@ export default function Assets() {
       )}
 
       {movementFor && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
-          <form onSubmit={saveMovement} className="w-full max-w-md rounded-sm border bg-card p-6 shadow-2xl">
-            <div>
-              <p className="text-sm font-semibold text-secondary">Record movement</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <form onSubmit={saveMovement} className="w-full max-w-md border-2 border-foreground/25 bg-card p-6 shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+            <div className="-mx-6 -mt-6 border-b-4 border-accent bg-muted/60 px-6 py-4">
+              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">Record movement</p>
               <h2 className="mt-1 font-display text-2xl font-semibold">{movementFor.name}</h2>
               <p className="mt-1 text-xs text-muted-foreground">Currently {Number(movementFor.quantity).toLocaleString()} {movementFor.unit} on hand.</p>
             </div>
@@ -478,7 +471,7 @@ export default function Assets() {
 function FieldGroup({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="mt-6 border-t pt-5 first:mt-6 first:border-t">
-      <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
+      <p className="mb-3 border-l-4 border-accent pl-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">{title}</p>
       <div className="grid gap-4 sm:grid-cols-2">{children}</div>
     </div>
   )

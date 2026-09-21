@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { LuBookOpen, LuCircleAlert, LuLoaderCircle, LuSearch } from 'react-icons/lu'
+import { LuCircleAlert, LuLoaderCircle, LuSearch } from 'react-icons/lu'
 import { api, hasApiTenant } from '@/lib/api'
 import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
 import { packAndUnit } from '@/components/ui/PackQtyInput'
 import MenuLedgerPanel from '@/pages/MenuLedger'
+import PageBanner from '@/components/ui/PageBanner'
 
 type MoveType =
   | 'OPENING_STOCK' | 'PURCHASE' | 'SALE' | 'TRANSFER_IN' | 'TRANSFER_OUT' | 'RETURN'
@@ -113,14 +114,6 @@ function StockMovementsPanel() {
 
   return (
     <div>
-      <header className="flex items-center gap-3">
-        <span className="flex size-10 items-center justify-center rounded-sm bg-secondary/10 text-secondary"><LuBookOpen className="size-5" /></span>
-        <div>
-          <h1 className="font-display text-3xl font-semibold">Stock Ledger</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Every change to every product's stock, at every location — bought, sold, transferred, adjusted, lost.</p>
-        </div>
-      </header>
-
       <div className="mt-6 flex flex-wrap gap-1 border-b">
         {TABS.map((t) => (
           <button
@@ -179,7 +172,7 @@ function StockMovementsPanel() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+              <thead className="bg-primary text-xs uppercase tracking-wider text-primary-foreground">
                 <tr>
                   <th className="px-4 py-3">Date</th>
                   <th className="px-4 py-3">Product</th>
@@ -209,7 +202,7 @@ function StockMovementsPanel() {
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">{e.location.name}</td>
                       <td className="px-4 py-3">
-                        <span className={cn('inline-block whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold', TYPE_META[e.type].className)}>
+                        <span className={cn('keep-round inline-block whitespace-nowrap rounded-full border border-dashed px-2 py-0.5 text-[11px] font-semibold', TYPE_META[e.type].className)}>
                           {TYPE_META[e.type].label}
                         </span>
                       </td>
@@ -248,21 +241,14 @@ function StockMovementsPanel() {
 export default function StockLedger() {
   const [view, setView] = useState<'STOCK' | 'MENU'>('STOCK')
   return (
-    <div className="mx-auto max-w-[1400px] px-6 py-8 sm:px-8 lg:px-10">
-      <div className="mb-6 inline-flex rounded-sm border p-0.5">
+    <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
+      <PageBanner kicker="Inventory" title={view === 'STOCK' ? 'Stock Ledger' : 'Menu Ledger'} />
+      <div className="mb-6 mt-6 inline-flex border">
         {([['STOCK', 'Stock Ledger'], ['MENU', 'Menu Ledger']] as const).map(([key, label]) => (
-          <button key={key} onClick={() => setView(key)} className={cn('rounded-sm px-4 py-2 text-sm font-semibold transition', view === key ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}>{label}</button>
+          <button key={key} onClick={() => setView(key)} className={cn('px-4 py-2 text-xs font-bold uppercase tracking-wider transition', view === key ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}>{label}</button>
         ))}
       </div>
-      {view === 'STOCK' ? <StockMovementsPanel /> : (
-        <div>
-          <header className="flex items-center gap-3">
-            <span className="flex size-10 items-center justify-center rounded-sm bg-secondary/10 text-secondary"><LuBookOpen className="size-5" /></span>
-            <h1 className="font-display text-3xl font-semibold">Menu Ledger</h1>
-          </header>
-          <MenuLedgerPanel />
-        </div>
-      )}
+      {view === 'STOCK' ? <StockMovementsPanel /> : <MenuLedgerPanel />}
     </div>
   )
 }

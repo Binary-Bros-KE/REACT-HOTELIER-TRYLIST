@@ -1,7 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { LuArrowRight, LuCircleAlert, LuEye, LuLoaderCircle, LuPackage, LuPackagePlus, LuPrinter, LuSearch, LuTrash2, LuTruck, LuWarehouse } from 'react-icons/lu'
 import { api, hasApiTenant } from '@/lib/api'
-import Button from '@/components/ui/Button'
+import PageBanner from '@/components/ui/PageBanner'
+import ActionButton from '@/components/ui/ActionButton'
 import StatCard from '@/components/ui/StatCard'
 import { useToast } from '@/components/ui/Toast'
 import type { DocProfile } from '@/components/documents/pdf'
@@ -109,22 +110,8 @@ export default function InventoryWorkspace() {
   if (!hasApiTenant()) return <SetupMessage />
 
   return (
-    <div className="mx-auto max-w-7xl px-6 py-8 sm:px-8 lg:px-10">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-sm font-semibold text-secondary">Inventory</p>
-          <h1 className="mt-1 flex items-center gap-2 font-display text-3xl font-semibold"><LuWarehouse className="text-secondary" /> Store</h1>
-          <p className="mt-2 max-w-xl text-sm text-muted-foreground">Move stock between locations — every transfer is recorded as a printable receipt, with stock frozen at that exact moment.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" onClick={() => setShowReceive(true)}>
-            <LuPackagePlus /> Receive goods
-          </Button>
-          <Button onClick={() => setShowDistribute(true)}>
-            <LuTruck /> Distribute
-          </Button>
-        </div>
-      </header>
+    <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
+      <PageBanner kicker="Inventory" title="Store" />
 
       <section className="mt-7 grid gap-3 sm:grid-cols-3">
         <StatCard index={0} label="Goods receipts" value={receiptSummary.total} icon={<LuPackagePlus />} />
@@ -140,14 +127,18 @@ export default function InventoryWorkspace() {
             <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search transfer #, destination or source…" className="w-full rounded-sm border bg-background py-2.5 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
           </label>
-          <div className="grid grid-cols-2 overflow-hidden rounded-sm border bg-background p-1 text-sm font-semibold">
-            <button onClick={() => setView('transfers')} className={`rounded-sm px-3 py-1.5 ${view === 'transfers' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>Transfers</button>
-            <button onClick={() => setView('receipts')} className={`rounded-sm px-3 py-1.5 ${view === 'receipts' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>Goods received</button>
+          <div className="grid grid-cols-2 overflow-hidden border bg-background text-sm font-bold uppercase tracking-wider">
+            <button onClick={() => setView('transfers')} className={`px-3 py-2 text-xs ${view === 'transfers' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>Transfers</button>
+            <button onClick={() => setView('receipts')} className={`px-3 py-2 text-xs ${view === 'receipts' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>Goods received</button>
           </div>
           <select value={locationFilter} onChange={(e) => setLocationFilter(e.target.value)} className="rounded-sm border bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring">
             <option value="">All locations</option>
             {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
+          <div className="flex gap-2">
+            <ActionButton tone="neutral" icon={<LuPackagePlus />} onClick={() => setShowReceive(true)}>Receive goods</ActionButton>
+            <ActionButton tone="primary" icon={<LuTruck />} onClick={() => setShowDistribute(true)}>Distribute</ActionButton>
+          </div>
         </div>
 
         {loading ? (
@@ -158,7 +149,7 @@ export default function InventoryWorkspace() {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
-                <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+                <thead className="bg-primary text-xs uppercase tracking-wider text-primary-foreground">
                   <tr>
                     <th className="px-5 py-3">Receipt</th>
                     <th className="px-5 py-3">Destination</th>
@@ -191,7 +182,7 @@ export default function InventoryWorkspace() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+              <thead className="bg-primary text-xs uppercase tracking-wider text-primary-foreground">
                 <tr>
                   <th className="px-5 py-3">Transfer</th>
                   <th className="px-5 py-3">Route</th>
@@ -254,11 +245,12 @@ export default function InventoryWorkspace() {
       )}
 
       {detail && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
-          <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-sm border bg-card p-6 shadow-2xl">
-            <p className="text-sm font-semibold text-secondary">Stock transfer</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto border-2 border-foreground/25 bg-card p-6 shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+            <div className="-mx-6 -mt-6 mb-5 border-b-4 border-accent bg-muted/60 px-6 py-4">
+            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">Stock transfer</p>
             <h2 className="mt-1 font-display text-2xl font-semibold">{detail.transferNo}</h2>
-            <p className="mt-1 text-xs text-muted-foreground">Frozen at the moment of transfer — reflects exactly what was true then, even if stock has moved since.</p>
+            <p className="mt-1 text-xs text-muted-foreground">Frozen at the moment of transfer — reflects exactly what was true then, even if stock has moved since.</p></div>
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
               <span className="rounded-sm border px-2 py-0.5 font-medium">{detail.fromLocation.name}</span>
               <LuArrowRight className="size-3 text-muted-foreground" />
@@ -271,7 +263,7 @@ export default function InventoryWorkspace() {
 
             <div className="mt-4 overflow-x-auto rounded-sm border">
               <table className="w-full min-w-[640px] text-left text-sm">
-                <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+                <thead className="bg-primary text-xs uppercase tracking-wider text-primary-foreground">
                   <tr>
                     <th className="px-4 py-2">Product</th>
                     <th className="px-4 py-2 text-right">Qty</th>
@@ -315,11 +307,12 @@ export default function InventoryWorkspace() {
       )}
 
       {receiptDetail && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
-          <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-sm border bg-card p-6 shadow-2xl">
-            <p className="text-sm font-semibold text-secondary">Goods received</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto border-2 border-foreground/25 bg-card p-6 shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+            <div className="-mx-6 -mt-6 mb-5 border-b-4 border-accent bg-muted/60 px-6 py-4">
+            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">Goods received</p>
             <h2 className="mt-1 font-display text-2xl font-semibold">{receiptDetail.receiptNo}</h2>
-            <p className="mt-1 text-xs text-muted-foreground">Stock added into {receiptDetail.location.name} with balances frozen at the moment of receipt.</p>
+            <p className="mt-1 text-xs text-muted-foreground">Stock added into {receiptDetail.location.name} with balances frozen at the moment of receipt.</p></div>
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
               <span className="rounded-sm border border-success/40 bg-success/5 px-2 py-0.5 font-medium text-success">{receiptDetail.location.name}</span>
               <span className="text-muted-foreground">
@@ -330,7 +323,7 @@ export default function InventoryWorkspace() {
 
             <div className="mt-4 overflow-x-auto rounded-sm border">
               <table className="w-full min-w-[560px] text-left text-sm">
-                <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+                <thead className="bg-primary text-xs uppercase tracking-wider text-primary-foreground">
                   <tr>
                     <th className="px-4 py-2">Product</th>
                     <th className="px-4 py-2 text-right">Received</th>
@@ -453,11 +446,12 @@ function DistributeModal({ locations, onClose, onRecorded }: { locations: Locati
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
-      <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-sm border bg-card p-6 shadow-2xl">
-        <p className="text-sm font-semibold text-secondary">New stock transfer</p>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto border-2 border-foreground/25 bg-card p-6 shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+        <div className="-mx-6 -mt-6 mb-5 border-b-4 border-accent bg-muted/60 px-6 py-4">
+            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">New stock transfer</p>
         <h2 className="mt-1 font-display text-2xl font-semibold">Distribute stock</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Move several products from one location to another in one go — recorded as a single printable receipt.</p>
+        <p className="mt-1 text-sm text-muted-foreground">Move several products from one location to another in one go — recorded as a single printable receipt.</p></div>
 
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           <label className="block text-sm font-medium">
@@ -674,11 +668,12 @@ function ReceiveGoodsModal({ locations, onClose, onRecorded }: { locations: Loca
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/55 p-4 backdrop-blur-sm">
-      <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-sm border bg-card p-6 shadow-2xl">
-        <p className="text-sm font-semibold text-secondary">New goods received</p>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto border-2 border-foreground/25 bg-card p-6 shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+        <div className="-mx-6 -mt-6 mb-5 border-b-4 border-accent bg-muted/60 px-6 py-4">
+            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">New goods received</p>
         <h2 className="mt-1 font-display text-2xl font-semibold">Receive stock</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Add several products into one destination and keep a printable receipt of the batch.</p>
+        <p className="mt-1 text-sm text-muted-foreground">Add several products into one destination and keep a printable receipt of the batch.</p></div>
 
         <label className="mt-5 block text-sm font-medium">
           Destination
