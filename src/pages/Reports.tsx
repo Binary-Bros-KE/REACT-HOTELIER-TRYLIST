@@ -19,6 +19,8 @@ import {
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { api } from '@/lib/api'
 import { useToast } from '@/components/ui/Toast'
+import PageBanner from '@/components/ui/PageBanner'
+import ActionButton from '@/components/ui/ActionButton'
 import StatCard from '@/components/ui/StatCard'
 import { cn } from '@/lib/utils'
 
@@ -188,12 +190,8 @@ export default function Reports() {
     : null
 
   return (
-    <div className="mx-auto max-w-7xl px-6 py-8 sm:px-8 lg:px-10">
-      <header>
-        <p className="text-sm font-semibold text-secondary">Reports</p>
-        <h1 className="mt-1 font-display text-3xl font-semibold">Sales Report</h1>
-        <p className="mt-2 max-w-2xl text-sm text-muted-foreground">Pick a period — every figure below, from the financial overview to the breakdowns, resolves to it.</p>
-      </header>
+    <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
+      <PageBanner kicker="Reports" title="Sales Report" />
 
       <div className="mt-6 space-y-3 rounded-sm border bg-card p-4 shadow-sm">
         <div className="flex flex-wrap items-center gap-3">
@@ -218,9 +216,9 @@ export default function Reports() {
             </div>
           ) : (
             <div className="flex flex-wrap items-center gap-1">
-              <button onClick={() => setAnchor((a) => stepAnchor(period, a, -1))} className="rounded-sm p-1.5 text-muted-foreground hover:bg-muted"><LuChevronLeft /></button>
+              <ActionButton tone="neutral" icon={<LuChevronLeft />} title="Previous" onClick={() => setAnchor((a) => stepAnchor(period, a, -1))} />
               <input type="date" value={anchor} onChange={(e) => setAnchor(e.target.value)} className="rounded-sm border bg-background px-2.5 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring" />
-              <button onClick={() => setAnchor((a) => stepAnchor(period, a, 1))} className="rounded-sm p-1.5 text-muted-foreground hover:bg-muted"><LuChevronRight /></button>
+              <ActionButton tone="neutral" icon={<LuChevronRight />} title="Next" onClick={() => setAnchor((a) => stepAnchor(period, a, 1))} />
               {report && <span className="ml-2 text-sm font-medium text-muted-foreground">{rangeLabel(period, report.range.start, report.range.end, startHour ?? 0)}</span>}
             </div>
           )}
@@ -258,7 +256,7 @@ export default function Reports() {
 
           {/* Revenue & Expense Breakdown */}
           <section className="mt-7 overflow-hidden rounded-sm border bg-card shadow-sm">
-            <header className="border-b p-4"><h2 className="font-semibold">Revenue &amp; Expense Breakdown</h2><p className="text-xs text-muted-foreground">Every figure above traces back to something real — here's exactly where it comes from.</p></header>
+            <header className="border-b border-l-4 border-l-accent p-4"><h2 className="font-display text-lg font-semibold leading-tight">Revenue &amp; Expense Breakdown</h2><p className="text-xs text-muted-foreground">Every figure above traces back to something real — here's exactly where it comes from.</p></header>
             <div className="space-y-5 p-4">
               <div className="rounded-sm border bg-muted/30 p-3 text-sm">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total Revenue — where it came from</p>
@@ -459,7 +457,7 @@ export default function Reports() {
 
           {/* Debtors, Creditors & Expected Profit */}
           <section className="mt-6 overflow-hidden rounded-sm border bg-card shadow-sm">
-            <header className="border-b p-4"><h2 className="font-semibold">Debtors, Creditors &amp; Expected Profit</h2><p className="text-xs text-muted-foreground">A live snapshot as of today — not scoped to the period selected above.</p></header>
+            <header className="border-b border-l-4 border-l-accent p-4"><h2 className="font-display text-lg font-semibold leading-tight">Debtors, Creditors &amp; Expected Profit</h2><p className="text-xs text-muted-foreground">A live snapshot as of today — not scoped to the period selected above.</p></header>
             <div className="grid gap-3 p-4 sm:grid-cols-3">
               <div className="rounded-sm border bg-secondary/5 p-4">
                 <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-secondary"><LuUsers className="size-3.5" /> Debtors</p>
@@ -503,7 +501,7 @@ export default function Reports() {
           {/* Tax breakdown */}
           {report.taxBreakdown.length > 0 && (
             <section className="mt-6 overflow-hidden rounded-sm border bg-card shadow-sm">
-              <header className="border-b p-4"><h2 className="font-semibold">Tax Breakdown</h2><p className="text-xs text-muted-foreground">Tax collected this period, by rate — see the standalone Products report for a per-item view.</p></header>
+              <header className="border-b border-l-4 border-l-accent p-4"><h2 className="font-display text-lg font-semibold leading-tight">Tax Breakdown</h2><p className="text-xs text-muted-foreground">Tax collected this period, by rate — see the standalone Products report for a per-item view.</p></header>
               <table className="w-full text-left text-sm">
                 <thead className="bg-primary text-xs uppercase text-primary-foreground"><tr><th className="px-4 py-2.5">Treatment</th><th className="px-4 py-2.5 text-right">Net</th><th className="px-4 py-2.5 text-right">Tax</th><th className="px-4 py-2.5 text-right">Gross</th></tr></thead>
                 <tbody>{report.taxBreakdown.map((t) => (
@@ -521,7 +519,7 @@ export default function Reports() {
 function BreakdownSection({ title, note, rows, children }: { title: string; note?: string; rows: { key: string; label: string; value: number; percent: number }[]; children: React.ReactNode }) {
   return (
     <section className="mt-6 overflow-hidden rounded-sm border bg-card shadow-sm">
-      <header className="border-b p-4"><h2 className="font-semibold">{title}</h2>{note && <p className="text-xs text-muted-foreground">{note}</p>}</header>
+      <header className="border-b border-l-4 border-l-accent p-4"><h2 className="font-display text-lg font-semibold leading-tight">{title}</h2>{note && <p className="text-xs text-muted-foreground">{note}</p>}</header>
       {rows.length === 0 ? (
         <p className="p-6 text-center text-sm text-muted-foreground">No activity in this period.</p>
       ) : (

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { LuChevronLeft, LuChevronRight, LuCircleAlert, LuLoaderCircle } from 'react-icons/lu'
 import { api, hasApiTenant } from '@/lib/api'
+import PageBanner from '@/components/ui/PageBanner'
+import ActionButton from '@/components/ui/ActionButton'
 import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
 
@@ -96,17 +98,13 @@ export default function ProductsReport() {
   if (!hasApiTenant()) return <SetupMessage />
 
   return (
-    <div className="mx-auto max-w-7xl px-6 py-8 sm:px-8 lg:px-10">
-      <header>
-        <p className="text-sm font-semibold text-secondary">Reports</p>
-        <h1 className="mt-1 font-display text-3xl font-semibold">Products Report</h1>
-        <p className="mt-2 max-w-2xl text-sm text-muted-foreground">Best sellers and slow movers for a period you pick.</p>
-      </header>
+    <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
+      <PageBanner kicker="Reports" title="Products Report" />
 
       <div className="mt-6 flex flex-col gap-3 rounded-sm border bg-card p-4 shadow-sm lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-wrap items-center gap-1 rounded-sm bg-muted/50 p-1">
           {(['day', 'week', 'month', 'year', 'custom'] as const).map((p) => (
-            <button key={p} onClick={() => setPeriod(p)} className={cn('rounded-sm px-3 py-1.5 text-xs font-semibold uppercase tracking-wide', period === p ? 'bg-card text-secondary shadow-sm' : 'text-muted-foreground')}>
+            <button key={p} onClick={() => setPeriod(p)} className={cn('rounded-sm px-3 py-1.5 text-xs font-semibold uppercase tracking-wide', period === p ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}>
               {p}
             </button>
           ))}
@@ -119,9 +117,9 @@ export default function ProductsReport() {
           </div>
         ) : (
           <div className="flex items-center gap-2">
-            <button onClick={() => setAnchor((a) => shiftAnchor(period, a, -1))} aria-label="Previous" className="rounded-sm border p-1.5 hover:bg-muted"><LuChevronLeft className="size-4" /></button>
+            <ActionButton tone="neutral" icon={<LuChevronLeft />} title="Previous" onClick={() => setAnchor((a) => shiftAnchor(period, a, -1))} />
             <span className="min-w-40 text-center text-sm font-semibold">{label}</span>
-            <button onClick={() => setAnchor((a) => shiftAnchor(period, a, 1))} aria-label="Next" className="rounded-sm border p-1.5 hover:bg-muted"><LuChevronRight className="size-4" /></button>
+            <ActionButton tone="neutral" icon={<LuChevronRight />} title="Next" onClick={() => setAnchor((a) => shiftAnchor(period, a, 1))} />
           </div>
         )}
         <select value={locationId} onChange={(e) => setLocationId(e.target.value)} className="rounded-sm border bg-background px-2.5 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring">
@@ -137,8 +135,8 @@ export default function ProductsReport() {
       ) : (
         <>
           <section className="mt-7 overflow-hidden rounded-sm border bg-card shadow-sm">
-            <header className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
-              <h2 className="font-semibold">Best selling products</h2>
+            <header className="flex flex-wrap items-center justify-between gap-3 border-b border-l-4 border-l-accent p-4">
+              <h2 className="font-display text-lg font-semibold leading-tight">Best selling products</h2>
               <div className="flex items-center gap-3">
                 <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   Show
@@ -156,7 +154,7 @@ export default function ProductsReport() {
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
-                  <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+                  <thead className="bg-primary text-xs uppercase tracking-wider text-primary-foreground">
                     <tr>
                       <th className="px-4 py-2.5">#</th><th className="px-4 py-2.5">Product</th><th className="px-4 py-2.5">SKU</th><th className="px-4 py-2.5">Category</th>
                       <th className="px-4 py-2.5 text-right">Qty sold</th><th className="px-4 py-2.5 text-right">Revenue</th><th className="px-4 py-2.5 text-right">Profit</th><th className="px-4 py-2.5 text-right">Margin</th>
@@ -182,8 +180,8 @@ export default function ProductsReport() {
           </section>
 
           <section className="mt-6 overflow-hidden rounded-sm border bg-card shadow-sm">
-            <header className="border-b p-4">
-              <h2 className="font-semibold">Slowest moving products</h2>
+            <header className="border-b border-l-4 border-l-accent p-4">
+              <h2 className="font-display text-lg font-semibold leading-tight">Slowest moving products</h2>
               <p className="mt-0.5 text-xs text-muted-foreground">Fewest units sold in this period first — includes products with zero sales entirely.</p>
             </header>
             {overview.slowest.length === 0 ? (
@@ -191,7 +189,7 @@ export default function ProductsReport() {
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
-                  <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+                  <thead className="bg-primary text-xs uppercase tracking-wider text-primary-foreground">
                     <tr>
                       <th className="px-4 py-2.5">Product</th><th className="px-4 py-2.5">SKU</th><th className="px-4 py-2.5">Category</th>
                       <th className="px-4 py-2.5 text-right">Qty sold (period)</th><th className="px-4 py-2.5 text-right">Revenue (period)</th><th className="px-4 py-2.5">Last sold</th>

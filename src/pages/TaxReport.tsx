@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { LuCalendarDays, LuChevronLeft, LuChevronRight, LuCircleAlert, LuDownload, LuLoaderCircle, LuReceiptText } from 'react-icons/lu'
 import { api, hasApiTenant } from '@/lib/api'
+import PageBanner from '@/components/ui/PageBanner'
+import ActionButton from '@/components/ui/ActionButton'
 import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
 
@@ -95,21 +97,8 @@ export default function TaxReport() {
   if (!hasApiTenant()) return <SetupMessage />
 
   return (
-    <div className="mx-auto max-w-7xl px-6 py-8 sm:px-8 lg:px-10">
-      <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div>
-          <p className="text-sm font-semibold text-secondary">Reports</p>
-          <h1 className="mt-1 font-display text-3xl font-semibold">Tax Report</h1>
-          <p className="mt-2 max-w-2xl text-sm text-muted-foreground">VAT by treatment for a period you pick, plus the products and menu items contributing the most tax.</p>
-        </div>
-        <button
-          onClick={() => report && downloadCsv(report)}
-          disabled={!report || loading}
-          className="inline-flex items-center justify-center gap-2 rounded-sm border bg-card px-3 py-2 text-sm font-semibold shadow-sm hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <LuDownload className="size-4" /> Export Report
-        </button>
-      </header>
+    <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
+      <PageBanner kicker="Reports" title="Tax Report" />
 
       <div className="mt-6 space-y-3 rounded-sm border bg-card p-4 shadow-sm">
         <div className="flex flex-wrap items-center gap-3">
@@ -134,9 +123,9 @@ export default function TaxReport() {
             </div>
           ) : (
             <div className="flex flex-wrap items-center gap-1">
-              <button onClick={() => setAnchor((a) => stepAnchor(period, a, -1))} aria-label="Previous" className="rounded-sm p-1.5 text-muted-foreground hover:bg-muted"><LuChevronLeft /></button>
+              <ActionButton tone="neutral" icon={<LuChevronLeft />} title="Previous" onClick={() => setAnchor((a) => stepAnchor(period, a, -1))} />
               <input type="date" value={anchor} onChange={(e) => setAnchor(e.target.value)} className="rounded-sm border bg-background px-2.5 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring" />
-              <button onClick={() => setAnchor((a) => stepAnchor(period, a, 1))} aria-label="Next" className="rounded-sm p-1.5 text-muted-foreground hover:bg-muted"><LuChevronRight /></button>
+              <ActionButton tone="neutral" icon={<LuChevronRight />} title="Next" onClick={() => setAnchor((a) => stepAnchor(period, a, 1))} />
               {report && <span className="ml-2 text-sm font-medium text-muted-foreground">{rangeLabel(period, report.range.start, report.range.end)}</span>}
             </div>
           )}
@@ -145,6 +134,7 @@ export default function TaxReport() {
             <option value="">All Locations</option>
             {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
+          <ActionButton tone="primary" icon={<LuDownload />} disabled={!report || loading} onClick={() => report && downloadCsv(report)}>Export Report</ActionButton>
         </div>
       </div>
 
@@ -161,8 +151,8 @@ export default function TaxReport() {
           </section>
 
           <section className="mt-6 overflow-hidden rounded-sm border bg-card shadow-sm">
-            <header className="border-b p-4">
-              <h2 className="font-semibold">Breakdown by Tax Category</h2>
+            <header className="border-b border-l-4 border-l-accent p-4">
+              <h2 className="font-display text-lg font-semibold leading-tight">Breakdown by Tax Category</h2>
               <p className="text-xs text-muted-foreground">{report.summary.orders.toLocaleString()} completed order{report.summary.orders === 1 ? '' : 's'} and {report.summary.lines.toLocaleString()} taxable line{report.summary.lines === 1 ? '' : 's'} in this period.</p>
             </header>
             {report.breakdown.length === 0 ? (
@@ -188,8 +178,8 @@ export default function TaxReport() {
           </section>
 
           <section className="mt-6 overflow-hidden rounded-sm border bg-card shadow-sm">
-            <header className="border-b p-4">
-              <h2 className="font-semibold">Top 10 Most-Taxed Items</h2>
+            <header className="border-b border-l-4 border-l-accent p-4">
+              <h2 className="font-display text-lg font-semibold leading-tight">Top 10 Most-Taxed Items</h2>
             </header>
             {report.topItems.length === 0 ? (
               <p className="p-6 text-center text-sm text-muted-foreground">No taxed items in this period.</p>

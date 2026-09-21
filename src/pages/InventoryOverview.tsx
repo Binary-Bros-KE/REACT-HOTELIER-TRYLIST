@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { LuBox, LuCircleAlert, LuLoaderCircle, LuPackageX, LuTriangleAlert, LuWallet } from 'react-icons/lu'
 import { api, hasApiTenant } from '@/lib/api'
+import PageBanner from '@/components/ui/PageBanner'
 import { useToast } from '@/components/ui/Toast'
 import StatCard from '@/components/ui/StatCard'
 import { cn } from '@/lib/utils'
@@ -92,28 +93,22 @@ export default function InventoryOverview() {
   if (!hasApiTenant()) return <SetupMessage />
 
   return (
-    <div className="mx-auto max-w-7xl px-6 py-8 sm:px-8 lg:px-10">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-sm font-semibold text-secondary">Reports</p>
-          <h1 className="mt-1 font-display text-3xl font-semibold">Inventory Report</h1>
-          <p className="mt-2 max-w-2xl text-sm text-muted-foreground">Stock on hand, low and out-of-stock alerts, stock value, and a per-location breakdown.</p>
-        </div>
-        <select value={locationId} onChange={(e) => setLocationId(e.target.value)} className="rounded-sm border bg-card px-3 py-2.5 text-sm shadow-sm outline-none">
-          <option value="">All locations</option>
-          {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-        </select>
-      </header>
+    <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
+      <PageBanner kicker="Reports" title="Inventory Report" />
 
-      <div className="mt-6 flex items-center gap-1 rounded-sm border bg-card p-1 shadow-sm sm:w-fit">
+      <div className="mt-6 flex flex-wrap items-center gap-1 border bg-card p-1 shadow-sm">
         {(['live', 'asOf'] as const).map((t) => (
-          <button key={t} onClick={() => setTab(t)} className={cn('rounded-sm px-4 py-1.5 text-sm font-semibold', tab === t ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}>
+          <button key={t} onClick={() => setTab(t)} className={cn('px-4 py-1.5 text-xs font-bold uppercase tracking-wider', tab === t ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}>
             {t === 'live' ? 'Live' : 'As Of Date'}
           </button>
         ))}
         {tab === 'asOf' && (
           <input type="date" value={asOfDate} max={toLocalIso(new Date())} onChange={(e) => setAsOfDate(e.target.value)} className="ml-1 rounded-sm border bg-background px-2.5 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring" />
         )}
+        <select value={locationId} onChange={(e) => setLocationId(e.target.value)} className="ml-auto border bg-background px-3 py-1.5 text-sm outline-none">
+          <option value="">All locations</option>
+          {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+        </select>
       </div>
 
       {error && <div className="mt-5 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert />{error}</div>}
@@ -130,7 +125,7 @@ export default function InventoryOverview() {
           </section>
 
           <section className="mt-6 overflow-hidden rounded-sm border bg-card shadow-sm">
-            <header className="border-b p-4"><h2 className="font-semibold">Stock value by category</h2></header>
+            <header className="border-b border-l-4 border-l-accent p-4"><h2 className="font-display text-lg font-semibold leading-tight">Stock value by category</h2></header>
             {overview.overall.byCategory.length === 0 ? (
               <p className="p-6 text-center text-sm text-muted-foreground">No stock on hand.</p>
             ) : (
@@ -148,7 +143,7 @@ export default function InventoryOverview() {
                 </div>
                 <div className="overflow-x-auto border-t">
                   <table className="w-full text-left text-sm">
-                    <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+                    <thead className="bg-primary text-xs uppercase tracking-wider text-primary-foreground">
                       <tr><th className="px-4 py-2.5">Category</th><th className="px-4 py-2.5 text-right">Units</th><th className="px-4 py-2.5 text-right">Value</th><th className="px-4 py-2.5 text-right">% of total</th></tr>
                     </thead>
                     <tbody>
@@ -188,8 +183,8 @@ export default function InventoryOverview() {
               const rows = filter === 'ALL' ? categoryRows : categoryRows.filter((p) => p.low || p.out)
               return (
                 <section key={loc.locationId} className="overflow-hidden rounded-sm border bg-card shadow-sm">
-                  <header className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
-                    <h2 className="font-semibold">{loc.name}</h2>
+                  <header className="flex flex-wrap items-center justify-between gap-3 border-b border-l-4 border-l-accent p-4">
+                    <h2 className="font-display text-lg font-semibold leading-tight">{loc.name}</h2>
                     <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
                       <span><span className="font-semibold text-foreground">{loc.totalProducts}</span> products</span>
                       <span className={cn(loc.lowStockCount > 0 && 'font-semibold text-warning')}>{loc.lowStockCount} low stock</span>
@@ -209,7 +204,7 @@ export default function InventoryOverview() {
                   ) : (
                     <div className="max-h-96 overflow-auto">
                       <table className="w-full text-left text-sm">
-                        <thead className="sticky top-0 bg-muted/90 text-xs uppercase tracking-wide text-muted-foreground backdrop-blur">
+                        <thead className="sticky top-0 bg-primary text-xs uppercase tracking-wider text-primary-foreground">
                           <tr>
                             <th className="px-4 py-2.5">Product</th>
                             <th className="px-4 py-2.5">SKU</th>
@@ -228,8 +223,8 @@ export default function InventoryOverview() {
                               <td className="px-4 py-3 text-muted-foreground">{p.category ?? '—'}</td>
                               <td className="px-4 py-3 text-right tabular-nums">
                                 <span className={cn(p.out && 'font-semibold text-destructive')}>{stockQty(p)}</span>
-                                {p.out && <span className="ml-1.5 rounded-full bg-destructive/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-destructive">Out of stock</span>}
-                                {!p.out && p.low && <span className="ml-1.5 rounded-full bg-warning/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-warning">Low</span>}
+                                {p.out && <span className="ml-1.5 keep-round border border-dashed border-destructive/70 px-1.5 py-0.5 text-[10px] font-bold uppercase text-destructive">Out of stock</span>}
+                                {!p.out && p.low && <span className="ml-1.5 keep-round border border-dashed border-warning/70 px-1.5 py-0.5 text-[10px] font-bold uppercase text-warning">Low</span>}
                               </td>
                               <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">{formatKes(p.unitCost)}</td>
                               <td className={cn('px-4 py-3 text-right font-semibold tabular-nums', p.out && 'text-destructive')}>{formatKes(p.value)}</td>
