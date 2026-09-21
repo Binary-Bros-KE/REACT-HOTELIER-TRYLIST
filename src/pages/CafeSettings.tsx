@@ -4,6 +4,7 @@ import { LuLoaderCircle, LuShieldCheck } from 'react-icons/lu'
 import { api } from '@/lib/api'
 import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
+import PageBanner from '@/components/ui/PageBanner'
 
 type LicenseStatus = 'TRIAL' | 'ACTIVE' | 'EXPIRED' | 'SUSPENDED'
 type License = {
@@ -22,10 +23,10 @@ type License = {
 
 const APP_VERSION = '1.0.0'
 const licenseStatusStyles: Record<LicenseStatus, string> = {
-  TRIAL: 'bg-warning/10 text-warning',
-  ACTIVE: 'bg-success/10 text-success',
-  EXPIRED: 'bg-destructive/10 text-destructive',
-  SUSPENDED: 'bg-destructive/10 text-destructive',
+  TRIAL: 'border-warning/70 text-warning',
+  ACTIVE: 'border-success/70 text-success',
+  EXPIRED: 'border-destructive/70 text-destructive',
+  SUSPENDED: 'border-destructive/70 text-destructive',
 }
 const formatDate = (value: string | null) => value ? new Date(value).toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
 const formatDateTime = (value: string | null) => value ? new Date(value).toLocaleString('en-KE', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Never'
@@ -51,10 +52,10 @@ function LicenseAndSubscription() {
   }, [toast])
 
   return (
-    <section className="rounded-sm border border-border bg-card p-6 shadow-sm">
+    <section className="border border-border bg-card p-6 shadow-sm">
       <div className="flex items-start gap-3">
-        <span className="flex size-9 items-center justify-center rounded-sm bg-secondary/10 text-secondary"><LuShieldCheck className="size-4" /></span>
-        <div>
+        <span className="flex size-9 items-center justify-center bg-secondary/10 text-secondary"><LuShieldCheck className="size-4" /></span>
+        <div className="border-l-4 border-accent pl-3">
           <h2 className="font-semibold text-foreground">License &amp; Subscription</h2>
           <p className="mt-0.5 text-sm text-muted-foreground">Read-only. Managed by TANZ for this workspace.</p>
         </div>
@@ -71,12 +72,12 @@ function LicenseAndSubscription() {
           <Tile label="Tenant ID" value={license.id} mono />
           <Tile label="License Key" value={license.licenseKey} mono />
           <Tile label="License Status">
-            <span className={cn('inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold', licenseStatusStyles[license.licenseStatus])}>
+            <span className={cn('keep-round inline-flex border border-dashed px-2.5 py-0.5 text-xs font-semibold', licenseStatusStyles[license.licenseStatus])}>
               {license.licenseStatus[0] + license.licenseStatus.slice(1).toLowerCase()}
             </span>
           </Tile>
           <Tile label="Subscription Plan">
-            <span className="inline-flex rounded-full border border-secondary/30 px-2.5 py-0.5 text-xs font-semibold text-secondary">{license.subscriptionPlan}</span>
+            <span className="keep-round inline-flex border border-dashed border-secondary/70 px-2.5 py-0.5 text-xs font-semibold text-secondary">{license.subscriptionPlan}</span>
           </Tile>
           <Tile label="Subscription Start" value={formatDate(license.subscriptionStart)} />
           <Tile label="Next Due Date" value={formatDate(license.nextDueDate)} />
@@ -86,7 +87,7 @@ function LicenseAndSubscription() {
           <Tile label="App Version" value={APP_VERSION} />
           <Tile label="Last License Check" value={formatDateTime(license.lastLicenseCheck)} />
           <Tile label="Suspended">
-            <span className={cn('inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold', license.isActive ? 'bg-muted text-muted-foreground' : 'bg-destructive/10 text-destructive')}>
+            <span className={cn('keep-round inline-flex border border-dashed px-2.5 py-0.5 text-xs font-semibold', license.isActive ? 'border-muted-foreground/50 text-muted-foreground' : 'border-destructive/70 text-destructive')}>
               {license.isActive ? 'No' : 'Yes'}
             </span>
           </Tile>
@@ -109,12 +110,9 @@ function Tile({ label, value, mono, children }: { label: string; value?: string;
 
 export default function CafeSettings() {
   return (
-    <div className="mx-auto max-w-6xl px-6 py-8 sm:px-8 lg:px-10">
-      <header className="mb-8">
-        <p className="text-sm font-medium text-secondary">Settings</p>
-        <h1 className="mt-1 font-display text-2xl font-semibold text-foreground">License &amp; Subscription</h1>
-        <p className="mt-2 max-w-2xl text-sm text-muted-foreground">License and subscription details for this workspace. Looking for the receipt printer? That moved to Sales ▸ Printer Settings — every device sets its own, so it's no longer tucked away here.</p>
-      </header>
+    <div className="dashboard-square mx-auto max-w-6xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
+      <PageBanner kicker="System" title="Settings" />
+      <p className="mb-6 mt-5 max-w-2xl text-sm text-muted-foreground">License and subscription details for this workspace. Looking for the receipt printer? That moved to Sales ▸ Printer Settings — every device sets its own, so it's no longer tucked away here.</p>
 
       <LicenseAndSubscription />
     </div>

@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import { LuCircleAlert, LuImagePlus, LuLoaderCircle, LuUpload } from 'react-icons/lu'
 import { api, apiUpload, resolveLogoUrl } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import PageBanner from '@/components/ui/PageBanner'
 import { useToast } from '@/components/ui/Toast'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import { setTenantLogo } from '@/store/tenantSlice'
@@ -145,7 +146,6 @@ export default function BusinessInformation() {
   const [uploadingLogo, setUploadingLogo] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const [notice, setNotice] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -207,10 +207,8 @@ export default function BusinessInformation() {
     e.preventDefault()
     setSaving(true)
     setError('')
-    setNotice('')
     try {
       await api('/business-profile', { method: 'PUT', body: JSON.stringify(form) })
-      setNotice('Business information saved.')
       toast.success('Business information saved.')
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Could not save business information'
@@ -230,12 +228,8 @@ export default function BusinessInformation() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-6 py-8 sm:px-8 lg:px-10">
-      <header>
-        <p className="text-sm font-semibold text-secondary">System</p>
-        <h1 className="mt-1 font-display text-3xl font-semibold">Business Information</h1>
-        <p className="mt-2 text-sm text-muted-foreground">Manage your business profile, tax settings, and contact details.</p>
-      </header>
+    <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
+      <PageBanner kicker="Business" title="Business Information" />
 
       {error && (
         <div className="mt-5 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive">
@@ -244,8 +238,7 @@ export default function BusinessInformation() {
         </div>
       )}
       <div className="relative mt-6">
-        <StampBadge />
-        <form onSubmit={handleSubmit} className="overflow-hidden rounded-sm border bg-card shadow-sm">
+        <form onSubmit={handleSubmit} className="overflow-hidden border bg-card shadow-sm">
           <Section title="Logo" description="Shown across the sidebar, login page, and browser tab favicon." first>
             <div className="flex items-center gap-5">
               <div className="relative flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-dashed border-border bg-muted/40">
@@ -261,7 +254,7 @@ export default function BusinessInformation() {
                 )}
               </div>
               <div>
-                <label className="inline-flex items-center gap-2 rounded-sm border border-border bg-background px-3.5 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted">
+                <label className="inline-flex cursor-pointer items-center gap-2 border-2 border-foreground/20 bg-card px-3.5 py-2 text-xs font-bold uppercase tracking-wider transition-colors hover:bg-muted">
                   <LuUpload className="size-4" />
                   Upload logo
                   <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden" onChange={(e) => void handleLogoChange(e)} disabled={uploadingLogo} />
@@ -385,11 +378,10 @@ export default function BusinessInformation() {
           </Section>
 
           <div className="flex items-center justify-end gap-3 border-t bg-muted/30 px-6 py-4 sm:px-8">
-            {notice && <span className="text-sm font-medium text-success">{notice}</span>}
             <button
               type="submit"
               disabled={saving}
-              className="inline-flex items-center gap-2 rounded-sm bg-secondary px-5 py-2.5 text-sm font-semibold text-secondary-foreground shadow-sm transition-opacity hover:opacity-90 disabled:opacity-60"
+              className="inline-flex items-center gap-2 bg-primary px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-primary-foreground shadow-sm transition hover:brightness-110 disabled:opacity-60"
             >
               {saving && <LuLoaderCircle className="animate-spin" />}
               Save Changes
@@ -401,23 +393,11 @@ export default function BusinessInformation() {
   )
 }
 
-function StampBadge() {
-  return (
-    <div className="pointer-events-none absolute -top-6 right-8 z-10 flex size-24 -rotate-6 items-center justify-center rounded-full border-2 border-dashed border-accent bg-background text-center shadow-sm">
-      <span className="px-2 text-[9px] font-bold uppercase leading-tight tracking-wider text-accent">
-        Business
-        <br />
-        Information
-      </span>
-    </div>
-  )
-}
-
 function Section({ title, description, first, children }: { title: string; description?: string; first?: boolean; children: ReactNode }) {
   return (
     <div className={cn('p-6 sm:p-8', !first && 'border-t')}>
       <div className="mb-5">
-        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
+        <p className="border-l-4 border-accent pl-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">{title}</p>
         {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
       </div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">{children}</div>
