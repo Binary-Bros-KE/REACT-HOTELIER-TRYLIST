@@ -34,6 +34,7 @@ import Customers from "@/pages/Customers";
 import Services from "@/pages/Services";
 import Stays from "@/pages/Stays";
 import PaymentMethods from "@/pages/PaymentMethods";
+import CommercialDocuments from "@/pages/CommercialDocuments";
 import PrinterSettings from "@/pages/PrinterSettings";
 import Transactions from "@/pages/Transactions";
 import Expenses from "@/pages/Expenses";
@@ -235,6 +236,8 @@ function App() {
         <Route path="/reception/services" element={<Services />} />
         <Route path="/service-center/services" element={<Services />} />
         <Route path="/reception/stays" element={<Stays />} />
+        <Route path="/reception/invoices" element={<CommercialDocuments type="INVOICE" />} />
+        <Route path="/reception/quotations" element={<CommercialDocuments type="QUOTATION" />} />
         <Route path="/reception/payment-methods" element={<PaymentMethods />} />
         <Route path="/sales/payment-methods" element={<PaymentMethods />} />
         <Route path="/sales/printer-settings" element={<PrinterSettings />} />
