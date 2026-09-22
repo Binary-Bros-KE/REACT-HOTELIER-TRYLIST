@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { LuChevronLeft, LuChevronRight, LuLogOut, LuRefreshCw, LuX } from 'react-icons/lu'
 import { IoPersonCircleSharp } from 'react-icons/io5'
-import { navigation, navItemAllowed, navItemMatchesExactly, type PermissionSection } from '@/config/navigation'
+import { navigation, navItemAllowed, navItemMatchesExactly, sectionModuleEnabled, type PermissionSection } from '@/config/navigation'
 import { cn } from '@/lib/utils'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import { logout } from '@/store/authSlice'
@@ -12,19 +12,6 @@ import { resolveLogoUrl } from '@/lib/api'
 const EXPANDED_WIDTH = 264
 const COLLAPSED_WIDTH = 80
 const DEFAULT_SECTIONS: PermissionSection[] = ['OVERVIEW']
-
-// Which of the platform admin's 3 toggleable modules a nav section needs —
-// a section with no entry here (Overview/Inventory/Team/Finance/Reports/
-// System) is common infrastructure, always shown regardless of the tenant's
-// module choice. A representative ModuleKey per group is enough to detect
-// "on" since the platform only ever flips a whole group together.
-const SECTION_MODULE: Partial<Record<PermissionSection, string>> = {
-  RECEPTION: 'ROOMS',
-  HOUSEKEEPING: 'ROOMS',
-  SALES: 'POS',
-  KITCHEN: 'POS',
-  SERVICE_CENTER: 'SERVICE_CENTER',
-}
 
 type SidebarProps = {
   className?: string
@@ -46,7 +33,7 @@ export default function Sidebar({ className, mobile = false, onNavigate }: Sideb
   const permissions = useAppSelector((s) => s.auth.user?.role?.permissions) ?? []
   const moduleKeys = useAppSelector((s) => s.tenant.moduleKeys)
   const visibleNavigation = navigation
-    .filter((group) => { const need = SECTION_MODULE[group.section]; return !need || moduleKeys.includes(need) })
+    .filter((group) => sectionModuleEnabled(group.section, moduleKeys))
     .map((group) => ({ ...group, items: group.items.filter((item) => navItemAllowed(item, allowedSections.includes(group.section), permissions)) }))
     .filter((group) => group.items.length > 0)
 

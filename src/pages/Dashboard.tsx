@@ -5,7 +5,7 @@ import {
   LuArrowDownLeft, LuArrowUpRight, LuBanknote, LuBedDouble, LuBellRing, LuBookOpen, LuBoxes, LuChefHat, LuCircleAlert, LuCircleCheck, LuClipboardList, LuClock3, LuLoaderCircle, LuLock,
   LuLogIn, LuLogOut, LuPackage, LuPackageCheck, LuReceiptText, LuSearch, LuShoppingBag, LuSparkles, LuTable2, LuTrendingUp, LuTriangleAlert, LuUndo2, LuUsers, LuUtensils, LuWallet,
 } from 'react-icons/lu'
-import { navigation } from '@/config/navigation'
+import { navigation, sectionModuleEnabled } from '@/config/navigation'
 import { api } from '@/lib/api'
 import { useAppSelector } from '@/store/hooks'
 import { useWorkingLocation } from '@/lib/useWorkingLocation'
@@ -101,7 +101,7 @@ type LocationOption = { id: string; name: string }
  * from the full Sales Report already). */
 function RevenueDashboard({ variant, pickerSlot }: { variant: 'operations' | 'finance'; pickerSlot: HTMLElement | null }) {
   const moduleKeys = useAppSelector((s) => s.tenant.moduleKeys)
-  const hasHotelModules = moduleKeys.includes('ROOMS') || moduleKeys.includes('RESERVATIONS')
+  const hasHotelModules = sectionModuleEnabled('RECEPTION', moduleKeys)
   const [locations, setLocations] = useState<LocationOption[]>([])
   const { fixed: fixedLocation, options: pickableLocations, selectedId: selectedLocationId, setLocation, effectiveId: effectiveLocationId } = useWorkingLocation(locations, { persist: false })
 
@@ -119,22 +119,22 @@ function RevenueDashboard({ variant, pickerSlot }: { variant: 'operations' | 'fi
     setError('')
     try {
       const locQuery = effectiveLocationId ? `&locationId=${effectiveLocationId}` : ''
-      const [salesResponse, ordersResponse, tablesResponse, transactionsResponse, locationResponse, roomResponse, reservationResponse] = await Promise.all([
+      const [salesResponse, ordersResponse, tablesResponse, transactionsResponse, locationResponse, roomResult, reservationResult] = await Promise.all([
         api<SalesReport>(`/reports/sales?period=day${locQuery}`),
         variant === 'operations' ? api<{ orders: OrderSummary[] }>(`/pos/orders?channel=FOOD${locQuery}`) : Promise.resolve({ orders: [] }),
         variant === 'operations' ? api<{ tables: TableSummary[] }>(`/tables${effectiveLocationId ? `?locationId=${effectiveLocationId}` : ''}`) : Promise.resolve({ tables: [] }),
         api<{ transactions: TransactionRow[] }>(`/transactions?limit=${variant === 'finance' ? 12 : 8}${locQuery}`),
         api<{ locations: LocationOption[] }>('/locations'),
-        variant === 'operations' && hasHotelModules ? api<{ rooms: HotelInsightRoom[] }>('/reception/rooms') : Promise.resolve({ rooms: [] }),
-        variant === 'operations' && hasHotelModules ? api<{ reservations: HotelInsightReservation[] }>('/reception/reservations') : Promise.resolve({ reservations: [] }),
+        variant === 'operations' && hasHotelModules ? api<{ rooms: HotelInsightRoom[] }>('/rooms/rooms').then((r) => ({ ok: true as const, data: r })).catch(() => ({ ok: false as const, data: { rooms: [] } })) : Promise.resolve({ ok: true as const, data: { rooms: [] } }),
+        variant === 'operations' && hasHotelModules ? api<{ reservations: HotelInsightReservation[] }>('/reception/reservations').then((r) => ({ ok: true as const, data: r })).catch(() => ({ ok: false as const, data: { reservations: [] } })) : Promise.resolve({ ok: true as const, data: { reservations: [] } }),
       ])
       setReport(salesResponse)
       setActiveOrderCount(ordersResponse.orders.filter((o) => NON_FINAL_STATUSES.includes(o.status)).length)
       setTables(tablesResponse.tables)
       setTransactions(transactionsResponse.transactions)
       setLocations(locationResponse.locations)
-      setHotelRooms(roomResponse.rooms)
-      setHotelReservations(reservationResponse.reservations)
+      setHotelRooms(roomResult.data.rooms)
+      setHotelReservations(reservationResult.data.reservations)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not load the dashboard')
     } finally {

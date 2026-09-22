@@ -69,6 +69,22 @@ export const sectionLabels: Record<PermissionSection, string> = {
   SYSTEM: 'System',
 }
 
+// Which platform module enables each high-level nav section. Keep dashboard
+// feature checks and Sidebar filtering on this same helper so they do not
+// drift apart.
+export const SECTION_MODULE: Partial<Record<PermissionSection, string>> = {
+  RECEPTION: 'ROOMS',
+  HOUSEKEEPING: 'ROOMS',
+  SALES: 'POS',
+  KITCHEN: 'POS',
+  SERVICE_CENTER: 'SERVICE_CENTER',
+}
+
+export function sectionModuleEnabled(section: PermissionSection, moduleKeys: string[]) {
+  const need = SECTION_MODULE[section]
+  return !need || moduleKeys.includes(need)
+}
+
 export interface NavItem {
   label: string
   href: string
