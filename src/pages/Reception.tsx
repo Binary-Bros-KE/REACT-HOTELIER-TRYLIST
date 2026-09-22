@@ -7,6 +7,7 @@ import {
   LuCalendarCheck,
   LuCircleAlert,
   LuCheck,
+  LuFileText,
   LuLoaderCircle,
   LuLogIn,
   LuMapPin,
@@ -1003,6 +1004,22 @@ function StayModal({ reservation, at, onClose, onChanged, onCheckedOut }: { rese
     }
   }
 
+  async function generateInvoice() {
+    if (!reservation.folio) return;
+    setBusy(true);
+    try {
+      const result = await api<{ document: { documentNo: string } }>("/commercial-documents/from-folio", {
+        method: "POST",
+        body: JSON.stringify({ reservationId: reservation.id }),
+      });
+      toast.success(`${result.document.documentNo} created.`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not create invoice");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function addGuest(e: FormEvent) {
     e.preventDefault();
     if (!guestName.trim()) return;
@@ -1106,6 +1123,11 @@ function StayModal({ reservation, at, onClose, onChanged, onCheckedOut }: { rese
                 <div className="mt-1 flex justify-between border-t pt-1 font-bold"><span>Balance</span><span>{formatKes(totals.balance)}</span></div>
                 {totals.tax && totals.tax.taxAmount > 0.005 && (
                   <p className="mt-1 text-xs text-muted-foreground">Includes {formatKes(totals.tax.taxAmount)} tax</p>
+                )}
+                {totals.balance > 0.01 && (
+                  <button type="button" onClick={() => void generateInvoice()} disabled={busy} className="mt-3 inline-flex items-center gap-2 rounded-sm border bg-card px-3 py-2 text-xs font-semibold hover:bg-muted disabled:opacity-60">
+                    {busy ? <LuLoaderCircle className="animate-spin" /> : <LuFileText />} Generate invoice
+                  </button>
                 )}
               </div>
 

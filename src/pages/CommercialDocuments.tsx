@@ -16,16 +16,21 @@ type DocType = 'QUOTATION' | 'INVOICE'
 type Status = 'DRAFT' | 'SENT' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED' | 'CANCELLED' | 'CONVERTED' | 'ISSUED' | 'PARTIALLY_PAID' | 'PAID' | 'OVERDUE' | 'VOID'
 type TaxMode = 'INCLUSIVE' | 'EXCLUSIVE'
 type TaxTreatment = 'STANDARD' | 'ZERO_RATED' | 'EXEMPT'
+type LineSource = 'CUSTOM' | 'ROOM' | 'ROOM_STAY' | 'FOLIO' | 'SERVICE' | 'SERVICE_MEMBERSHIP' | 'POS_ORDER'
 type Customer = { id: string; firstName: string; lastName: string | null; businessName: string | null; phone: string | null; email: string | null; billingPhone?: string | null; billingEmail?: string | null; address?: string | null }
 type Location = { id: string; name: string; isActive?: boolean }
 type PaymentMethod = { id: string; name: string; requiresReference: boolean }
-type Line = { id?: string; description: string; details: string; quantity: string; unitLabel: string; unitPrice: string; discount: string; taxRate: string; taxMode: TaxMode; taxTreatment: TaxTreatment }
+type Line = { id?: string; source?: LineSource; sourceRefId?: string | null; description: string; details: string; quantity: string; unitLabel: string; unitPrice: string; discount: string; taxRate: string; taxMode: TaxMode; taxTreatment: TaxTreatment }
+type SourceLine = { id: string; kind: string; label: string; description: string | null; price: number; unitLabel: string | null; source: LineSource; sourceRefId: string; taxRate: string | number; taxMode: TaxMode; taxTreatment: TaxTreatment }
+type SourceFolio = { reservationId: string; folioId: string; reservationNo: string; folioNo: string; customerName: string; locationName: string | null; roomLabel: string; checkIn: string; checkOut: string; total: number; paid: number; balance: number }
+type SourceOrder = { id: string; orderNumber: number; channel: string; customerName: string; locationName: string | null; total: number; paid: number; balance: number; createdAt: string }
+type SourceOptions = { roomRates: SourceLine[]; services: SourceLine[]; folios: SourceFolio[]; orders: SourceOrder[] }
 type DocumentRow = {
   id: string; documentNo: string; type: DocType; status: Status; title: string | null; intro: string | null; headerText: string | null; footerText: string | null
   customerId: string | null; customer: Customer | null; prospectName: string | null; prospectPhone: string | null; prospectEmail: string | null; prospectAddress: string | null
   locationId: string | null; location: Location | null; issuedAt: string | null; expiresAt: string | null; dueAt: string | null; depositRequired: string | number
   subtotal: string | number; net: string | number; taxAmount: string | number; total: string | number; paidAmount: string | number; balance: string | number
-  lines: (Omit<Line, 'details' | 'quantity' | 'unitPrice' | 'discount' | 'taxRate'> & { details: string | null; quantity: string | number; unitPrice: string | number; discount: string | number; taxRate: string | number; lineSubtotal: string | number; netAmount: string | number; taxAmount: string | number; lineTotal: string | number })[]
+  lines: (Omit<Line, 'details' | 'quantity' | 'unitPrice' | 'discount' | 'taxRate'> & { source: LineSource; sourceRefId: string | null; details: string | null; quantity: string | number; unitPrice: string | number; discount: string | number; taxRate: string | number; lineSubtotal: string | number; netAmount: string | number; taxAmount: string | number; lineTotal: string | number })[]
   payments: { id: string; kind: 'DEPOSIT' | 'PAYMENT'; amount: string | number; reference: string | null; paidAt: string; paymentMethod: PaymentMethod }[]
   convertedDocuments: { id: string; documentNo: string; type: DocType; status: Status }[]
   sourceDocument: { id: string; documentNo: string; type: DocType; status: Status } | null
@@ -34,7 +39,7 @@ type Options = { customers: Customer[]; locations: Location[]; paymentMethods: P
 
 const money = (value: number) => `KSh ${value.toLocaleString('en-KE', { maximumFractionDigits: 2 })}`
 const today = () => new Date().toISOString().slice(0, 10)
-const blankLine = (tax?: Options['tax']): Line => ({ description: '', details: '', quantity: '1', unitLabel: '', unitPrice: '', discount: '0', taxRate: String(tax?.taxRate ?? 16), taxMode: tax?.taxMode ?? 'INCLUSIVE', taxTreatment: tax?.taxTreatment ?? 'STANDARD' })
+const blankLine = (tax?: Options['tax']): Line => ({ source: 'CUSTOM', sourceRefId: null, description: '', details: '', quantity: '1', unitLabel: '', unitPrice: '', discount: '0', taxRate: String(tax?.taxRate ?? 16), taxMode: tax?.taxMode ?? 'INCLUSIVE', taxTreatment: tax?.taxTreatment ?? 'STANDARD' })
 const statusTone = (s: Status) => s === 'PAID' || s === 'ACCEPTED' ? 'success' : s === 'OVERDUE' || s === 'REJECTED' || s === 'VOID' ? 'danger' : s === 'PARTIALLY_PAID' || s === 'SENT' || s === 'ISSUED' ? 'warning' : s === 'CONVERTED' ? 'secondary' : 'muted'
 
 export default function CommercialDocuments({ type }: { type: DocType }) {
@@ -43,6 +48,7 @@ export default function CommercialDocuments({ type }: { type: DocType }) {
   const [documents, setDocuments] = useState<DocumentRow[]>([])
   const [summary, setSummary] = useState({ total: 0, value: 0, paid: 0, balance: 0, overdue: 0 })
   const [options, setOptions] = useState<Options>({ customers: [], locations: [], paymentMethods: [], tax: { taxRate: 16, taxMode: 'INCLUSIVE', taxTreatment: 'STANDARD' } })
+  const [sources, setSources] = useState<SourceOptions>({ roomRates: [], services: [], folios: [], orders: [] })
   const { fixed: fixedLocation, options: pickableLocations, setLocation, effectiveId } = useWorkingLocation(options.locations, { persist: false })
   const [profile, setProfile] = useState<DocProfile>(null)
   const [query, setQuery] = useState('')
@@ -51,6 +57,7 @@ export default function CommercialDocuments({ type }: { type: DocType }) {
   const [editor, setEditor] = useState<DocumentRow | 'new' | null>(null)
   const [paying, setPaying] = useState<DocumentRow | null>(null)
   const [printing, setPrinting] = useState<DocumentRow | null>(null)
+  const [sourcePicker, setSourcePicker] = useState<'folio' | 'order' | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -58,14 +65,16 @@ export default function CommercialDocuments({ type }: { type: DocType }) {
       const params = new URLSearchParams({ type })
       if (query.trim()) params.set('search', query.trim())
       if (status) params.set('status', status)
-      const [docs, opts, prof] = await Promise.all([
+      const [docs, opts, sourceOpts, prof] = await Promise.all([
         api<{ documents: DocumentRow[]; summary: typeof summary }>(`/commercial-documents?${params}`),
         api<Options>('/commercial-documents/options'),
+        api<SourceOptions>('/commercial-documents/source-options'),
         api<{ profile: NonNullable<DocProfile> | null }>('/business-profile'),
       ])
       setDocuments(docs.documents)
       setSummary(docs.summary)
       setOptions(opts)
+      setSources(sourceOpts)
       setProfile(prof.profile)
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : `Could not load ${isInvoice ? 'invoices' : 'quotations'}`)
@@ -122,6 +131,8 @@ export default function CommercialDocuments({ type }: { type: DocType }) {
             <option value="">All statuses</option>
             {(isInvoice ? ['DRAFT', 'ISSUED', 'PARTIALLY_PAID', 'PAID', 'OVERDUE', 'CANCELLED', 'VOID'] : ['DRAFT', 'SENT', 'ACCEPTED', 'REJECTED', 'EXPIRED', 'CANCELLED', 'CONVERTED']).map((s) => <option key={s} value={s}>{s.replaceAll('_', ' ')}</option>)}
           </select>
+          {isInvoice && <ActionButton tone="neutral" icon={<LuFileText />} onClick={() => setSourcePicker('folio')}>From stay</ActionButton>}
+          {isInvoice && <ActionButton tone="neutral" icon={<LuRefreshCw />} onClick={() => setSourcePicker('order')}>From sale</ActionButton>}
           <ActionButton tone="primary" icon={<LuPlus />} onClick={() => setEditor('new')}>{isInvoice ? 'New invoice' : 'New quotation'}</ActionButton>
         </div>
         {loading ? <div className="p-16 text-center text-sm text-muted-foreground"><LuLoaderCircle className="mx-auto animate-spin" /></div> : (
@@ -154,7 +165,8 @@ export default function CommercialDocuments({ type }: { type: DocType }) {
           </div>
         )}
       </section>
-      {editor && <DocumentEditor type={type} document={editor === 'new' ? null : editor} options={options} fixedLocation={fixedLocation} locations={pickableLocations} selectedLocationId={effectiveId} setLocation={setLocation} onClose={() => setEditor(null)} onSaved={(doc) => { setEditor(null); setDocuments((cur) => editor === 'new' ? [doc, ...cur] : cur.map((d) => d.id === doc.id ? doc : d)); void load() }} />}
+      {editor && <DocumentEditor type={type} document={editor === 'new' ? null : editor} options={options} sources={sources} fixedLocation={fixedLocation} locations={pickableLocations} selectedLocationId={effectiveId} setLocation={setLocation} onClose={() => setEditor(null)} onSaved={(doc) => { setEditor(null); setDocuments((cur) => editor === 'new' ? [doc, ...cur] : cur.map((d) => d.id === doc.id ? doc : d)); void load() }} />}
+      {sourcePicker && <SourceInvoiceModal kind={sourcePicker} sources={sources} onClose={() => setSourcePicker(null)} onCreated={(doc) => { setSourcePicker(null); setDocuments((cur) => [doc, ...cur]); setPrinting(doc); void load() }} />}
       {paying && <PaymentModal doc={paying} methods={options.paymentMethods} onClose={() => setPaying(null)} onSaved={(doc) => { setPaying(null); setDocuments((cur) => cur.map((d) => d.id === doc.id ? doc : d)); void load() }} />}
       {printing && profile && <DocumentViewer kind="commercial-document" data={printing} profile={profile} onClose={() => setPrinting(null)} />}
     </div>
@@ -167,7 +179,54 @@ function clientName(doc: DocumentRow) {
   return doc.prospectName ?? 'Prospect'
 }
 
-function DocumentEditor({ type, document, options, fixedLocation, locations, selectedLocationId, setLocation, onClose, onSaved }: { type: DocType; document: DocumentRow | null; options: Options; fixedLocation: Location | null; locations: Location[]; selectedLocationId: string; setLocation: (id: string) => void; onClose: () => void; onSaved: (doc: DocumentRow) => void }) {
+function SourceInvoiceModal({ kind, sources, onClose, onCreated }: { kind: 'folio' | 'order'; sources: SourceOptions; onClose: () => void; onCreated: (doc: DocumentRow) => void }) {
+  const toast = useToast()
+  const [savingId, setSavingId] = useState<string | null>(null)
+  const items = kind === 'folio' ? sources.folios : sources.orders
+  async function create(item: SourceFolio | SourceOrder) {
+    setSavingId(kind === 'folio' ? (item as SourceFolio).folioId : (item as SourceOrder).id)
+    try {
+      const result = await api<{ document: DocumentRow }>(kind === 'folio' ? '/commercial-documents/from-folio' : '/commercial-documents/from-order', {
+        method: 'POST',
+        body: JSON.stringify(kind === 'folio' ? { folioId: (item as SourceFolio).folioId } : { orderId: (item as SourceOrder).id }),
+      })
+      toast.success(`${result.document.documentNo} created.`)
+      onCreated(result.document)
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : 'Could not create invoice')
+    } finally {
+      setSavingId(null)
+    }
+  }
+  return (
+    <ModalShell size="lg" kicker="Generate invoice" title={kind === 'folio' ? 'Invoice a stay folio' : 'Invoice a completed sale'} onClose={onClose}>
+      <div className="max-h-[70vh] space-y-3 overflow-y-auto p-5">
+        {items.map((item) => {
+          const id = kind === 'folio' ? (item as SourceFolio).folioId : (item as SourceOrder).id
+          const title = kind === 'folio' ? `${(item as SourceFolio).customerName} - ${(item as SourceFolio).reservationNo}` : `${(item as SourceOrder).customerName} - Order #${(item as SourceOrder).orderNumber}`
+          const meta = kind === 'folio'
+            ? `${(item as SourceFolio).roomLabel} · ${(item as SourceFolio).locationName ?? 'No location'}`
+            : `${(item as SourceOrder).channel.replaceAll('_', ' ')} · ${(item as SourceOrder).locationName ?? 'No location'}`
+          return (
+            <div key={id} className="flex flex-col gap-3 border bg-card p-4 sm:flex-row sm:items-center">
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold">{title}</p>
+                <p className="text-xs text-muted-foreground">{meta}</p>
+                <p className="mt-1 text-xs text-muted-foreground">Total {money(item.total)} · Paid {money(item.paid)} · Balance {money(item.balance)}</p>
+              </div>
+              <button type="button" onClick={() => void create(item)} disabled={savingId === id} className="inline-flex items-center justify-center gap-2 bg-primary px-4 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground disabled:opacity-60">
+                {savingId === id && <LuLoaderCircle className="animate-spin" />}Create
+              </button>
+            </div>
+          )
+        })}
+        {items.length === 0 && <p className="py-10 text-center text-sm text-muted-foreground">{kind === 'folio' ? 'No unpaid stay folios available.' : 'No completed customer sales available.'}</p>}
+      </div>
+    </ModalShell>
+  )
+}
+
+function DocumentEditor({ type, document, options, sources, fixedLocation, locations, selectedLocationId, setLocation, onClose, onSaved }: { type: DocType; document: DocumentRow | null; options: Options; sources: SourceOptions; fixedLocation: Location | null; locations: Location[]; selectedLocationId: string; setLocation: (id: string) => void; onClose: () => void; onSaved: (doc: DocumentRow) => void }) {
   const toast = useToast()
   const isInvoice = type === 'INVOICE'
   const [saving, setSaving] = useState(false)
@@ -183,10 +242,26 @@ function DocumentEditor({ type, document, options, fixedLocation, locations, sel
     expiresAt: document?.expiresAt?.slice(0, 10) ?? '',
     dueAt: document?.dueAt?.slice(0, 10) ?? '',
     depositRequired: String(document?.depositRequired ?? 0),
-    lines: document?.lines.map((l) => ({ description: l.description, details: l.details ?? '', quantity: String(l.quantity), unitLabel: l.unitLabel ?? '', unitPrice: String(l.unitPrice), discount: String(l.discount), taxRate: String(l.taxRate), taxMode: l.taxMode, taxTreatment: l.taxTreatment })) ?? [blankLine(options.tax)],
+    lines: document?.lines.map((l) => ({ source: l.source, sourceRefId: l.sourceRefId, description: l.description, details: l.details ?? '', quantity: String(l.quantity), unitLabel: l.unitLabel ?? '', unitPrice: String(l.unitPrice), discount: String(l.discount), taxRate: String(l.taxRate), taxMode: l.taxMode, taxTreatment: l.taxTreatment })) ?? [blankLine(options.tax)],
   }))
   const preview = useMemo(() => form.lines.reduce((sum, l) => sum + Math.max(0, Number(l.quantity || 0) * Number(l.unitPrice || 0) - Number(l.discount || 0)), 0), [form.lines])
   function setLine(index: number, patch: Partial<Line>) { setForm((f) => ({ ...f, lines: f.lines.map((l, i) => i === index ? { ...l, ...patch } : l) })) }
+  function addSourceLine(line: SourceLine) {
+    const next: Line = {
+      source: line.source,
+      sourceRefId: line.sourceRefId,
+      description: line.label,
+      details: line.description ?? '',
+      quantity: '1',
+      unitLabel: line.unitLabel ?? '',
+      unitPrice: String(line.price),
+      discount: '0',
+      taxRate: String(line.taxRate),
+      taxMode: line.taxMode,
+      taxTreatment: line.taxTreatment,
+    }
+    setForm((f) => ({ ...f, lines: f.lines.length === 1 && !f.lines[0].description.trim() ? [next] : [...f.lines, next] }))
+  }
   async function save(e: FormEvent) {
     e.preventDefault()
     if (isInvoice && !form.customerId) { toast.error('Choose a customer before creating an invoice'); return }
@@ -200,7 +275,7 @@ function DocumentEditor({ type, document, options, fixedLocation, locations, sel
         expiresAt: form.expiresAt ? new Date(`${form.expiresAt}T23:59:59`) : null,
         dueAt: form.dueAt ? new Date(`${form.dueAt}T23:59:59`) : null,
         depositRequired: Number(form.depositRequired) || 0,
-        lines: form.lines.map((l) => ({ ...l, quantity: Number(l.quantity) || 1, unitPrice: Number(l.unitPrice) || 0, discount: Number(l.discount) || 0, taxRate: Number(l.taxRate) || 0 })),
+        lines: form.lines.map((l) => ({ ...l, source: l.source ?? 'CUSTOM', sourceRefId: l.sourceRefId ?? null, quantity: Number(l.quantity) || 1, unitPrice: Number(l.unitPrice) || 0, discount: Number(l.discount) || 0, taxRate: Number(l.taxRate) || 0 })),
       }
       const result = await api<{ document: DocumentRow }>(document ? `/commercial-documents/${document.id}` : '/commercial-documents', { method: document ? 'PATCH' : 'POST', body: JSON.stringify(body) })
       toast.success(document ? 'Document updated.' : `${result.document.documentNo} created.`)
@@ -223,7 +298,18 @@ function DocumentEditor({ type, document, options, fixedLocation, locations, sel
             <Field label="Intro paragraph" className="sm:col-span-2"><textarea rows={3} value={form.intro} onChange={(e) => setForm({ ...form, intro: e.target.value })} className="input" placeholder="Optional note shown above the lines." /></Field>
           </div>
           <div className="overflow-hidden border">
-            <div className="flex items-center justify-between border-b bg-muted/40 p-3"><h3 className="font-semibold">Line items</h3><ActionButton tone="neutral" icon={<LuPlus />} onClick={() => setForm((f) => ({ ...f, lines: [...f.lines, blankLine(options.tax)] }))}>Add line</ActionButton></div>
+            <div className="flex flex-col gap-3 border-b bg-muted/40 p-3 lg:flex-row lg:items-center">
+              <h3 className="font-semibold lg:mr-auto">Line items</h3>
+              <select defaultValue="" onChange={(e) => { const found = sources.roomRates.find((line) => line.id === e.target.value); if (found) addSourceLine(found); e.currentTarget.value = '' }} className="input lg:w-56">
+                <option value="">Add room / rate</option>
+                {sources.roomRates.map((line) => <option key={`${line.kind}-${line.id}`} value={line.id}>{line.label} - {money(line.price)}</option>)}
+              </select>
+              <select defaultValue="" onChange={(e) => { const found = sources.services.find((line) => line.id === e.target.value); if (found) addSourceLine(found); e.currentTarget.value = '' }} className="input lg:w-56">
+                <option value="">Add service</option>
+                {sources.services.map((line) => <option key={`${line.kind}-${line.id}`} value={line.id}>{line.label} - {money(line.price)}</option>)}
+              </select>
+              <ActionButton tone="neutral" icon={<LuPlus />} onClick={() => setForm((f) => ({ ...f, lines: [...f.lines, blankLine(options.tax)] }))}>Add line</ActionButton>
+            </div>
             <div className="divide-y">
               {form.lines.map((line, index) => <div key={index} className="grid gap-3 p-3 lg:grid-cols-[1.4fr_.55fr_.55fr_.7fr_.8fr_auto]">
                 <input required value={line.description} onChange={(e) => setLine(index, { description: e.target.value })} placeholder="Description" className="input" />
