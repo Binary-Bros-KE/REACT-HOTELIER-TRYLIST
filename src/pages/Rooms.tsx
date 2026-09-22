@@ -23,10 +23,19 @@ import PageBanner from "@/components/ui/PageBanner";
 import ModalShell from "@/components/ui/ModalShell";
 import StatusPill from "@/components/ui/StatusPill";
 import { cn } from "@/lib/utils";
+import { TAX_CHOICES, taxChoiceLabel, taxChoiceOf, taxPayload, type BizTax, type TaxChoice } from "@/lib/taxChoices";
+import { computeFinancialsFromRows } from "@/lib/orderTotals";
 
 type RoomStatus = "VACANT" | "OCCUPIED" | "OUT_OF_SERVICE";
 type Cleanliness = "CLEAN" | "DIRTY" | "INSPECTING";
-type FolioLineItem = { id: string; amount: string | number; quantity: number };
+type FolioLineItem = {
+  id: string;
+  amount: string | number;
+  quantity: number;
+  taxRate?: string | number | null;
+  taxMode?: "INCLUSIVE" | "EXCLUSIVE" | null;
+  taxTreatment?: "STANDARD" | "ZERO_RATED" | "EXEMPT" | null;
+};
 type FolioPayment = { id: string; amount: string | number };
 type Folio = { lineItems: FolioLineItem[]; payments: FolioPayment[] };
 type Stay = {
@@ -36,7 +45,7 @@ type Stay = {
   customer: { firstName: string; lastName: string | null };
   folio: Folio | null;
 };
-type UnitOption = { id: string; name: string; systemKey?: string | null };
+type UnitOption = { id: string; name: string; systemKey?: string | null; measurementKind?: string | null };
 type RateOption = { id: string; name: string; price: string | number; unit: UnitOption | null };
 type AuditEmployee = { id: string; firstName: string; lastName: string } | null;
 type Room = {
@@ -72,6 +81,9 @@ type RoomType = {
   capacity: number;
   baseRate: string | number;
   amenities: string[];
+  taxRate: string | number | null;
+  taxMode: "INCLUSIVE" | "EXCLUSIVE" | null;
+  taxTreatment: "STANDARD" | "ZERO_RATED" | "EXEMPT" | null;
   isActive: boolean;
   priceUnit: UnitOption | null;
   rates: RateOption[];
@@ -88,6 +100,8 @@ type TypeForm = {
   price: string;
   unitId: string;
   amenities: string;
+  taxChoice: TaxChoice;
+  taxRate: string;
   isActive: boolean;
   variants: VariantRow[];
 };
@@ -100,6 +114,8 @@ const emptyTypeForm: TypeForm = {
   price: "",
   unitId: "",
   amenities: "",
+  taxChoice: "INHERIT",
+  taxRate: "",
   isActive: true,
   variants: [],
 };
@@ -141,10 +157,21 @@ function typePriceSummary(type: { baseRate: string | number; priceUnit?: UnitOpt
 // to this stay), not a hand-rolled approximation — replaces the old
 // POS-orders-only sum, which never included room charges and ignored
 // discount/tax entirely.
-const folioTotal = (stay?: Stay) => {
+const folioTotal = (stay: Stay | undefined, bizTax: BizTax | null) => {
   const folio = stay?.folio;
   if (!folio) return 0;
-  const charges = folio.lineItems.reduce((sum, item) => sum + Number(item.amount) * item.quantity, 0);
+  const fallbackRate = bizTax?.taxRate != null ? Number(bizTax.taxRate) : 16;
+  const fallbackMode = bizTax?.taxMode ?? "INCLUSIVE";
+  const fallbackTreatment = bizTax?.taxTreatment ?? "STANDARD";
+  const rows = folio.lineItems.map((item) => ({
+    sub: Number(item.amount) * item.quantity,
+    tax: {
+      rate: item.taxRate != null ? Number(item.taxRate) : fallbackRate,
+      mode: item.taxMode ?? fallbackMode,
+      treatment: item.taxTreatment ?? fallbackTreatment,
+    },
+  }));
+  const charges = computeFinancialsFromRows(rows, 0).total;
   const paid = folio.payments.reduce((sum, payment) => sum + Number(payment.amount), 0);
   return charges - paid;
 };
@@ -168,6 +195,7 @@ export default function Rooms() {
   const [editingType, setEditingType] = useState<RoomType | null>(null);
   const [typeForm, setTypeForm] = useState<TypeForm>(emptyTypeForm);
   const [units, setUnits] = useState<UnitOption[]>([]);
+  const [bizTax, setBizTax] = useState<BizTax | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -181,8 +209,11 @@ export default function Rooms() {
         api<{ types: RoomType[] }>("/rooms/types"),
         api<{ units: UnitOption[] }>("/units-of-measure"),
       ]);
-      // Rooms are priced per Hour / Night / Day — the built-in units the system can bill by.
-      setUnits(unitResponse.units.filter((u) => u.systemKey));
+      // Any unit works for room pricing, built-in or a property's own — the
+      // only requirement is that it declares how it's measured (Hours,
+      // Minutes, Days, Headcount or Each), since that drives the check-in/
+      // check-out (or attendee count) auto-calculation.
+      setUnits(unitResponse.units.filter((u) => u.measurementKind));
       setRooms(response.rooms);
       setSummary(response.summary);
       setRoomTypes(typeResponse.types);
@@ -196,6 +227,9 @@ export default function Rooms() {
   useEffect(() => {
     void load();
   }, [load]);
+  useEffect(() => {
+    api<{ profile: BizTax | null }>("/business-profile").then((r) => setBizTax(r.profile)).catch(() => {});
+  }, []);
 
   const visibleRooms = useMemo(
     () =>
@@ -321,6 +355,8 @@ export default function Rooms() {
       price: type.rates.length === 0 ? String(Number(type.baseRate)) : "",
       unitId: type.priceUnit?.id ?? "",
       amenities: type.amenities.join(", "),
+      taxChoice: taxChoiceOf(type),
+      taxRate: type.taxRate != null ? String(Number(type.taxRate)) : "",
       isActive: type.isActive,
       variants: type.rates.map((r) => ({ name: r.name, price: String(Number(r.price)), unitId: r.unit?.id ?? "" })),
     });
@@ -361,6 +397,7 @@ export default function Rooms() {
               .filter(Boolean),
             rates: typeForm.variants.map((v) => ({ name: v.name.trim(), price: Number(v.price), unitId: v.unitId })),
             ...(hasVariants ? {} : { baseRate: Number(typeForm.price), priceUnitId: typeForm.unitId }),
+            ...taxPayload(typeForm.taxChoice, typeForm.taxRate),
           }),
         },
       );
@@ -449,6 +486,7 @@ export default function Rooms() {
               <RoomCard
                 key={room.id}
                 room={room}
+                bizTax={bizTax}
                 onEdit={() => openEdit(room)}
                 onDelete={() => void removeRoom(room)}
                 onStatus={(status) => void quickUpdate(room, { status })}
@@ -570,6 +608,23 @@ export default function Rooms() {
                 <input required min="1" type="number" value={typeForm.capacity} onChange={(e) => setTypeForm({ ...typeForm, capacity: e.target.value })} placeholder="Guest capacity, e.g. 20" className="input" />
                 <input value={typeForm.amenities} onChange={(e) => setTypeForm({ ...typeForm, amenities: e.target.value })} placeholder="Amenities, comma separated" className="input" />
                 <div>
+                  <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Tax</p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">Applies to every rate under this type — e.g. VAT-exclusive rates from a client rate sheet.</p>
+                  <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+                    <select className="input" value={typeForm.taxChoice} onChange={(e) => setTypeForm({ ...typeForm, taxChoice: e.target.value as TaxChoice })}>
+                      {TAX_CHOICES.map((c) => <option key={c.key} value={c.key}>{taxChoiceLabel(c, bizTax)}</option>)}
+                    </select>
+                    <input
+                      type="number" min="0" max="100" step="0.01"
+                      placeholder={typeForm.taxChoice.startsWith("STANDARD") ? `Blank = ${Number(bizTax?.taxRate ?? 16)}%` : "Not used"}
+                      value={typeForm.taxChoice.startsWith("STANDARD") ? typeForm.taxRate : ""}
+                      disabled={!typeForm.taxChoice.startsWith("STANDARD")}
+                      onChange={(e) => setTypeForm({ ...typeForm, taxRate: e.target.value })}
+                      className="input"
+                    />
+                  </div>
+                </div>
+                <div>
                   <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Rate variants</p>
                   <p className="mt-0.5 text-[11px] text-muted-foreground">e.g. Bed only · KSh 3,500 · Night. With variants, guests are sold one of them and the single price below is not used.</p>
                   <div className="mt-2 space-y-2">
@@ -674,19 +729,21 @@ export default function Rooms() {
 
 function RoomCard({
   room,
+  bizTax,
   onEdit,
   onDelete,
   onStatus,
   onCleanliness,
 }: {
   room: Room;
+  bizTax: BizTax | null;
   onEdit: () => void;
   onDelete: () => void;
   onStatus: (status: RoomStatus) => void;
   onCleanliness: (cleanliness: Cleanliness) => void;
 }) {
   const stay = room.reservations[0];
-  const charge = folioTotal(stay);
+  const charge = folioTotal(stay, bizTax);
   // Occupied or dirty means the room can't be sold right now — make that
   // conspicuous instead of blending in with the other status colors.
   const unavailable = room.status === "OCCUPIED" || room.cleanliness === "DIRTY";

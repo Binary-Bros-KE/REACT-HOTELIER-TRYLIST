@@ -7,6 +7,8 @@ import PageBanner from '@/components/ui/PageBanner'
 import ModalShell from '@/components/ui/ModalShell'
 import StatusPill, { type PillTone } from '@/components/ui/StatusPill'
 import ActionButton from '@/components/ui/ActionButton'
+import { computeFinancialsFromRows } from '@/lib/orderTotals'
+import type { BizTax } from '@/lib/taxChoices'
 
 const titleCase = (value: string) => value.charAt(0) + value.slice(1).toLowerCase().replaceAll('_', ' ')
 const formatKes = (value: number) => `KSh ${value.toLocaleString('en-KE', { maximumFractionDigits: 2 })}`
@@ -14,7 +16,16 @@ const formatKes = (value: number) => `KSh ${value.toLocaleString('en-KE', { maxi
 type ReservationStatus = 'PENDING' | 'CONFIRMED' | 'CHECKED_IN' | 'CHECKED_OUT' | 'CANCELLED' | 'NO_SHOW'
 const STATUSES: ReservationStatus[] = ['PENDING', 'CONFIRMED', 'CHECKED_IN', 'CHECKED_OUT', 'CANCELLED', 'NO_SHOW']
 
-type FolioLineItem = { id: string; source: string; label: string; amount: string | number; quantity: number }
+type FolioLineItem = {
+  id: string
+  source: string
+  label: string
+  amount: string | number
+  quantity: number
+  taxRate?: string | number | null
+  taxMode?: 'INCLUSIVE' | 'EXCLUSIVE' | null
+  taxTreatment?: 'STANDARD' | 'ZERO_RATED' | 'EXEMPT' | null
+}
 type FolioPayment = { id: string; kind: 'DEPOSIT' | 'SETTLEMENT'; paymentMethod: { id: string; name: string }; amount: string | number; reference: string | null; createdAt: string }
 type Folio = { id: string; folioNo: string; status: 'OPEN' | 'SETTLED'; lineItems: FolioLineItem[]; payments: FolioPayment[]; creditAmount?: string | number; creditReason?: string | null; creditExpectedAt?: string | null; creditOutstanding?: number }
 type Guest = { id: string; name: string; idNumber: string | null; addedAt: string }
@@ -43,11 +54,27 @@ type Stay = {
   activities: Activity[]
 }
 
-function folioTotals(folio: Folio | null) {
-  if (!folio) return { charges: 0, paid: 0, balance: 0 }
-  const charges = folio.lineItems.reduce((sum, item) => sum + Number(item.amount) * item.quantity, 0)
+// Live mirror of the server's folioTotals (reception.routes.ts): each line is
+// its own signed amount (a DISCOUNT line already negative), taxed from its
+// own snapshot with the property default as a fallback for lines saved
+// before this existed. `charges` (== fin.total) only grows for EXCLUSIVE-tax
+// lines — an INCLUSIVE line (the property default) totals exactly as before.
+function folioTotals(folio: Folio | null, bizTax: BizTax | null) {
+  if (!folio) return { charges: 0, paid: 0, balance: 0, tax: null }
+  const fallbackRate = bizTax?.taxRate != null ? Number(bizTax.taxRate) : 16
+  const fallbackMode = bizTax?.taxMode ?? 'INCLUSIVE'
+  const fallbackTreatment = bizTax?.taxTreatment ?? 'STANDARD'
+  const rows = folio.lineItems.map((item) => ({
+    sub: Number(item.amount) * item.quantity,
+    tax: {
+      rate: item.taxRate != null ? Number(item.taxRate) : fallbackRate,
+      mode: item.taxMode ?? fallbackMode,
+      treatment: item.taxTreatment ?? fallbackTreatment,
+    },
+  }))
+  const fin = computeFinancialsFromRows(rows, 0)
   const paid = folio.payments.reduce((sum, p) => sum + Number(p.amount), 0)
-  return { charges, paid, balance: charges - paid }
+  return { charges: fin.total, paid, balance: fin.total - paid, tax: fin }
 }
 
 const STATUS_TONE: Record<ReservationStatus, PillTone> = {
@@ -77,6 +104,11 @@ export default function Stays() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [selected, setSelected] = useState<Stay | null>(null)
+  const [bizTax, setBizTax] = useState<BizTax | null>(null)
+
+  useEffect(() => {
+    api<{ profile: BizTax | null }>('/business-profile').then((r) => setBizTax(r.profile)).catch(() => {})
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -152,7 +184,7 @@ export default function Stays() {
               </thead>
               <tbody className="divide-y">
                 {stays.map((stay) => {
-                  const totals = folioTotals(stay.folio)
+                  const totals = folioTotals(stay.folio, bizTax)
                   const info = deskOf(stay)
                   return (
                     <tr key={stay.id} className="cursor-pointer align-middle transition even:bg-muted/30 hover:bg-muted/60" onClick={() => setSelected(stay)}>
@@ -193,7 +225,11 @@ function SectionTitle({ children }: { children: string }) {
 
 function StayDetailModal({ stay, onClose, onChanged }: { stay: Stay; onClose: () => void; onChanged: () => void }) {
   const toast = useToast()
-  const totals = folioTotals(stay.folio)
+  const [bizTax, setBizTax] = useState<BizTax | null>(null)
+  useEffect(() => {
+    api<{ profile: BizTax | null }>('/business-profile').then((r) => setBizTax(r.profile)).catch(() => {})
+  }, [])
+  const totals = folioTotals(stay.folio, bizTax)
   const info = deskOf(stay)
   const credit = Number(stay.folio?.creditAmount ?? 0)
   const owing = stay.folio?.creditOutstanding ?? 0
@@ -337,6 +373,12 @@ function StayDetailModal({ stay, onClose, onChanged }: { stay: Stay; onClose: ()
                 </div>
               ))}
             </div>
+            {totals.tax && totals.tax.taxAmount > 0.005 && (
+              <p className="text-xs text-muted-foreground">
+                Includes {formatKes(totals.tax.taxAmount)} tax on {formatKes(totals.tax.net)} net
+                {totals.tax.taxLines.length > 1 ? ` (${totals.tax.taxLines.map((l) => l.label).join(', ')})` : ` (${totals.tax.taxLines[0]?.label})`}
+              </p>
+            )}
           </>
         )}
 

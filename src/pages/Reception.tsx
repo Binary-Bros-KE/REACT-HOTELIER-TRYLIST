@@ -29,6 +29,8 @@ import { hasVariants, roomPricing, roomPriceHint, toApiDate, unitWord, type Room
 import GroupCheckInModal from "@/components/reception/GroupCheckInModal";
 import GroupModal from "@/components/reception/GroupModal";
 import RoomTermsFields, { CreditFields, defaultTerms, termsDiscount, termsFromReservation, termsInvalid, termsPayload, type RoomTerms } from "@/components/reception/RoomTerms";
+import { computeFinancialsFromRows } from "@/lib/orderTotals";
+import type { BizTax } from "@/lib/taxChoices";
 
 const RESERVATION_SOURCES = ["WALK_IN", "PHONE", "WEBSITE", "BOOKING_ENGINE", "TRAVEL_AGENT", "OTA", "CORPORATE", "OTHER"] as const;
 const CANCELLATION_REASONS = ["CHANGED_MIND", "NO_SHOW", "FOUND_ALTERNATIVE", "DUPLICATE_BOOKING", "HOTEL_CANCELLED", "OTHER"] as const;
@@ -48,7 +50,17 @@ type Room = {
   cleanliness: string;
 };
 type Service = { id: string; name: string; price: string | number; unit: { name: string } };
-type FolioLineItem = { id: string; source: "ROOM" | "SERVICE" | "POS_ORDER" | "AD_HOC" | "DISCOUNT"; label: string; amount: string | number; quantity: number; createdAt: string };
+type FolioLineItem = {
+  id: string;
+  source: "ROOM" | "SERVICE" | "POS_ORDER" | "AD_HOC" | "DISCOUNT";
+  label: string;
+  amount: string | number;
+  quantity: number;
+  createdAt: string;
+  taxRate?: string | number | null;
+  taxMode?: "INCLUSIVE" | "EXCLUSIVE" | null;
+  taxTreatment?: "STANDARD" | "ZERO_RATED" | "EXEMPT" | null;
+};
 type PaymentMethod = { id: string; name: string; requiresReference: boolean };
 type FolioPayment = { id: string; kind: "DEPOSIT" | "SETTLEMENT"; paymentMethod: PaymentMethod; amount: string | number; reference: string | null; createdAt: string };
 type Folio = { id: string; folioNo: string; status: "OPEN" | "SETTLED"; lineItems: FolioLineItem[]; payments: FolioPayment[]; creditAmount?: string | number; creditReason?: string | null; creditExpectedAt?: string | null; creditOutstanding?: number };
@@ -103,11 +115,24 @@ const date = (offset = 0) => {
   return d.toISOString().slice(0, 10);
 };
 const formatKes = (value: number) => `KSh ${value.toLocaleString("en-KE", { maximumFractionDigits: 2 })}`;
-function folioTotals(folio: Folio | null) {
-  if (!folio) return { charges: 0, paid: 0, balance: 0 };
-  const charges = folio.lineItems.reduce((sum, item) => sum + Number(item.amount) * item.quantity, 0);
+// Live mirror of the server's folioTotals (reception.routes.ts) — see the
+// identical helper in Stays.tsx for the reasoning.
+function folioTotals(folio: Folio | null, bizTax: BizTax | null) {
+  if (!folio) return { charges: 0, paid: 0, balance: 0, tax: null };
+  const fallbackRate = bizTax?.taxRate != null ? Number(bizTax.taxRate) : 16;
+  const fallbackMode = bizTax?.taxMode ?? "INCLUSIVE";
+  const fallbackTreatment = bizTax?.taxTreatment ?? "STANDARD";
+  const rows = folio.lineItems.map((item) => ({
+    sub: Number(item.amount) * item.quantity,
+    tax: {
+      rate: item.taxRate != null ? Number(item.taxRate) : fallbackRate,
+      mode: item.taxMode ?? fallbackMode,
+      treatment: item.taxTreatment ?? fallbackTreatment,
+    },
+  }));
+  const fin = computeFinancialsFromRows(rows, 0);
   const paid = folio.payments.reduce((sum, p) => sum + Number(p.amount), 0);
-  return { charges, paid, balance: charges - paid };
+  return { charges: fin.total, paid, balance: fin.total - paid, tax: fin };
 }
 
 /** api() that also tells the server which reception desk (location) this action is happening at. */
@@ -869,8 +894,10 @@ function StayModal({ reservation, at, onClose, onChanged, onCheckedOut }: { rese
   const [termsOpen, setTermsOpen] = useState(false);
   const [terms, setTerms] = useState<RoomTerms>(termsFromReservation(reservation));
   const [busy, setBusy] = useState(false);
+  const [bizTax, setBizTax] = useState<BizTax | null>(null);
 
   useEffect(() => {
+    api<{ profile: BizTax | null }>("/business-profile").then((r) => setBizTax(r.profile)).catch(() => {});
     api<{ services: Service[] }>("/services").then((r) => setServices(r.services)).catch(() => {});
     api<{ methods: (PaymentMethod & { code: string })[] }>("/payment-methods?activeOnly=true").then((r) => {
       // Room Charge only makes sense as a way to bill a POS order to this
@@ -883,7 +910,7 @@ function StayModal({ reservation, at, onClose, onChanged, onCheckedOut }: { rese
 
   const selectedPayMethod = paymentMethods.find((m) => m.id === payMethodId);
 
-  const totals = folioTotals(reservation.folio);
+  const totals = folioTotals(reservation.folio, bizTax);
   const enteredPay = Number(payAmount) || 0;
   // Whatever the guest isn't paying now is left owing — completed on credit.
   const onCredit = Math.round((totals.balance - enteredPay) * 100) / 100;
@@ -1060,6 +1087,9 @@ function StayModal({ reservation, at, onClose, onChanged, onCheckedOut }: { rese
                 <div className="flex justify-between"><span>Charges</span><span>{formatKes(totals.charges)}</span></div>
                 <div className="flex justify-between text-success"><span>Paid</span><span>-{formatKes(totals.paid)}</span></div>
                 <div className="mt-1 flex justify-between border-t pt-1 font-bold"><span>Balance</span><span>{formatKes(totals.balance)}</span></div>
+                {totals.tax && totals.tax.taxAmount > 0.005 && (
+                  <p className="mt-1 text-xs text-muted-foreground">Includes {formatKes(totals.tax.taxAmount)} tax</p>
+                )}
               </div>
 
               <div className="rounded-sm border p-3">
@@ -1136,6 +1166,9 @@ function StayModal({ reservation, at, onClose, onChanged, onCheckedOut }: { rese
                 <div className="flex justify-between"><span>Total charges</span><span>{formatKes(totals.charges)}</span></div>
                 <div className="flex justify-between text-success"><span>Paid so far</span><span>-{formatKes(totals.paid)}</span></div>
                 <div className="mt-1 flex justify-between border-t pt-1 font-bold"><span>Balance due</span><span>{formatKes(totals.balance)}</span></div>
+                {totals.tax && totals.tax.taxAmount > 0.005 && (
+                  <p className="mt-1 text-xs text-muted-foreground">Includes {formatKes(totals.tax.taxAmount)} tax</p>
+                )}
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <select className="input" value={payMethodId} onChange={(e) => setPayMethodId(e.target.value)}>

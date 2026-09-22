@@ -9,13 +9,22 @@ import type { GroupInvoiceDocData } from '@/components/documents/pdf/GroupInvoic
 import { CreditFields, defaultTerms, termsInvalid, termsPayload, type RoomTerms } from '@/components/reception/RoomTerms'
 import RoomTermsFields from '@/components/reception/RoomTerms'
 import GroupRoomsBuilder, { rowsMissingRate, rowsToPayload, type PickCustomer, type PickRoom, type RoomRow } from '@/components/reception/GroupRoomsBuilder'
+import type { BizTax } from '@/lib/taxChoices'
 
 // The PDF renderer is heavy — only load it when an invoice is actually opened.
 const DocumentViewer = lazy(() => import('@/components/documents/DocumentViewer'))
 
 type Api = <T>(path: string, init?: RequestInit) => Promise<T>
 
-type Line = { amount: string | number; quantity: number; source: string; label: string }
+type Line = {
+  amount: string | number
+  quantity: number
+  source: string
+  label: string
+  taxRate?: string | number | null
+  taxMode?: 'INCLUSIVE' | 'EXCLUSIVE' | null
+  taxTreatment?: 'STANDARD' | 'ZERO_RATED' | 'EXEMPT' | null
+}
 type GroupReservation = {
   id: string
   reservationNo: string
@@ -52,11 +61,27 @@ const STATUS_STYLE: Record<GroupReservation['status'], string> = {
 }
 const titleCase = (value: string) => value.charAt(0) + value.slice(1).toLowerCase().replaceAll('_', ' ')
 
-const lineTotals = (lines: Line[]) => {
-  const values = lines.map((l) => Number(l.amount) * l.quantity)
+// Gross (tax-inclusive, what the guest is actually charged) per line, split
+// by sign into charges vs. discounts — same tax resolution as the server's
+// folioTotals (item's own snapshot, else the property default).
+function lineGross(line: Line, bizTax: BizTax | null) {
+  const sub = Number(line.amount) * line.quantity
+  const rate = line.taxRate != null ? Number(line.taxRate) : bizTax?.taxRate != null ? Number(bizTax.taxRate) : 16
+  const mode = line.taxMode ?? bizTax?.taxMode ?? 'INCLUSIVE'
+  const treatment = line.taxTreatment ?? bizTax?.taxTreatment ?? 'STANDARD'
+  if (treatment === 'EXEMPT' || treatment === 'ZERO_RATED' || rate <= 0) return sub
+  return mode === 'EXCLUSIVE' ? sub * (1 + rate / 100) : sub
+}
+const lineTotals = (lines: Line[], bizTax: BizTax | null) => {
+  const values = lines.map((l) => lineGross(l, bizTax))
   return { charges: round2(values.filter((v) => v > 0).reduce((a, b) => a + b, 0)), discounts: round2(-values.filter((v) => v < 0).reduce((a, b) => a + b, 0)) }
 }
-const balanceOf = (r: GroupReservation) => (r.folio ? round2(r.folio.lineItems.reduce((s, l) => s + Number(l.amount) * l.quantity, 0) - r.folio.payments.reduce((s, p) => s + Number(p.amount), 0)) : 0)
+const balanceOf = (r: GroupReservation, bizTax: BizTax | null) => {
+  if (!r.folio) return 0
+  const charges = r.folio.lineItems.reduce((s, l) => s + lineGross(l, bizTax), 0)
+  const paid = r.folio.payments.reduce((s, p) => s + Number(p.amount), 0)
+  return round2(charges - paid)
+}
 
 function PaymentRows({ methods, rows, onChange }: { methods: Method[]; rows: PayRow[]; onChange: (rows: PayRow[]) => void }) {
   const set = (key: string, patch: Partial<PayRow>) => onChange(rows.map((r) => (r.key === key ? { ...r, ...patch } : r)))
@@ -95,6 +120,7 @@ export default function GroupModal({ groupId, at, rooms, customers, onClose, onC
   const [tab, setTab] = useState<'rooms' | 'add' | 'checkout' | 'credit'>('rooms')
   const [methods, setMethods] = useState<Method[]>([])
   const [profile, setProfile] = useState<DocProfile>(null)
+  const [bizTax, setBizTax] = useState<BizTax | null>(null)
   const [invoiceOpen, setInvoiceOpen] = useState(false)
   const [busy, setBusy] = useState('')
 
@@ -132,6 +158,7 @@ export default function GroupModal({ groupId, at, rooms, customers, onClose, onC
       setCreditPayments(fresh())
     }).catch(() => {})
     api<{ profile: DocProfile }>('/business-profile').then((r) => setProfile(r.profile)).catch(() => {})
+    api<{ profile: BizTax | null }>('/business-profile').then((r) => setBizTax(r.profile)).catch(() => {})
   }, [])
 
   // Every checked-in room is selected for checkout by default (and again after each reload).
@@ -142,7 +169,7 @@ export default function GroupModal({ groupId, at, rooms, customers, onClose, onC
   const live = useMemo(() => (group?.reservations ?? []).filter((r) => r.status !== 'CANCELLED' && r.status !== 'NO_SHOW'), [group])
   const inHouse = live.filter((r) => r.status === 'CHECKED_IN')
   const chosen = inHouse.filter((r) => selected.has(r.id))
-  const due = round2(chosen.reduce((s, r) => s + Math.max(0, balanceOf(r)), 0))
+  const due = round2(chosen.reduce((s, r) => s + Math.max(0, balanceOf(r, bizTax)), 0))
   const payTotal = round2(payments.reduce((s, p) => s + (Number(p.amount) || 0), 0))
   const remaining = round2(due - payTotal)
   const owingRooms = live.filter((r) => (r.folio?.creditOutstanding ?? 0) > 0.01)
@@ -153,7 +180,7 @@ export default function GroupModal({ groupId, at, rooms, customers, onClose, onC
   const invoice = useMemo<GroupInvoiceDocData | null>(() => {
     if (!group) return null
     const roomsDoc = live.map((r) => {
-      const t = lineTotals(r.folio?.lineItems ?? [])
+      const t = lineTotals(r.folio?.lineItems ?? [], bizTax)
       const names = r.additionalGuests.map((g) => g.name)
       if (names.length === 0 && r.customerId !== group.customer.id) names.push(`${r.customer.firstName} ${r.customer.lastName}`.trim())
       return { room: r.room.number, roomType: r.room.roomType.name, guests: names, checkIn: r.checkIn, checkOut: r.checkOut, charges: t.charges, discounts: t.discounts, total: round2(t.charges - t.discounts), paid: round2((r.folio?.payments ?? []).reduce((s, p) => s + Number(p.amount), 0)) }
@@ -291,7 +318,7 @@ export default function GroupModal({ groupId, at, rooms, customers, onClose, onC
                         <td className="px-3 py-2.5 font-semibold">{r.room.number}<span className="block text-xs font-normal text-muted-foreground">{r.room.roomType.name} · {nightsBetween(r.checkIn, r.checkOut)} night{nightsBetween(r.checkIn, r.checkOut) === 1 ? '' : 's'}</span></td>
                         <td className="px-3 py-2.5 text-xs">{r.additionalGuests.length ? r.additionalGuests.map((g) => g.name).join(', ') : `${r.customer.firstName} ${r.customer.lastName}`.trim()}<span className="block text-muted-foreground">{r.adults} adult{r.adults === 1 ? '' : 's'}{r.children ? `, ${r.children} child${r.children === 1 ? '' : 'ren'}` : ''}</span></td>
                         <td className="px-3 py-2.5"><span className={cn('inline-block border border-dashed px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider', STATUS_STYLE[r.status])}>{titleCase(r.status)}</span></td>
-                        <td className="px-3 py-2.5 text-right tabular-nums">{kes(Math.max(0, balanceOf(r)))}{(r.folio?.creditOutstanding ?? 0) > 0.01 && <span className="block text-[11px] text-warning">on credit</span>}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums">{kes(Math.max(0, balanceOf(r, bizTax)))}{(r.folio?.creditOutstanding ?? 0) > 0.01 && <span className="block text-[11px] text-warning">on credit</span>}</td>
                         <td className="px-3 py-2.5 text-right">
                           {r.status === 'CHECKED_IN' && <button type="button" onClick={() => onOpenStay(r.id)} className="text-xs font-semibold text-secondary hover:underline">Manage stay</button>}
                           {(r.status === 'PENDING' || r.status === 'CONFIRMED') && <button type="button" disabled={busy === r.id} onClick={() => void run(r.id, () => at(`/reception/reservations/${r.id}/check-in`, { method: 'PATCH' }), `Room ${r.room.number} checked in.`)} className="text-xs font-semibold text-secondary hover:underline">Check in</button>}
@@ -344,7 +371,7 @@ export default function GroupModal({ groupId, at, rooms, customers, onClose, onC
                     {inHouse.map((r) => (
                       <label key={r.id} className={cn('flex cursor-pointer items-center justify-between gap-2 border px-3 py-2 text-sm', selected.has(r.id) && 'border-secondary bg-secondary/5')}>
                         <span className="flex items-center gap-2"><input type="checkbox" checked={selected.has(r.id)} onChange={() => setSelected((cur) => { const next = new Set(cur); if (next.has(r.id)) next.delete(r.id); else next.add(r.id); return next })} /> <span className="font-semibold">Room {r.room.number}</span></span>
-                        <span className="tabular-nums text-muted-foreground">{kes(Math.max(0, balanceOf(r)))}</span>
+                        <span className="tabular-nums text-muted-foreground">{kes(Math.max(0, balanceOf(r, bizTax)))}</span>
                       </label>
                     ))}
                   </div>

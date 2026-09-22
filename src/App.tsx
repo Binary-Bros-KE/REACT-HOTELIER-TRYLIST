@@ -20,6 +20,7 @@ import RolesAndPermissions from "@/pages/RolesAndPermissions";
 import Shifts from "@/pages/Shifts";
 import Attendance from "@/pages/Attendance";
 import Categories from "@/pages/Categories";
+import UnitsOfMeasure from "@/pages/UnitsOfMeasure";
 import Recipes from "@/pages/Recipes";
 import MenuCategories from "@/pages/MenuCategories";
 import MenuItems from "@/pages/MenuItems";
@@ -211,6 +212,7 @@ function App() {
         />
         <Route path="/inventory/dispatch-requests" element={<DispatchRequests />} />
         <Route path="/inventory/categories" element={<Categories />} />
+        <Route path="/inventory/units-of-measure" element={<UnitsOfMeasure />} />
         <Route path="/kitchen/recipes" element={<Recipes />} />
         <Route path="/menu/categories" element={<MenuCategories />} />
         <Route path="/menu/items" element={<MenuItems />} />

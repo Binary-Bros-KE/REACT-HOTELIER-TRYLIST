@@ -26,6 +26,7 @@ import {
   LuWallet,
   LuBriefcase,
   LuTags,
+  LuRuler,
   LuWarehouse,
   LuPackageCheck,
   LuBox,
@@ -169,6 +170,7 @@ export const navigation: NavGroup[] = [
     section: 'INVENTORY',
     items: [
       { label: 'Categories', href: '/inventory/categories', icon: LuTags, moduleKey: 'STORE' },
+      { label: 'Units of Measure', href: '/inventory/units-of-measure', icon: LuRuler },
       { label: 'Products', href: '/products', icon: LuPackage, moduleKey: 'PRODUCTS' },
       { label: 'Store', href: '/store', icon: LuWarehouse, moduleKey: 'STORE' },
       { label: 'Dispatch Requests', href: '/inventory/dispatch-requests', icon: LuPackageCheck, permission: 'STORE_DISPATCH' },
