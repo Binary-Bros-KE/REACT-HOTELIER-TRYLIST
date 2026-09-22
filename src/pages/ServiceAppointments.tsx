@@ -9,13 +9,18 @@ import {
   LuIdCard,
   LuLoaderCircle,
   LuPencil,
-  LuPlus,
+  LuPrinter,
   LuTrash2,
   LuUsers,
+  LuWallet,
 } from "react-icons/lu";
 import { api } from "@/lib/api";
 import SharedStatCard from "@/components/ui/StatCard";
 import Button from "@/components/ui/Button";
+import { useToast } from "@/components/ui/Toast";
+import OrderSettlementPanel from "@/components/pos/OrderSettlementPanel";
+import ReceiptPreviewModal from "@/components/pos/ReceiptPreviewModal";
+import type { ReceiptProfile } from "@/components/pos/OrderReceipt";
 
 type Customer = {
   id: string;
@@ -23,11 +28,19 @@ type Customer = {
   lastName: string;
   phone: string | null;
 };
+type ServiceVariant = {
+  id: string;
+  name: string;
+  price: string | number;
+  durationMinutes: number | null;
+};
 type Service = {
   id: string;
   name: string;
-  durationMinutes: number;
+  durationMinutes: number | null;
   price: string | number;
+  variants: ServiceVariant[];
+  locations: { id: string }[];
 };
 type Provider = { id: string; name: string; specialty: string | null };
 type Schedule = {
@@ -47,7 +60,8 @@ type Membership = {
   plan: Plan;
   customer: Customer;
 };
-type PaymentMethod = { id: string; name: string };
+type PaymentMethod = { id: string; name: string; requiresReference: boolean };
+type Location = { id: string; name: string };
 type MembershipPayment = {
   id: string;
   amount: string | number;
@@ -63,20 +77,22 @@ type Status =
   | "COMPLETED"
   | "CANCELLED"
   | "NO_SHOW";
-type PaymentStatus = "PENDING" | "PAID" | "REFUNDED" | "FAILED";
+type Order = { id: string; orderNumber: number; status: string };
 type Appointment = {
   id: string;
   startsAt: string;
   endsAt: string;
   status: Status;
   amount: string | number;
-  paymentStatus: PaymentStatus;
   notes: string | null;
   customer: Customer;
   service: Service;
+  serviceVariant: ServiceVariant | null;
   provider: Provider;
   membership: { id: string; plan: Plan } | null;
   paymentMethod: PaymentMethod | null;
+  location: Location | null;
+  order: Order | null;
 };
 type Summary = {
   total: number;
@@ -87,29 +103,40 @@ type Summary = {
 type Form = {
   customerId: string;
   serviceId: string;
+  serviceVariantId: string;
   providerId: string;
   membershipId: string;
   paymentMethodId: string;
+  locationId: string;
   startsAt: string;
   status: Status;
-  paymentStatus: PaymentStatus;
   notes: string;
 };
 const blank: Form = {
   customerId: "",
   serviceId: "",
+  serviceVariantId: "",
   providerId: "",
   membershipId: "",
   paymentMethodId: "",
+  locationId: "",
   startsAt: "",
   status: "BOOKED",
-  paymentStatus: "PENDING",
   notes: "",
 };
 const money = (value: number) =>
   `KSh ${value.toLocaleString("en-KE", { maximumFractionDigits: 2 })}`;
+const STATUS_LABEL: Record<Status, string> = {
+  BOOKED: "Booked",
+  CONFIRMED: "Confirmed",
+  IN_PROGRESS: "In progress",
+  COMPLETED: "Completed",
+  CANCELLED: "Cancelled",
+  NO_SHOW: "No-show",
+};
 
 export default function ServiceAppointments() {
+  const toast = useToast();
   const [appointments, setAppointments] = useState<Appointment[]>([]),
     [customers, setCustomers] = useState<Customer[]>([]),
     [services, setServices] = useState<Service[]>([]),
@@ -117,6 +144,8 @@ export default function ServiceAppointments() {
     [schedules, setSchedules] = useState<Schedule[]>([]),
     [memberships, setMemberships] = useState<Membership[]>([]),
     [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]),
+    [locations, setLocations] = useState<Location[]>([]),
+    [profile, setProfile] = useState<ReceiptProfile | null>(null),
     [membershipPayments, setMembershipPayments] = useState<MembershipPayment[]>(
       [],
     );
@@ -131,12 +160,15 @@ export default function ServiceAppointments() {
     [open, setOpen] = useState(false),
     [loading, setLoading] = useState(true),
     [saving, setSaving] = useState(false),
+    [completingId, setCompletingId] = useState(""),
     [error, setError] = useState(""),
-    [notice, setNotice] = useState("");
+    [notice, setNotice] = useState(""),
+    [settlingOrderId, setSettlingOrderId] = useState<string | null>(null),
+    [receiptOrderId, setReceiptOrderId] = useState<string | null>(null);
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [a, o] = await Promise.all([
+      const [a, o, p] = await Promise.all([
         api<{ appointments: Appointment[]; summary: Summary }>(
           "/service-center/appointments",
         ),
@@ -148,7 +180,9 @@ export default function ServiceAppointments() {
           memberships: Membership[];
           paymentMethods: PaymentMethod[];
           membershipPayments: MembershipPayment[];
+          locations: Location[];
         }>("/service-center/appointment-options"),
+        api<{ profile: ReceiptProfile | null }>("/business-profile"),
       ]);
       setAppointments(a.appointments);
       setSummary(a.summary);
@@ -158,7 +192,9 @@ export default function ServiceAppointments() {
       setSchedules(o.schedules);
       setMemberships(o.memberships);
       setPaymentMethods(o.paymentMethods);
+      setLocations(o.locations);
       setMembershipPayments(o.membershipPayments);
+      setProfile(p.profile);
       setError("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load appointments");
@@ -179,6 +215,17 @@ export default function ServiceAppointments() {
   const providerSchedules = schedules.filter(
     (s) => s.providerId === form.providerId,
   );
+  const selectedService = services.find((s) => s.id === form.serviceId);
+  const selectedVariant = selectedService?.variants.find(
+    (v) => v.id === form.serviceVariantId,
+  );
+  const previewMinutes =
+    selectedVariant?.durationMinutes ?? selectedService?.durationMinutes ?? null;
+  const previewEndsAt =
+    form.startsAt && previewMinutes
+      ? new Date(new Date(form.startsAt).getTime() + previewMinutes * 60000)
+      : null;
+
   function create() {
     setEditing(null);
     setForm({
@@ -186,7 +233,6 @@ export default function ServiceAppointments() {
       customerId: customers[0]?.id ?? "",
       serviceId: services[0]?.id ?? "",
       providerId: providers[0]?.id ?? "",
-      paymentMethodId: paymentMethods[0]?.id ?? "",
       startsAt: new Date(Date.now() + 3600000).toISOString().slice(0, 16),
     });
     setOpen(true);
@@ -196,12 +242,13 @@ export default function ServiceAppointments() {
     setForm({
       customerId: a.customer.id,
       serviceId: a.service.id,
+      serviceVariantId: a.serviceVariant?.id ?? "",
       providerId: a.provider.id,
       membershipId: a.membership?.id ?? "",
       paymentMethodId: a.paymentMethod?.id ?? "",
+      locationId: a.location?.id ?? "",
       startsAt: new Date(a.startsAt).toISOString().slice(0, 16),
       status: a.status,
-      paymentStatus: a.paymentStatus,
       notes: a.notes ?? "",
     });
     setOpen(true);
@@ -219,8 +266,10 @@ export default function ServiceAppointments() {
           method: editing ? "PATCH" : "POST",
           body: JSON.stringify({
             ...form,
+            serviceVariantId: form.serviceVariantId || null,
             membershipId: form.membershipId || null,
             paymentMethodId: form.paymentMethodId || null,
+            locationId: form.locationId || null,
             notes: form.notes || null,
           }),
         },
@@ -245,7 +294,7 @@ export default function ServiceAppointments() {
       setNotice("Appointment deleted.");
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not delete appointment");
+      toast.error(e instanceof Error ? e.message : "Could not delete appointment");
     }
   }
   async function updateStatus(a: Appointment, status: Status) {
@@ -256,7 +305,42 @@ export default function ServiceAppointments() {
       });
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not update status");
+      toast.error(e instanceof Error ? e.message : "Could not update status");
+    }
+  }
+  /** Turns a due appointment into a real, taxed sale: the service (with its option and
+   * any membership discount) is rung up, its stock is consumed, and it's either paid
+   * immediately (a payment method was already chosen and needs no reference) or handed
+   * to the settlement panel — same as completing an active service tab. */
+  async function complete(a: Appointment) {
+    setCompletingId(a.id);
+    try {
+      const { order } = await api<{ order: Order & { financials: { total: number } } }>(
+        `/service-center/appointments/${a.id}/complete`,
+        { method: "POST", body: JSON.stringify({}) },
+      );
+      await load();
+      const method = a.paymentMethod && paymentMethods.find((m) => m.id === a.paymentMethod!.id);
+      if (method && !method.requiresReference) {
+        try {
+          await api(`/pos/orders/${order.id}/payments`, {
+            method: "POST",
+            body: JSON.stringify({ method: "PAY", paymentMethodId: method.id, amount: order.financials.total }),
+          });
+          toast.success(`Completed and paid with ${method.name}.`);
+          await load();
+          return;
+        } catch (payError) {
+          toast.error(payError instanceof Error ? payError.message : "Completed, but the automatic payment failed — take payment manually");
+        }
+      } else {
+        toast.success("Service completed — take payment to finish the sale.");
+      }
+      setSettlingOrderId(order.id);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not complete this appointment");
+    } finally {
+      setCompletingId("");
     }
   }
   return (
@@ -271,12 +355,12 @@ export default function ServiceAppointments() {
               Appointments that stay connected.
             </h1>
             <p className="mt-2 text-sm text-white/70">
-              Customers, memberships, payments and provider schedules in one
-              workflow.
+              Booked from the same catalogue the till sells from — completing one
+              is a real, taxed sale with a receipt.
             </p>
           </div>
           <Button onClick={create} className="shrink-0">
-            <LuPlus /> New appointment
+            New appointment
           </Button>
         </div>
       </header>
@@ -316,21 +400,24 @@ export default function ServiceAppointments() {
                     <th className="px-5 py-3">Customer</th>
                     <th className="px-5 py-3">Service</th>
                     <th className="px-5 py-3">Schedule</th>
-                    <th className="px-5 py-3">Membership / Payment</th>
+                    <th className="px-5 py-3">Membership / Sale</th>
                     <th className="px-5 py-3">Status</th>
                     <th className="px-5 py-3"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {appointments.map((a) => (
+                  {appointments.map((a) => {
+                    const finalized = Boolean(a.order);
+                    const due = ["BOOKED", "CONFIRMED", "IN_PROGRESS"].includes(a.status) && !finalized;
+                    return (
                     <tr key={a.id} className="border-t">
                       <td className="px-5 py-4 font-semibold">
                         {a.customer.firstName} {a.customer.lastName}
                       </td>
                       <td className="px-5 py-4">
-                        <b>{a.service.name}</b>
+                        <b>{a.service.name}{a.serviceVariant ? ` · ${a.serviceVariant.name}` : ""}</b>
                         <p className="text-xs text-muted-foreground">
-                          {a.provider.name}
+                          {a.provider.name}{a.location ? ` · ${a.location.name}` : ""}
                         </p>
                       </td>
                       <td className="px-5 py-4 text-xs">
@@ -350,48 +437,75 @@ export default function ServiceAppointments() {
                       <td className="px-5 py-4 text-xs">
                         <b>{money(Number(a.amount))}</b>
                         <p className="text-muted-foreground">
-                          {a.membership?.plan.name ?? "No membership"} ·{" "}
-                          {a.paymentMethod?.name ?? "Unassigned"}
+                          {a.membership?.plan.name ?? "No membership"}
                         </p>
+                        {a.order && (
+                          <p className="mt-1 font-semibold">
+                            {a.order.status === "COMPLETED" ? (
+                              <span className="text-success">Paid · #{a.order.orderNumber}</span>
+                            ) : (
+                              <span className="text-warning">Awaiting payment · #{a.order.orderNumber}</span>
+                            )}
+                          </p>
+                        )}
                       </td>
                       <td className="px-5 py-4">
                         <select
                           value={a.status}
+                          disabled={finalized}
                           onChange={(e) =>
                             void updateStatus(a, e.target.value as Status)
                           }
-                          className="rounded-lg border bg-background p-2 text-xs font-semibold"
+                          className="rounded-lg border bg-background p-2 text-xs font-semibold disabled:opacity-60"
                         >
-                          {[
-                            "BOOKED",
-                            "CONFIRMED",
-                            "IN_PROGRESS",
-                            "COMPLETED",
-                            "CANCELLED",
-                            "NO_SHOW",
-                          ].map((s) => (
-                            <option key={s}>{s}</option>
+                          {(Object.keys(STATUS_LABEL) as Status[]).map((s) => (
+                            <option key={s} value={s}>{STATUS_LABEL[s]}</option>
                           ))}
                         </select>
                       </td>
                       <td className="px-5 py-4">
                         <div className="flex gap-1">
-                          <button
-                            onClick={() => edit(a)}
-                            className="p-2 text-secondary"
-                          >
-                            <LuPencil />
-                          </button>
-                          <button
-                            onClick={() => void remove(a)}
-                            className="p-2 text-destructive"
-                          >
-                            <LuTrash2 />
-                          </button>
+                          {due && (
+                            <button
+                              onClick={() => void complete(a)}
+                              disabled={completingId === a.id}
+                              title="Complete and sell"
+                              className="p-2 text-success disabled:opacity-50"
+                            >
+                              {completingId === a.id ? <LuLoaderCircle className="animate-spin" /> : <LuWallet />}
+                            </button>
+                          )}
+                          {a.order && a.order.status !== "COMPLETED" && (
+                            <button onClick={() => setSettlingOrderId(a.order!.id)} title="Take payment" className="p-2 text-warning">
+                              <LuWallet />
+                            </button>
+                          )}
+                          {a.order && (
+                            <button onClick={() => setReceiptOrderId(a.order!.id)} title="Receipt" className="p-2 text-secondary">
+                              <LuPrinter />
+                            </button>
+                          )}
+                          {!finalized && (
+                            <button
+                              onClick={() => edit(a)}
+                              className="p-2 text-secondary"
+                            >
+                              <LuPencil />
+                            </button>
+                          )}
+                          {!finalized && (
+                            <button
+                              onClick={() => void remove(a)}
+                              className="p-2 text-destructive"
+                            >
+                              <LuTrash2 />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -406,7 +520,7 @@ export default function ServiceAppointments() {
               {memberships.filter((m) => m.status === "ACTIVE").length}
             </p>
             <p className="text-xs text-muted-foreground">
-              Discounts apply automatically.
+              Discounts apply automatically at completion.
             </p>
           </div>
           <div className="rounded-2xl border bg-card p-5 shadow-sm">
@@ -466,17 +580,36 @@ export default function ServiceAppointments() {
                   className="input"
                   value={form.serviceId}
                   onChange={(e) =>
-                    setForm({ ...form, serviceId: e.target.value })
+                    setForm({ ...form, serviceId: e.target.value, serviceVariantId: "" })
                   }
                 >
                   {services.map((s) => (
                     <option key={s.id} value={s.id}>
-                      {s.name} · {s.durationMinutes} min ·{" "}
-                      {money(Number(s.price))}
+                      {s.name}
+                      {s.variants.length === 0
+                        ? ` · ${s.durationMinutes ?? "?"} min · ${money(Number(s.price))}`
+                        : " (choose an option below)"}
                     </option>
                   ))}
                 </select>
               </Field>
+              {selectedService && selectedService.variants.length > 0 && (
+                <Field label="Option" className="sm:col-span-2">
+                  <select
+                    required
+                    className="input"
+                    value={form.serviceVariantId}
+                    onChange={(e) => setForm({ ...form, serviceVariantId: e.target.value })}
+                  >
+                    <option value="" disabled>Select an option</option>
+                    {selectedService.variants.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.name} · {v.durationMinutes ?? "?"} min · {money(Number(v.price))}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              )}
               <Field label="Provider">
                 <select
                   required
@@ -503,7 +636,23 @@ export default function ServiceAppointments() {
                     setForm({ ...form, startsAt: e.target.value })
                   }
                 />
+                {previewEndsAt && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Ends around {previewEndsAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  </p>
+                )}
               </Field>
+              {locations.length > 0 && (
+                <Field label="Location">
+                  <select className="input" value={form.locationId} onChange={(e) => setForm({ ...form, locationId: e.target.value })}>
+                    <option value="">Not set</option>
+                    {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+                  </select>
+                  {selectedService && selectedService.locations.length > 0 && (
+                    <p className="mt-1 text-xs text-warning">This service is only offered at specific locations — choose one it's offered at.</p>
+                  )}
+                </Field>
+              )}
               <Field label="Membership">
                 <select
                   className="input"
@@ -528,53 +677,28 @@ export default function ServiceAppointments() {
                     setForm({ ...form, paymentMethodId: e.target.value })
                   }
                 >
-                  <option value="">Select later</option>
-                  {paymentMethods.map((p) => (
+                  <option value="">Decide at completion</option>
+                  {paymentMethods.filter((p) => !p.requiresReference).map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.name}
+                      {p.name} — charged automatically on completion
                     </option>
                   ))}
                 </select>
               </Field>
               {editing && (
-                <>
-                  <Field label="Appointment status">
-                    <select
-                      className="input"
-                      value={form.status}
-                      onChange={(e) =>
-                        setForm({ ...form, status: e.target.value as Status })
-                      }
-                    >
-                      {[
-                        "BOOKED",
-                        "CONFIRMED",
-                        "IN_PROGRESS",
-                        "COMPLETED",
-                        "CANCELLED",
-                        "NO_SHOW",
-                      ].map((s) => (
-                        <option key={s}>{s}</option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label="Payment status">
-                    <select
-                      className="input"
-                      value={form.paymentStatus}
-                      onChange={(e) =>
-                        setForm({
-                          ...form,
-                          paymentStatus: e.target.value as PaymentStatus,
-                        })
-                      }
-                    >
-                      {["PENDING", "PAID", "REFUNDED", "FAILED"].map((s) => (
-                        <option key={s}>{s}</option>
-                      ))}
-                    </select>
-                  </Field>
-                </>
+                <Field label="Appointment status">
+                  <select
+                    className="input"
+                    value={form.status}
+                    onChange={(e) =>
+                      setForm({ ...form, status: e.target.value as Status })
+                    }
+                  >
+                    {(Object.keys(STATUS_LABEL) as Status[]).map((s) => (
+                      <option key={s} value={s}>{STATUS_LABEL[s]}</option>
+                    ))}
+                  </select>
+                </Field>
               )}
               <div className="sm:col-span-2 rounded-xl bg-muted/60 p-3 text-xs text-muted-foreground">
                 <b>Provider availability</b>
@@ -589,7 +713,7 @@ export default function ServiceAppointments() {
                   <p>No available schedule found.</p>
                 )}
               </div>
-              <Field label="Notes">
+              <Field label="Notes" className="sm:col-span-2">
                 <textarea
                   className="input"
                   value={form.notes}
@@ -616,6 +740,22 @@ export default function ServiceAppointments() {
           </form>
         </div>
       )}
+      {settlingOrderId && (
+        <OrderSettlementPanel
+          orderId={settlingOrderId}
+          title="Appointment sale"
+          paymentMethods={paymentMethods}
+          onClose={() => setSettlingOrderId(null)}
+          onChanged={() => void load()}
+        />
+      )}
+      {receiptOrderId && profile && (
+        <ReceiptPreviewModal
+          orderId={receiptOrderId}
+          profile={profile}
+          onClose={() => setReceiptOrderId(null)}
+        />
+      )}
     </div>
   );
 }
@@ -635,12 +775,14 @@ function Metric({
 function Field({
   label,
   children,
+  className,
 }: {
   label: string;
   children: React.ReactNode;
+  className?: string;
 }) {
   return (
-    <label className="text-sm font-semibold">
+    <label className={`text-sm font-semibold ${className ?? ""}`}>
       {label}
       <span className="mt-1.5 block">{children}</span>
     </label>
