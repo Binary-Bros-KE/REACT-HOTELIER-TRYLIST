@@ -1391,24 +1391,30 @@ function ShiftProvider({ onReady, onLoaded, children }: { onReady: (ready: boole
 
   const load = useCallback(async () => {
     try {
-      const current = await api<ShiftPayload>('/shifts/current')
-      setState(current)
-      onReady(isSuperAdmin || current.session?.status === 'ACTIVE')
-      const historyResponse = isSupervisor
-        ? await api<{ sessions: ShiftRow[] }>('/shifts/sessions?status=ENDED&status=REJECTED_START&status=REJECTED_END&take=32&withSummary=true')
-        : await api<{ sessions: ShiftRow[] }>('/shifts/history')
-      setHistory(historyResponse.sessions)
+      try {
+        const current = await api<ShiftPayload>('/shifts/current')
+        setState(current)
+        onReady(isSuperAdmin || current.session?.status === 'ACTIVE')
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : 'Could not load shift status')
+        onReady(isSuperAdmin)
+      }
+      try {
+        const historyResponse = isSupervisor
+          ? await api<{ sessions: ShiftRow[] }>('/shifts/sessions?status=ENDED&status=REJECTED_START&status=REJECTED_END&take=32&withSummary=true')
+          : await api<{ sessions: ShiftRow[] }>('/shifts/history')
+        setHistory(historyResponse.sessions)
+      } catch {
+        setHistory([])
+      }
       if (isSupervisor) {
         const [pending, active] = await Promise.all([
-          api<{ sessions: ShiftRow[] }>('/shifts/approvals'),
-          api<{ sessions: ShiftRow[] }>('/shifts/active-supervised'),
+          api<{ sessions: ShiftRow[] }>('/shifts/approvals').catch(() => ({ sessions: [] })),
+          api<{ sessions: ShiftRow[] }>('/shifts/active-supervised').catch(() => ({ sessions: [] })),
         ])
         setApprovals(pending.sessions)
         setActiveStaff(active.sessions)
       }
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not load shift status')
-      onReady(false)
     } finally {
       setLoaded(true)
       onLoaded()
