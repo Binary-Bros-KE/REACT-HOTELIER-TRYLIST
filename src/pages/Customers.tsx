@@ -231,7 +231,15 @@ export default function Customers() {
     setSaving(true)
     setError('')
     try {
-      const body = { ...form, loyaltyPoints: Number(form.loyaltyPoints) || 0 }
+      const body = {
+        ...form,
+        // The backend's one required "name" field always doubles as the
+        // display name — for a business customer that's the business name,
+        // not a person, so there's no separate first/last name to collect.
+        firstName: form.customerType === 'BUSINESS' ? form.businessName.trim() : form.firstName,
+        lastName: form.customerType === 'BUSINESS' ? '' : form.lastName,
+        loyaltyPoints: Number(form.loyaltyPoints) || 0,
+      }
       await api(editing ? `/customers/${editing.id}` : '/customers', {
         method: editing ? 'PATCH' : 'POST',
         body: JSON.stringify(body),
@@ -387,42 +395,50 @@ export default function Customers() {
                   {customerStatuses.map((s) => <option key={s} value={s}>{titleCase(s)}</option>)}
                 </select>
               </Field>
-              <Field label="First Name" required><input required placeholder="e.g. Faith" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} className="input" /></Field>
-              <Field label="Last Name"><input placeholder="e.g. Wanjiru" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} className="input" /></Field>
+              {form.customerType === 'BUSINESS' ? (
+                <Field label="Business Name" required className="sm:col-span-2"><input required placeholder="e.g. Acme Traders Ltd" value={form.businessName} onChange={(e) => setForm({ ...form, businessName: e.target.value })} className="input" /></Field>
+              ) : (
+                <>
+                  <Field label="First Name" required><input required placeholder="e.g. Faith" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} className="input" /></Field>
+                  <Field label="Last Name"><input placeholder="e.g. Wanjiru" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} className="input" /></Field>
+                </>
+              )}
               <Field label="Phone" required><input required type="tel" placeholder="e.g. 0712 345 678" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="input" /></Field>
               <Field label="Email"><input type="email" placeholder="e.g. faith@example.com" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="input" /></Field>
               <Field label="Address" className="sm:col-span-2"><input placeholder="Physical address" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} className="input" /></Field>
             </FieldGroup>
 
-            <FieldGroup title="Identity">
-              <Field label="Nationality"><input placeholder="e.g. Kenyan" value={form.nationality} onChange={(e) => setForm({ ...form, nationality: e.target.value })} className="input" /></Field>
-              <Field label="Passport / ID No"><input placeholder="e.g. 30112233" value={form.idNumber} onChange={(e) => setForm({ ...form, idNumber: e.target.value })} className="input" /></Field>
-              <Field label="Occupation"><input placeholder="e.g. Accountant" value={form.occupation} onChange={(e) => setForm({ ...form, occupation: e.target.value })} className="input" /></Field>
-              <Field label="Gender">
-                <select className="input" value={form.gender} onChange={(e) => setForm({ ...form, gender: e.target.value as Gender | '' })}>
-                  <option value="">Not set</option>
-                  {genders.map((g) => <option key={g} value={g}>{titleCase(g)}</option>)}
-                </select>
-              </Field>
-              <Field label="Date of Birth"><input type="date" value={form.dob} onChange={(e) => setForm({ ...form, dob: e.target.value })} className="input" /></Field>
-              <Field label="KRA PIN"><input placeholder="e.g. A012345678X" value={form.kraPin} onChange={(e) => setForm({ ...form, kraPin: e.target.value })} className="input" /></Field>
-            </FieldGroup>
-
-            <FieldGroup title="Car Details">
-              <Field label="Car Model"><input placeholder="e.g. Toyota Axio" value={form.carModel} onChange={(e) => setForm({ ...form, carModel: e.target.value })} className="input" /></Field>
-              <Field label="Registration No"><input placeholder="e.g. KDA 123A" value={form.carRegistration} onChange={(e) => setForm({ ...form, carRegistration: e.target.value })} className="input" /></Field>
-              <Field label="Colour"><input placeholder="e.g. Silver" value={form.carColour} onChange={(e) => setForm({ ...form, carColour: e.target.value })} className="input" /></Field>
-            </FieldGroup>
-
-            {form.customerType === 'BUSINESS' && (
+            {form.customerType === 'BUSINESS' ? (
               <FieldGroup title="Business Details">
-                <Field label="Business Name" className="sm:col-span-2"><input placeholder="e.g. Acme Traders Ltd" value={form.businessName} onChange={(e) => setForm({ ...form, businessName: e.target.value })} className="input" /></Field>
-                <Field label="Registration Number"><input placeholder="e.g. BN-2024-104567" value={form.registrationNumber} onChange={(e) => setForm({ ...form, registrationNumber: e.target.value })} className="input" /></Field>
                 <Field label="Contact Person"><input placeholder="e.g. Jane Doe" value={form.contactPerson} onChange={(e) => setForm({ ...form, contactPerson: e.target.value })} className="input" /></Field>
-                <Field label="Billing Phone"><input type="tel" placeholder="e.g. 0700 000 000" value={form.billingPhone} onChange={(e) => setForm({ ...form, billingPhone: e.target.value })} className="input" /></Field>
-                <Field label="Billing Email"><input type="email" placeholder="e.g. billing@acme.co.ke" value={form.billingEmail} onChange={(e) => setForm({ ...form, billingEmail: e.target.value })} className="input" /></Field>
-                <Field label="Website" className="sm:col-span-2"><input placeholder="e.g. www.acme.co.ke" value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} className="input" /></Field>
+                <Field label="KRA PIN"><input placeholder="e.g. P051234567X" value={form.kraPin} onChange={(e) => setForm({ ...form, kraPin: e.target.value })} className="input" /></Field>
+                <Field label="Registration Number"><input placeholder="e.g. BN-2024-104567" value={form.registrationNumber} onChange={(e) => setForm({ ...form, registrationNumber: e.target.value })} className="input" /></Field>
+                <Field label="Website"><input placeholder="e.g. www.acme.co.ke" value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} className="input" /></Field>
+                <Field label="Billing Phone" className="text-muted-foreground"><input type="tel" placeholder="If different from above" value={form.billingPhone} onChange={(e) => setForm({ ...form, billingPhone: e.target.value })} className="input" /></Field>
+                <Field label="Billing Email" className="text-muted-foreground"><input type="email" placeholder="If different from above" value={form.billingEmail} onChange={(e) => setForm({ ...form, billingEmail: e.target.value })} className="input" /></Field>
               </FieldGroup>
+            ) : (
+              <>
+                <FieldGroup title="Identity">
+                  <Field label="Nationality"><input placeholder="e.g. Kenyan" value={form.nationality} onChange={(e) => setForm({ ...form, nationality: e.target.value })} className="input" /></Field>
+                  <Field label="Passport / ID No"><input placeholder="e.g. 30112233" value={form.idNumber} onChange={(e) => setForm({ ...form, idNumber: e.target.value })} className="input" /></Field>
+                  <Field label="Occupation"><input placeholder="e.g. Accountant" value={form.occupation} onChange={(e) => setForm({ ...form, occupation: e.target.value })} className="input" /></Field>
+                  <Field label="Gender">
+                    <select className="input" value={form.gender} onChange={(e) => setForm({ ...form, gender: e.target.value as Gender | '' })}>
+                      <option value="">Not set</option>
+                      {genders.map((g) => <option key={g} value={g}>{titleCase(g)}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Date of Birth"><input type="date" value={form.dob} onChange={(e) => setForm({ ...form, dob: e.target.value })} className="input" /></Field>
+                  <Field label="KRA PIN"><input placeholder="e.g. A012345678X" value={form.kraPin} onChange={(e) => setForm({ ...form, kraPin: e.target.value })} className="input" /></Field>
+                </FieldGroup>
+
+                <FieldGroup title="Car Details">
+                  <Field label="Car Model"><input placeholder="e.g. Toyota Axio" value={form.carModel} onChange={(e) => setForm({ ...form, carModel: e.target.value })} className="input" /></Field>
+                  <Field label="Registration No"><input placeholder="e.g. KDA 123A" value={form.carRegistration} onChange={(e) => setForm({ ...form, carRegistration: e.target.value })} className="input" /></Field>
+                  <Field label="Colour"><input placeholder="e.g. Silver" value={form.carColour} onChange={(e) => setForm({ ...form, carColour: e.target.value })} className="input" /></Field>
+                </FieldGroup>
+              </>
             )}
 
             <FieldGroup title="Preferences">

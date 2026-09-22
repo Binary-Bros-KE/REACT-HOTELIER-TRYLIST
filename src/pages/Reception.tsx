@@ -562,10 +562,14 @@ function NewGuestModal({ customers, rooms, at, onClose, onDone, onCustomerCreate
   const roomGross = pricing?.total ?? 0;
   const needsRate = Boolean(room) && hasVariants(room!) && !rateId;
   const roomOff = termsDiscount(terms, roomGross);
-  const guestValid = mode === "existing" ? Boolean(customerId) : Boolean(guest.firstName.trim()) && guest.phone.trim().length >= 5;
+  const guestValid = mode === "existing"
+    ? Boolean(customerId)
+    : (guest.customerType === "BUSINESS" ? Boolean(guest.businessName.trim()) : Boolean(guest.firstName.trim())) && guest.phone.trim().length >= 5;
   const stayValid = Boolean(roomId) && !needsRate && new Date(checkOut) > new Date(checkIn) && Number(adults) >= 1 && !termsInvalid(terms);
   const valid = [guestValid, stayValid, true];
-  const guestName = mode === "existing" ? (chosenCustomer ? `${chosenCustomer.firstName} ${chosenCustomer.lastName}` : "—") : `${guest.firstName} ${guest.lastName}`.trim() || "—";
+  const guestName = mode === "existing"
+    ? (chosenCustomer ? `${chosenCustomer.firstName} ${chosenCustomer.lastName}` : "—")
+    : (guest.customerType === "BUSINESS" ? guest.businessName.trim() : `${guest.firstName} ${guest.lastName}`.trim()) || "—";
 
   function pickRoom(id: string) {
     setRoomId(id);
@@ -598,7 +602,15 @@ function NewGuestModal({ customers, rooms, at, onClose, onDone, onCustomerCreate
       if (mode === "new") {
         const created = await at<{ customer: Customer }>("/reception/customers", {
           method: "POST",
-          body: JSON.stringify({ ...guest, lastName: guest.lastName || undefined, email: guest.email || undefined }),
+          body: JSON.stringify({
+            ...guest,
+            // The backend's one required "name" field always doubles as the
+            // display name — for a business guest that's the business name,
+            // not a person, so there's no separate first/last name to ask for.
+            firstName: guest.customerType === "BUSINESS" ? guest.businessName.trim() : guest.firstName,
+            lastName: guest.customerType === "BUSINESS" ? undefined : (guest.lastName || undefined),
+            email: guest.email || undefined,
+          }),
         });
         id = created.customer.id;
         // If the booking below fails, retrying must not create the guest twice.
@@ -693,41 +705,46 @@ function NewGuestModal({ customers, rooms, at, onClose, onDone, onCustomerCreate
                 )}
               </Section>
             ) : (
-              <Section title="Guest details">
+              <Section title={guest.customerType === "BUSINESS" ? "Company details" : "Guest details"}>
                 <label className="text-sm font-medium sm:col-span-2">Guest type
                   <select className="input mt-1.5" value={guest.customerType} onChange={(e) => setGuest({ ...guest, customerType: e.target.value as (typeof CUSTOMER_TYPES)[number] })}>
                     {CUSTOMER_TYPES.map((t) => <option key={t} value={t}>{titleCase(t)}</option>)}
                   </select>
                 </label>
-                <label className="text-sm font-medium">First name *<input className="input mt-1.5" value={guest.firstName} onChange={(e) => setGuest({ ...guest, firstName: e.target.value })} /></label>
-                <label className="text-sm font-medium">Last name<input className="input mt-1.5" value={guest.lastName} onChange={(e) => setGuest({ ...guest, lastName: e.target.value })} /></label>
-                <label className="text-sm font-medium">Phone *<input className="input mt-1.5" value={guest.phone} onChange={(e) => setGuest({ ...guest, phone: e.target.value })} /></label>
-                <label className="text-sm font-medium">Email<input type="email" className="input mt-1.5" value={guest.email} onChange={(e) => setGuest({ ...guest, email: e.target.value })} /></label>
-                <label className="text-sm font-medium sm:col-span-2">National ID / Passport
-                  <input className="input mt-1.5" placeholder="e.g. 30112233" value={guest.idNumber} onChange={(e) => setGuest({ ...guest, idNumber: e.target.value })} />
-                </label>
-              </Section>
-            )}
-            {mode === "new" && guest.customerType === "BUSINESS" && (
-              <Section title="Company details">
-                <label className="text-sm font-medium sm:col-span-2">Business name
-                  <input className="input mt-1.5" placeholder="e.g. Acme Traders Ltd" value={guest.businessName} onChange={(e) => setGuest({ ...guest, businessName: e.target.value })} />
-                </label>
-                <label className="text-sm font-medium">Contact person
-                  <input className="input mt-1.5" placeholder="e.g. Jane Doe" value={guest.contactPerson} onChange={(e) => setGuest({ ...guest, contactPerson: e.target.value })} />
-                </label>
-                <label className="text-sm font-medium">Billing phone
-                  <input className="input mt-1.5" value={guest.billingPhone} onChange={(e) => setGuest({ ...guest, billingPhone: e.target.value })} />
-                </label>
-                <label className="text-sm font-medium">Billing email
-                  <input type="email" className="input mt-1.5" value={guest.billingEmail} onChange={(e) => setGuest({ ...guest, billingEmail: e.target.value })} />
-                </label>
-                <label className="text-sm font-medium">Registration number
-                  <input className="input mt-1.5" placeholder="e.g. BN-2024-104567" value={guest.registrationNumber} onChange={(e) => setGuest({ ...guest, registrationNumber: e.target.value })} />
-                </label>
-                <label className="text-sm font-medium">KRA PIN
-                  <input className="input mt-1.5" placeholder="e.g. P051234567X" value={guest.kraPin} onChange={(e) => setGuest({ ...guest, kraPin: e.target.value })} />
-                </label>
+                {guest.customerType === "BUSINESS" ? (
+                  <>
+                    <label className="text-sm font-medium sm:col-span-2">Business name *
+                      <input className="input mt-1.5" placeholder="e.g. Acme Traders Ltd" value={guest.businessName} onChange={(e) => setGuest({ ...guest, businessName: e.target.value })} />
+                    </label>
+                    <label className="text-sm font-medium">Contact person
+                      <input className="input mt-1.5" placeholder="e.g. Jane Doe" value={guest.contactPerson} onChange={(e) => setGuest({ ...guest, contactPerson: e.target.value })} />
+                    </label>
+                    <label className="text-sm font-medium">Phone *<input className="input mt-1.5" value={guest.phone} onChange={(e) => setGuest({ ...guest, phone: e.target.value })} /></label>
+                    <label className="text-sm font-medium">Email<input type="email" className="input mt-1.5" value={guest.email} onChange={(e) => setGuest({ ...guest, email: e.target.value })} /></label>
+                    <label className="text-sm font-medium">Billing phone <span className="font-normal text-muted-foreground">(if different)</span>
+                      <input className="input mt-1.5" value={guest.billingPhone} onChange={(e) => setGuest({ ...guest, billingPhone: e.target.value })} />
+                    </label>
+                    <label className="text-sm font-medium">Billing email <span className="font-normal text-muted-foreground">(if different)</span>
+                      <input type="email" className="input mt-1.5" value={guest.billingEmail} onChange={(e) => setGuest({ ...guest, billingEmail: e.target.value })} />
+                    </label>
+                    <label className="text-sm font-medium">Registration number
+                      <input className="input mt-1.5" placeholder="e.g. BN-2024-104567" value={guest.registrationNumber} onChange={(e) => setGuest({ ...guest, registrationNumber: e.target.value })} />
+                    </label>
+                    <label className="text-sm font-medium">KRA PIN
+                      <input className="input mt-1.5" placeholder="e.g. P051234567X" value={guest.kraPin} onChange={(e) => setGuest({ ...guest, kraPin: e.target.value })} />
+                    </label>
+                  </>
+                ) : (
+                  <>
+                    <label className="text-sm font-medium">First name *<input className="input mt-1.5" value={guest.firstName} onChange={(e) => setGuest({ ...guest, firstName: e.target.value })} /></label>
+                    <label className="text-sm font-medium">Last name<input className="input mt-1.5" value={guest.lastName} onChange={(e) => setGuest({ ...guest, lastName: e.target.value })} /></label>
+                    <label className="text-sm font-medium">Phone *<input className="input mt-1.5" value={guest.phone} onChange={(e) => setGuest({ ...guest, phone: e.target.value })} /></label>
+                    <label className="text-sm font-medium">Email<input type="email" className="input mt-1.5" value={guest.email} onChange={(e) => setGuest({ ...guest, email: e.target.value })} /></label>
+                    <label className="text-sm font-medium sm:col-span-2">National ID / Passport
+                      <input className="input mt-1.5" placeholder="e.g. 30112233" value={guest.idNumber} onChange={(e) => setGuest({ ...guest, idNumber: e.target.value })} />
+                    </label>
+                  </>
+                )}
               </Section>
             )}
           </>
