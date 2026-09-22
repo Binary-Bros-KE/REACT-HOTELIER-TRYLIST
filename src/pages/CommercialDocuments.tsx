@@ -155,7 +155,7 @@ export default function CommercialDocuments({ type }: { type: DocType }) {
                       {doc.type === 'QUOTATION' && ['SENT', 'DRAFT'].includes(doc.status) && <ActionButton tone="neutral" icon={<LuCheck />} title="Accept" onClick={() => void setDocStatus(doc, 'ACCEPTED')} />}
                       {doc.type === 'QUOTATION' && doc.status === 'ACCEPTED' && <ActionButton tone="primary" icon={<LuRefreshCw />} title="Convert to invoice" onClick={() => void convert(doc)} />}
                       {doc.type === 'INVOICE' && doc.status === 'DRAFT' && <ActionButton tone="neutral" icon={<LuSend />} title="Issue" onClick={() => void setDocStatus(doc, 'ISSUED')} />}
-                      {((doc.type === 'INVOICE' && !['DRAFT', 'PAID', 'CANCELLED', 'VOID'].includes(doc.status)) || doc.type === 'QUOTATION') && <ActionButton tone="primary" icon={<LuCreditCard />} title={doc.type === 'INVOICE' ? 'Record payment' : 'Record deposit'} onClick={() => setPaying(doc)} />}
+                      {((doc.type === 'INVOICE' && !['DRAFT', 'PAID', 'CANCELLED', 'VOID'].includes(doc.status)) || (doc.type === 'QUOTATION' && ['DRAFT', 'SENT', 'ACCEPTED'].includes(doc.status))) && <ActionButton tone="primary" icon={<LuCreditCard />} title={doc.type === 'INVOICE' ? 'Record payment' : 'Record deposit'} onClick={() => setPaying(doc)} />}
                     </div></td>
                   </tr>
                 ))}
