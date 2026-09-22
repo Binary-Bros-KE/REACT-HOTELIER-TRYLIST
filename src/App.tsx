@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import type { ReactNode } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { LuLoaderCircle, LuTriangleAlert } from "react-icons/lu";
@@ -13,22 +13,18 @@ import Kitchen from "@/pages/Kitchen";
 import Reception from "@/pages/Reception";
 import Rooms from "@/pages/Rooms";
 import Housekeeping from "@/pages/Housekeeping";
-import InventoryWorkspace from "@/pages/InventoryWorkspace";
-import Products from "@/pages/Products";
 import BusinessInformation from "@/pages/BusinessInformation";
 import Employees from "@/pages/Employees";
 import Departments from "@/pages/Departments";
 import RolesAndPermissions from "@/pages/RolesAndPermissions";
 import Shifts from "@/pages/Shifts";
 import Attendance from "@/pages/Attendance";
-import EmployeeSalaries from "@/pages/EmployeeSalaries";
 import Categories from "@/pages/Categories";
 import Recipes from "@/pages/Recipes";
 import MenuCategories from "@/pages/MenuCategories";
 import MenuItems from "@/pages/MenuItems";
 import Addons from "@/pages/Addons";
 import Tables from "@/pages/Tables";
-import Reports from "@/pages/Reports";
 import Receipts from "@/pages/Receipts";
 import Approvals from "@/pages/Approvals";
 import Locations from "@/pages/Locations";
@@ -46,8 +42,6 @@ import ServicesPointOfSale from "@/pages/ServicesPointOfSale";
 import Assets from "@/pages/Assets";
 import StockLedger from "@/pages/StockLedger";
 import Suppliers from "@/pages/Suppliers";
-import Purchases from "@/pages/Purchases";
-import PurchaseRequisitions from "@/pages/PurchaseRequisitions";
 import DispatchRequests from "@/pages/DispatchRequests";
 import InventoryOverview from "@/pages/InventoryOverview";
 import ProductsReport from "@/pages/ProductsReport";
@@ -69,6 +63,13 @@ import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { logout, restoreSession } from "@/store/authSlice";
 import { fetchTenantContext, resolveTenant } from "@/store/tenantSlice";
 import { setOutsideShiftHandler } from "@/lib/session";
+
+const InventoryWorkspace = lazy(() => import("@/pages/InventoryWorkspace"));
+const Products = lazy(() => import("@/pages/Products"));
+const EmployeeSalaries = lazy(() => import("@/pages/EmployeeSalaries"));
+const Reports = lazy(() => import("@/pages/Reports"));
+const Purchases = lazy(() => import("@/pages/Purchases"));
+const PurchaseRequisitions = lazy(() => import("@/pages/PurchaseRequisitions"));
 
 const moduleRoutes = navigation
   .flatMap((g) => g.items)
@@ -178,6 +179,7 @@ function App() {
   }
 
   return (
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">Loading…</div>}>
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/r/:token" element={<SharedReceiptPage />} />
@@ -290,6 +292,7 @@ function App() {
         ))}
       </Route>
     </Routes>
+    </Suspense>
   );
 }
 

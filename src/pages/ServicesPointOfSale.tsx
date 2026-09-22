@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   LuBedDouble, LuBuilding2, LuCheck, LuChevronDown, LuCircleAlert, LuCircleCheck, LuConciergeBell, LuLoaderCircle, LuMapPin, LuMinus,
-  LuPencil, LuPlus, LuSearch, LuTrash2, LuUserRound,
+  LuPencil, LuPlus, LuSearch, LuTrash2, LuUserRound, LuX,
 } from 'react-icons/lu'
 import { api } from '@/lib/api'
 import { useAppSelector } from '@/store/hooks'
@@ -14,6 +14,8 @@ import type { ReceiptProfile } from '@/components/pos/OrderReceipt'
 import { resolveTax, type TaxMode, type TaxTreatment } from '@/lib/tax'
 import { computeFinancialsFromRows } from '@/lib/orderTotals'
 import ServiceOptionsModal from '@/components/services/ServiceOptionsModal'
+import ActiveServicesTab from '@/components/services/ActiveServicesTab'
+import { useToast } from '@/components/ui/Toast'
 import { chargedPrice, isOverridden, lineKey, lineTotal, linePayload, listPrice, needsOptions, type CartLine, type PosService, type PosServiceAddon } from '@/components/services/serviceTill'
 
 type ApiService = {
@@ -42,6 +44,13 @@ function computeFinancials(cart: CartLine[], discountInput: string) {
 
 export default function ServicesPointOfSale() {
   const user = useAppSelector((s) => s.auth.user)
+  const toast = useToast()
+  // New sale = ring up now; Active = services that are running and paid at the end.
+  const [tab, setTab] = useState<'NEW' | 'ACTIVE'>('NEW')
+  const [activeCount, setActiveCount] = useState(0)
+  const [label, setLabel] = useState('')
+  const [addingTo, setAddingTo] = useState<{ id: string; orderNumber: number; label: string } | null>(null)
+  const [starting, setStarting] = useState(false)
   const [services, setServices] = useState<PosService[]>([])
   const [locations, setLocations] = useState<RestaurantLocation[]>([])
   const [profile, setProfile] = useState<BusinessProfile | null>(null)
@@ -148,6 +157,41 @@ export default function ServicesPointOfSale() {
     setCart([])
     setDiscount('0')
     setParty({ kind: 'WALK_IN' })
+    setLabel('')
+    setAddingTo(null)
+  }
+
+  /** Opens a running tab for the current sale; it is paid when the service ends. */
+  async function startService() {
+    setStarting(true)
+    try {
+      const { order } = await api<{ order: CreatedOrder }>('/pos/service-orders', {
+        method: 'POST',
+        body: JSON.stringify({
+          locationId: effectiveLocationId || undefined,
+          customerId: party.kind === 'WALK_IN' ? undefined : party.customer.id,
+          label: label.trim() || undefined,
+          items: cart.map(linePayload),
+        }),
+      })
+      toast.success(`Service #${order.orderNumber} started`)
+      resetSale()
+      setTab('ACTIVE')
+    } catch (cause) { toast.error(cause instanceof Error ? cause.message : 'Could not start the service') }
+    finally { setStarting(false) }
+  }
+
+  /** Adds the current sale's services to a tab that is already running. */
+  async function addToTab() {
+    if (!addingTo) return
+    setStarting(true)
+    try {
+      await api(`/pos/orders/${addingTo.id}/service-lines`, { method: 'POST', body: JSON.stringify({ items: cart.map(linePayload) }) })
+      toast.success(`Added to #${addingTo.orderNumber}`)
+      resetSale()
+      setTab('ACTIVE')
+    } catch (cause) { toast.error(cause instanceof Error ? cause.message : 'Could not add to the service') }
+    finally { setStarting(false) }
   }
 
   return (
@@ -178,10 +222,27 @@ export default function ServicesPointOfSale() {
           </div>
         </div>
 
+        <div className="mt-5 flex w-fit border bg-card">
+          {([['NEW', 'New sale'], ['ACTIVE', `Active services${activeCount > 0 ? ` (${activeCount})` : ''}`]] as const).map(([value, text]) => (
+            <button key={value} type="button" onClick={() => setTab(value)} className={cn('px-4 py-2 text-xs font-bold uppercase tracking-wider transition', tab === value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}>{text}</button>
+          ))}
+        </div>
+
         {error && <div className="mt-5 flex items-center gap-2 rounded-sm border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert />{error}</div>}
         {confirmation && <div className="mt-5 flex items-center gap-2 rounded-sm border border-accent/30 bg-accent/10 p-3 text-sm font-medium text-accent"><LuCircleCheck />Sale #{confirmation.orderNumber} completed.</div>}
 
-        <div className="mt-6 flex flex-col gap-2.5 sm:flex-row">
+        {tab === 'ACTIVE' && (
+          <div className="mt-6">
+            <ActiveServicesTab
+              methods={methods}
+              profile={profile}
+              onCount={setActiveCount}
+              onAddServices={(target) => { setAddingTo(target); setTab('NEW') }}
+            />
+          </div>
+        )}
+
+        <div className={cn('mt-6 flex flex-col gap-2.5 sm:flex-row', tab === 'ACTIVE' && 'hidden')}>
           <label className="relative flex-1">
             <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search services…" className="w-full rounded-sm border bg-card py-2.5 pl-9 pr-3 text-sm shadow-sm outline-none focus:ring-2 focus:ring-ring" />
@@ -211,7 +272,7 @@ export default function ServicesPointOfSale() {
           </div>
         </div>
 
-        <div className="mt-5">
+        <div className={cn('mt-5', tab === 'ACTIVE' && 'hidden')}>
           {loading ? (
             <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><LuLoaderCircle className="animate-spin" /> Loading services…</div>
           ) : visibleItems.length === 0 ? (
@@ -317,7 +378,19 @@ export default function ServicesPointOfSale() {
             <p className="border-t bg-warning/10 px-4 py-2 text-center text-xs font-medium text-warning">Select which location this sale is for (top right) before checking out.</p>
           )}
 
-          <div className="p-4 pt-0">
+          {addingTo ? (
+            <div className="space-y-2 p-4 pt-0">
+              <p className="flex items-center justify-between gap-2 border bg-secondary/10 px-3 py-2 text-xs font-semibold text-secondary">Adding to #{addingTo.orderNumber} · {addingTo.label}<button type="button" onClick={() => setAddingTo(null)} title="Stop adding" className="text-muted-foreground hover:text-destructive"><LuX className="size-3.5" /></button></p>
+              <button disabled={cart.length === 0 || starting} onClick={() => void addToTab()} className="flex w-full items-center justify-center gap-2 rounded-sm bg-secondary py-2.5 text-sm font-bold text-secondary-foreground transition hover:opacity-90 disabled:opacity-50">{starting && <LuLoaderCircle className="animate-spin" />}Add to tab · {formatKes(financials.total)}</button>
+            </div>
+          ) : (
+            <div className="space-y-2 px-4">
+              <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Label a running service (Pool, Room 5, KDA 123A)" maxLength={120} className="w-full rounded-sm border bg-background px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-ring" />
+              <button disabled={cart.length === 0 || needsLocationChoice || starting} onClick={() => void startService()} className="flex w-full items-center justify-center gap-2 rounded-sm border-2 border-secondary py-2 text-sm font-bold text-secondary transition hover:bg-secondary/10 disabled:opacity-50">{starting && <LuLoaderCircle className="animate-spin" />}Start service · pay at the end</button>
+            </div>
+          )}
+
+          <div className={cn('p-4 pt-2', addingTo && 'hidden')}>
             <button disabled={cart.length === 0 || needsLocationChoice} onClick={() => setShowCheckout(true)} className="flex w-full items-center justify-center gap-2 rounded-sm bg-primary py-2.5 text-sm font-bold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50">
               Checkout · {formatKes(financials.total)}
             </button>

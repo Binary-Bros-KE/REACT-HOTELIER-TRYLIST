@@ -15,7 +15,7 @@ import { type ReceiptProfile } from '@/components/pos/OrderReceipt'
 // entire cancellation record every time this page loads.
 const HISTORY_LIMIT = 100
 
-type OrderItem = { id: string; quantity: number; menuItem: { name: string } | null; variant: { name: string } | null }
+type OrderItem = { id: string; quantity: number; menuItem: { name: string } | null; variant: { name: string } | null; service?: { name: string } | null; serviceVariant?: { name: string } | null }
 type PendingOrder = {
   id: string
   orderNumber: number
@@ -44,7 +44,7 @@ type ReturnRequest = {
   decidedAt: string | null
   decisionNote: string | null
   order: PendingOrder
-  orderItem: { id: string; quantity: number; menuItem: { name: string } | null; variant: { name: string } | null }
+  orderItem: { id: string; quantity: number; menuItem: { name: string } | null; variant: { name: string } | null; service?: { name: string } | null; serviceVariant?: { name: string } | null }
 }
 type ReturnRequestGroup = { order: PendingOrder; requests: ReturnRequest[] }
 
@@ -84,9 +84,9 @@ export default function Approvals() {
     setError('')
     try {
       const [pending, pendingReturns, history, returnHistory] = await Promise.all([
-        api<{ orders: PendingOrder[] }>('/pos/orders?channel=FOOD&status=PENDING_CANCELLATION'),
+        api<{ orders: PendingOrder[] }>('/pos/orders?status=PENDING_CANCELLATION'),
         api<{ requests: ReturnRequest[] }>('/pos/return-requests?status=PENDING'),
-        api<{ orders: PendingOrder[] }>(`/pos/orders?channel=FOOD&status=CANCELLED&limit=${HISTORY_LIMIT}`),
+        api<{ orders: PendingOrder[] }>(`/pos/orders?status=CANCELLED&limit=${HISTORY_LIMIT}`),
         api<{ requests: ReturnRequest[] }>(`/pos/return-requests?status=APPROVED&limit=${HISTORY_LIMIT}`),
       ])
       setOrders(pending.orders)
@@ -132,7 +132,7 @@ export default function Approvals() {
   }
 
   async function decideReturnGroup(group: ReturnRequestGroup, action: 'approve' | 'reject') {
-    const summary = group.requests.map((request) => `${request.quantity} x ${request.orderItem.menuItem?.name ?? 'item'}${request.orderItem.variant ? ` (${request.orderItem.variant.name})` : ''}`).join(', ')
+    const summary = group.requests.map((request) => `${request.quantity} x ${request.orderItem.menuItem?.name ?? request.orderItem.service?.name ?? 'item'}${request.orderItem.variant ?? request.orderItem.serviceVariant ? ` (${(request.orderItem.variant ?? request.orderItem.serviceVariant)!.name})` : ''}`).join(', ')
     let note: string | undefined
     if (action === 'reject') {
       const input = window.prompt(`Reject return request for order #${group.order.orderNumber}? Optional note for the waiter:`, '')
@@ -230,7 +230,7 @@ export default function Approvals() {
 
               {order.items.length > 0 && (
                 <p className="mt-3 text-xs text-muted-foreground">
-                  {order.items.map((i) => `${i.quantity}× ${i.menuItem?.name ?? 'item'}${i.variant ? ` (${i.variant.name})` : ''}`).join(' · ')}
+                  {order.items.map((i) => `${i.quantity}× ${i.menuItem?.name ?? i.service?.name ?? 'item'}${i.variant ?? i.serviceVariant ? ` (${(i.variant ?? i.serviceVariant)!.name})` : ''}`).join(' · ')}
                 </p>
               )}
 
@@ -281,7 +281,7 @@ export default function Approvals() {
                     return (
                       <div key={item.id} className={cn('grid grid-cols-[1fr_auto] gap-3 px-3 py-2 text-sm', returning > 0 && 'bg-warning/10')}>
                         <div className="min-w-0">
-                          <p className="truncate font-semibold">{item.quantity} x {item.menuItem?.name ?? 'item'}{item.variant ? ` (${item.variant.name})` : ''}</p>
+                          <p className="truncate font-semibold">{item.quantity} x {item.menuItem?.name ?? item.service?.name ?? 'item'}{item.variant ?? item.serviceVariant ? ` (${(item.variant ?? item.serviceVariant)!.name})` : ''}</p>
                           <p className="text-[11px] text-muted-foreground">Original order quantity</p>
                         </div>
                         {returning > 0 ? (
@@ -346,7 +346,7 @@ export default function Approvals() {
               {decidedReturns.map((request) => (
                 <tr key={request.id} className="align-middle even:bg-muted/30">
                   <td className="px-5 py-3"><span className="mr-2 font-semibold">#{request.order.orderNumber}</span><StatusPill tone="success">Returned</StatusPill></td>
-                  <td className="px-5 py-3 text-muted-foreground">{request.quantity}× {request.orderItem.menuItem?.name ?? 'item'}</td>
+                  <td className="px-5 py-3 text-muted-foreground">{request.quantity}× {request.orderItem.menuItem?.name ?? request.orderItem.service?.name ?? 'item'}</td>
                   <td className="whitespace-nowrap px-5 py-3 text-xs text-muted-foreground">{request.decidedBy && staff[request.decidedBy] ? `${staff[request.decidedBy]} · ` : ''}{request.decidedAt ? ago(request.decidedAt) : ''}</td>
                   <td className="px-5 py-3"><div className="flex justify-end"><ActionButton tone="neutral" icon={<LuReceiptText />} title="View receipt" onClick={() => setReceiptId(request.order.id)} /></div></td>
                 </tr>
