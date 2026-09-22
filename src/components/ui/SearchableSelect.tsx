@@ -2,7 +2,13 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { LuCheck, LuChevronDown, LuSearch } from 'react-icons/lu'
 import { cn } from '@/lib/utils'
 
-export type SearchableSelectOption = { value: string; label: string; hint?: string }
+export type SearchableSelectOption = {
+  value: string
+  label: string
+  hint?: string
+  /** Extra terms matched on search but never shown — e.g. a phone number or ID that isn't in the label. */
+  keywords?: string
+}
 
 type Props = {
   options: SearchableSelectOption[]
@@ -39,7 +45,8 @@ export default function SearchableSelect({
   const selected = options.find((o) => o.value === value) ?? null
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return q ? options.filter((o) => o.label.toLowerCase().includes(q)) : options
+    if (!q) return options
+    return options.filter((o) => `${o.label} ${o.hint ?? ''} ${o.keywords ?? ''}`.toLowerCase().includes(q))
   }, [options, query])
 
   useEffect(() => {

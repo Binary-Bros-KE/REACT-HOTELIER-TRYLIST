@@ -36,7 +36,7 @@ const CUSTOMER_TYPES = ["PERSONAL", "BUSINESS"] as const;
 
 const titleCase = (value: string) => value.charAt(0) + value.slice(1).toLowerCase().replaceAll("_", " ");
 
-type Customer = { id: string; firstName: string; lastName: string; email: string | null; phone: string | null };
+type Customer = { id: string; firstName: string; lastName: string; email: string | null; phone: string | null; idNumber?: string | null };
 type Room = {
   id: string;
   number: string;
@@ -653,17 +653,17 @@ function NewGuestModal({ customers, rooms, at, onClose, onDone, onCustomerCreate
               <Section title="Select from your guests">
                 <div className="sm:col-span-2">
                   <SearchableSelect
-                    options={customers.map((c) => ({ value: c.id, label: `${c.firstName} ${c.lastName}`.trim(), hint: c.phone ?? undefined }))}
+                    options={customers.map((c) => ({ value: c.id, label: `${c.firstName} ${c.lastName}`.trim(), hint: c.phone ?? undefined, keywords: c.idNumber ?? undefined }))}
                     value={customerId}
                     onChange={setCustomerId}
-                    placeholder="Search guest by name or phone…"
+                    placeholder="Search guest by name, phone or ID/passport…"
                     searchPlaceholder="Search guests…"
                     emptyText="No guests match — create a new one."
                   />
                 </div>
                 {chosenCustomer && (
                   <p className="border bg-muted/40 p-3 text-xs text-muted-foreground sm:col-span-2">
-                    {chosenCustomer.phone ?? "No phone"}{chosenCustomer.email ? ` · ${chosenCustomer.email}` : ""}
+                    {chosenCustomer.phone ?? "No phone"}{chosenCustomer.email ? ` · ${chosenCustomer.email}` : ""}{chosenCustomer.idNumber ? ` · ID ${chosenCustomer.idNumber}` : ""}
                   </p>
                 )}
               </Section>
