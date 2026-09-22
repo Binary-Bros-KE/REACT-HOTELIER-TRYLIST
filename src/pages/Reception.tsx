@@ -30,6 +30,8 @@ import { hasVariants, roomPricing, roomPriceHint, toApiDate, unitWord, type Room
 import GroupCheckInModal from "@/components/reception/GroupCheckInModal";
 import GroupModal from "@/components/reception/GroupModal";
 import RoomTermsFields, { CreditFields, defaultTerms, termsDiscount, termsFromReservation, termsInvalid, termsPayload, type RoomTerms } from "@/components/reception/RoomTerms";
+import DocumentViewer from "@/components/documents/DocumentViewer";
+import type { DocProfile } from "@/components/documents/pdf";
 import { computeFinancialsFromRows } from "@/lib/orderTotals";
 import type { BizTax } from "@/lib/taxChoices";
 
@@ -108,6 +110,34 @@ type GroupRow = {
   name: string;
   customer: { firstName: string; lastName: string };
   summary: { rooms: number; pending: number; checkedIn: number; checkedOut: number; guests: number; charges: number; paid: number; balance: number; creditOutstanding: number };
+};
+type LinkedCommercialDocument = {
+  id: string;
+  documentNo: string;
+  type: "QUOTATION" | "INVOICE";
+  status: string;
+  title: string | null;
+  intro: string | null;
+  headerText: string | null;
+  footerText: string | null;
+  issuedAt: string | null;
+  expiresAt: string | null;
+  dueAt: string | null;
+  depositRequired: string | number;
+  customer: { firstName: string; lastName: string | null; businessName: string | null; phone: string | null; email: string | null; billingEmail?: string | null; billingPhone?: string | null; address?: string | null } | null;
+  prospectName: string | null;
+  prospectPhone: string | null;
+  prospectEmail: string | null;
+  prospectAddress: string | null;
+  location: { name: string } | null;
+  lines: { description: string; details: string | null; quantity: string | number; unitLabel: string | null; unitPrice: string | number; lineTotal: string | number; taxRate: string | number; taxMode: string; taxTreatment: string }[];
+  payments: { amount: string | number; kind: string; reference: string | null; paidAt: string; paymentMethod: { name: string } }[];
+  subtotal: string | number;
+  net: string | number;
+  taxAmount: string | number;
+  total: string | number;
+  paidAmount: string | number;
+  balance: string | number;
 };
 
 const date = (offset = 0) => {
@@ -913,9 +943,22 @@ function StayModal({ reservation, at, onClose, onChanged, onCheckedOut }: { rese
   const [terms, setTerms] = useState<RoomTerms>(termsFromReservation(reservation));
   const [busy, setBusy] = useState(false);
   const [bizTax, setBizTax] = useState<BizTax | null>(null);
+  const [docProfile, setDocProfile] = useState<DocProfile>(null);
+  const [linkedInvoices, setLinkedInvoices] = useState<LinkedCommercialDocument[]>([]);
+  const [invoicePreview, setInvoicePreview] = useState<LinkedCommercialDocument | null>(null);
+
+  const loadLinkedInvoices = useCallback(async () => {
+    if (!reservation.folio) { setLinkedInvoices([]); return; }
+    try {
+      const result = await api<{ documents: LinkedCommercialDocument[] }>(`/commercial-documents/source-links?source=HOTEL_STAY&sourceRefId=${reservation.folio.id}`);
+      setLinkedInvoices(result.documents);
+    } catch {
+      setLinkedInvoices([]);
+    }
+  }, [reservation.folio]);
 
   useEffect(() => {
-    api<{ profile: BizTax | null }>("/business-profile").then((r) => setBizTax(r.profile)).catch(() => {});
+    api<{ profile: (BizTax & NonNullable<DocProfile>) | null }>("/business-profile").then((r) => { setBizTax(r.profile); setDocProfile(r.profile); }).catch(() => {});
     api<{ services: Service[] }>("/services").then((r) => setServices(r.services)).catch(() => {});
     api<{ methods: (PaymentMethod & { code: string })[] }>("/payment-methods?activeOnly=true").then((r) => {
       // Room Charge only makes sense as a way to bill a POS order to this
@@ -925,6 +968,10 @@ function StayModal({ reservation, at, onClose, onChanged, onCheckedOut }: { rese
       setPayMethodId((current) => current || methods[0]?.id || "");
     }).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    void loadLinkedInvoices();
+  }, [loadLinkedInvoices]);
 
   const selectedPayMethod = paymentMethods.find((m) => m.id === payMethodId);
 
@@ -1013,6 +1060,7 @@ function StayModal({ reservation, at, onClose, onChanged, onCheckedOut }: { rese
         body: JSON.stringify({ reservationId: reservation.id }),
       });
       toast.success(`${result.document.documentNo} created.`);
+      await loadLinkedInvoices();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not create invoice");
     } finally {
@@ -1131,6 +1179,25 @@ function StayModal({ reservation, at, onClose, onChanged, onCheckedOut }: { rese
                 )}
               </div>
 
+              {linkedInvoices.length > 0 && (
+                <div className="rounded-sm border p-3">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Invoices from this folio</p>
+                  <div className="space-y-2">
+                    {linkedInvoices.map((doc) => (
+                      <div key={doc.id} className="flex flex-col gap-2 rounded-sm bg-muted/40 p-3 text-sm sm:flex-row sm:items-center">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold">{doc.documentNo} <span className="text-xs font-normal text-muted-foreground">· {doc.status.replaceAll("_", " ")}</span></p>
+                          <p className="text-xs text-muted-foreground">Total {formatKes(Number(doc.total))} · Balance {formatKes(Number(doc.balance))}</p>
+                        </div>
+                        <button type="button" onClick={() => setInvoicePreview(doc)} className="inline-flex items-center justify-center gap-2 rounded-sm border bg-card px-3 py-2 text-xs font-semibold hover:bg-muted">
+                          <LuFileText /> View
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="rounded-sm border p-3">
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-sm"><span className="font-semibold">Room sale:</span> {reservation.roomSaleType === "COMPLIMENTARY" ? "Complimentary" : reservation.discountType && Number(reservation.discountValue) > 0 ? `Paid — ${reservation.discountType === "PERCENT" ? `${Number(reservation.discountValue)}%` : formatKes(Number(reservation.discountValue))} discount` : "Paid"}</p>
@@ -1247,6 +1314,7 @@ function StayModal({ reservation, at, onClose, onChanged, onCheckedOut }: { rese
             </div>
           )}
         </div>
+        {invoicePreview && docProfile && <DocumentViewer kind="commercial-document" data={invoicePreview} profile={docProfile} onClose={() => setInvoicePreview(null)} />}
     </ModalShell>
   );
 }
