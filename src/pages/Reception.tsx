@@ -509,7 +509,11 @@ function NewGuestModal({ customers, rooms, at, onClose, onDone, onCustomerCreate
   const [step, setStep] = useState(0);
   const [mode, setMode] = useState<"existing" | "new">("existing");
   const [customerId, setCustomerId] = useState("");
-  const [guest, setGuest] = useState({ firstName: "", lastName: "", phone: "", email: "", customerType: "PERSONAL" as (typeof CUSTOMER_TYPES)[number] });
+  const [guest, setGuest] = useState({
+    firstName: "", lastName: "", phone: "", email: "", customerType: "PERSONAL" as (typeof CUSTOMER_TYPES)[number],
+    idNumber: "",
+    businessName: "", registrationNumber: "", kraPin: "", contactPerson: "", billingPhone: "", billingEmail: "",
+  });
   const [roomId, setRoomId] = useState("");
   const [rateId, setRateId] = useState("");
   const [checkIn, setCheckIn] = useState(date());
@@ -674,6 +678,31 @@ function NewGuestModal({ customers, rooms, at, onClose, onDone, onCustomerCreate
                 <label className="text-sm font-medium">Last name<input className="input mt-1.5" value={guest.lastName} onChange={(e) => setGuest({ ...guest, lastName: e.target.value })} /></label>
                 <label className="text-sm font-medium">Phone *<input className="input mt-1.5" value={guest.phone} onChange={(e) => setGuest({ ...guest, phone: e.target.value })} /></label>
                 <label className="text-sm font-medium">Email<input type="email" className="input mt-1.5" value={guest.email} onChange={(e) => setGuest({ ...guest, email: e.target.value })} /></label>
+                <label className="text-sm font-medium sm:col-span-2">National ID / Passport
+                  <input className="input mt-1.5" placeholder="e.g. 30112233" value={guest.idNumber} onChange={(e) => setGuest({ ...guest, idNumber: e.target.value })} />
+                </label>
+              </Section>
+            )}
+            {mode === "new" && guest.customerType === "BUSINESS" && (
+              <Section title="Company details">
+                <label className="text-sm font-medium sm:col-span-2">Business name
+                  <input className="input mt-1.5" placeholder="e.g. Acme Traders Ltd" value={guest.businessName} onChange={(e) => setGuest({ ...guest, businessName: e.target.value })} />
+                </label>
+                <label className="text-sm font-medium">Contact person
+                  <input className="input mt-1.5" placeholder="e.g. Jane Doe" value={guest.contactPerson} onChange={(e) => setGuest({ ...guest, contactPerson: e.target.value })} />
+                </label>
+                <label className="text-sm font-medium">Billing phone
+                  <input className="input mt-1.5" value={guest.billingPhone} onChange={(e) => setGuest({ ...guest, billingPhone: e.target.value })} />
+                </label>
+                <label className="text-sm font-medium">Billing email
+                  <input type="email" className="input mt-1.5" value={guest.billingEmail} onChange={(e) => setGuest({ ...guest, billingEmail: e.target.value })} />
+                </label>
+                <label className="text-sm font-medium">Registration number
+                  <input className="input mt-1.5" placeholder="e.g. BN-2024-104567" value={guest.registrationNumber} onChange={(e) => setGuest({ ...guest, registrationNumber: e.target.value })} />
+                </label>
+                <label className="text-sm font-medium">KRA PIN
+                  <input className="input mt-1.5" placeholder="e.g. P051234567X" value={guest.kraPin} onChange={(e) => setGuest({ ...guest, kraPin: e.target.value })} />
+                </label>
               </Section>
             )}
           </>
