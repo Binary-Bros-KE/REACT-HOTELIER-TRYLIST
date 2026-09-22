@@ -46,7 +46,10 @@ type Payment = {
 type Membership = {
   id: string;
   customerId: string;
-  planId: string;
+  planName: string;
+  planPrice: string | number;
+  durationDays: number;
+  discountPercent: string | number;
   startsAt: string;
   endsAt: string;
   status: Status;
@@ -63,14 +66,20 @@ type Summary = {
 };
 type Form = {
   customerId: string;
-  planId: string;
+  planName: string;
+  planPrice: string;
+  durationDays: string;
+  discountPercent: string;
   startsAt: string;
   endsAt: string;
   status: Status;
 };
 const blank: Form = {
   customerId: "",
-  planId: "",
+  planName: "",
+  planPrice: "0",
+  durationDays: "30",
+  discountPercent: "0",
   startsAt: "",
   endsAt: "",
   status: "ACTIVE",
@@ -108,7 +117,6 @@ const themes: Record<
 export default function ServiceMemberships() {
   const [memberships, setMemberships] = useState<Membership[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [plans, setPlans] = useState<Plan[]>([]);
   const [summary, setSummary] = useState<Summary>({
     total: 0,
     active: 0,
@@ -141,14 +149,13 @@ export default function ServiceMemberships() {
         api<{ memberships: Membership[]; summary: Summary }>(
           "/service-center/memberships",
         ),
-        api<{ customers: Customer[]; plans: Plan[] }>(
+        api<{ customers: Customer[] }>(
           "/service-center/membership-options",
         ),
       ]);
       setMemberships(list.memberships);
       setSummary(list.summary);
       setCustomers(options.customers);
-      setPlans(options.plans);
       setError("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load memberships");
@@ -177,7 +184,9 @@ export default function ServiceMemberships() {
         .includes(term),
     );
   }, [memberships, query]);
-  const selectedPlan = plans.find((p) => p.id === form.planId);
+  const previewPrice = Number(form.planPrice) || 0;
+  const previewDays = Number(form.durationDays) || 0;
+  const previewDiscount = Number(form.discountPercent) || 0;
 
   function create() {
     const start = new Date();
@@ -185,7 +194,7 @@ export default function ServiceMemberships() {
     setForm({
       ...blank,
       customerId: customers[0]?.id ?? "",
-      planId: plans.find((p) => p.isActive)?.id ?? "",
+      planName: "",
       startsAt: dateInput(start),
     });
     setOpen(true);
@@ -195,7 +204,10 @@ export default function ServiceMemberships() {
     setEditing(item);
     setForm({
       customerId: item.customerId,
-      planId: item.planId,
+      planName: item.planName,
+      planPrice: String(item.planPrice ?? 0),
+      durationDays: String(item.durationDays ?? 30),
+      discountPercent: String(item.discountPercent ?? 0),
       startsAt: dateInput(item.startsAt),
       endsAt: dateInput(item.endsAt),
       status: item.status,
@@ -216,6 +228,9 @@ export default function ServiceMemberships() {
           method: editing ? "PATCH" : "POST",
           body: JSON.stringify({
             ...form,
+            planPrice: Number(form.planPrice) || 0,
+            durationDays: Number(form.durationDays) || 30,
+            discountPercent: Number(form.discountPercent) || 0,
             startsAt: new Date(`${form.startsAt}T00:00:00`),
             endsAt: form.endsAt
               ? new Date(`${form.endsAt}T23:59:59`)
@@ -599,22 +614,50 @@ export default function ServiceMemberships() {
                   ))}
                 </select>
               </Field>
-              <Field label="Plan">
-                <select
+              <Field label="Membership name">
+                <input
                   required
                   className="input"
-                  value={form.planId}
+                  value={form.planName}
                   onChange={(e) =>
-                    setForm({ ...form, planId: e.target.value, endsAt: "" })
+                    setForm({ ...form, planName: e.target.value, endsAt: "" })
                   }
-                >
-                  {plans.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} · {p.durationDays} days · {p.discountPercent}%
-                      off
-                    </option>
-                  ))}
-                </select>
+                  placeholder="e.g. Gold monthly"
+                />
+              </Field>
+              <Field label="Price">
+                <input
+                  required
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="input"
+                  value={form.planPrice}
+                  onChange={(e) => setForm({ ...form, planPrice: e.target.value })}
+                />
+              </Field>
+              <Field label="Duration days">
+                <input
+                  required
+                  type="number"
+                  min="1"
+                  step="1"
+                  className="input"
+                  value={form.durationDays}
+                  onChange={(e) => setForm({ ...form, durationDays: e.target.value, endsAt: "" })}
+                />
+              </Field>
+              <Field label="Appointment discount %">
+                <input
+                  required
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  className="input"
+                  value={form.discountPercent}
+                  onChange={(e) => setForm({ ...form, discountPercent: e.target.value })}
+                />
               </Field>
               <Field label="Start date">
                 <input
@@ -650,11 +693,9 @@ export default function ServiceMemberships() {
                 </select>
               </Field>
               <div className="rounded-xl bg-purple-50 p-3 text-xs text-purple-900">
-                <b>{selectedPlan?.name ?? "Select a plan"}</b>
+                <b>{form.planName || "Membership preview"}</b>
                 <p className="mt-1">
-                  {selectedPlan
-                    ? `${money(Number(selectedPlan.price))} · ${selectedPlan.durationDays} days · ${selectedPlan.discountPercent}% appointment discount`
-                    : "Plan benefits appear here."}
+                  {money(previewPrice)} · {previewDays || 0} days · {previewDiscount}% appointment discount
                 </p>
               </div>
             </div>

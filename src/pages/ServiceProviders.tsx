@@ -3,7 +3,6 @@ import type { FormEvent, ReactNode } from "react";
 import {
   LuCalendarCheck,
   LuCheck,
-  LuClock3,
   LuLoaderCircle,
   LuPencil,
   LuPhone,
@@ -17,13 +16,6 @@ import {
 import { api } from "@/lib/api";
 import Button from "@/components/ui/Button";
 
-type Schedule = {
-  id: string;
-  startsAt: string;
-  endsAt: string;
-  isAvailable: boolean;
-  notes: string | null;
-};
 type Appointment = {
   id: string;
   startsAt: string;
@@ -37,9 +29,8 @@ type Provider = {
   specialty: string | null;
   phone: string | null;
   isActive: boolean;
-  schedules: Schedule[];
   appointments: Appointment[];
-  _count: { schedules: number; appointments: number };
+  _count: { appointments: number };
 };
 type Form = {
   name: string;
@@ -194,8 +185,8 @@ export default function ServiceProviders() {
               The people behind every experience.
             </h1>
             <p className="mt-2 max-w-2xl text-sm text-white/70">
-              Manage specialists and keep their profiles connected to schedules,
-              services and appointments.
+              Manage specialists and keep their profiles connected to services
+              and appointments.
             </p>
           </div>
           <Button onClick={create} className="shrink-0">
@@ -221,17 +212,12 @@ export default function ServiceProviders() {
           value={upcoming}
           label="Upcoming appointments"
         />
-        <Metric
-          icon={<LuClock3 />}
-          value={providers.reduce((sum, p) => sum + p._count.schedules, 0)}
-          label="Schedule blocks"
-        />
       </section>
       <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-xl font-bold">Provider directory</h2>
           <p className="text-sm text-muted-foreground">
-            Select a profile to inspect schedules and recent appointments.
+            Select a profile to inspect recent appointments.
           </p>
         </div>
         <label className="flex items-center gap-2 rounded-xl border bg-card px-3 shadow-sm">
@@ -293,16 +279,12 @@ export default function ServiceProviders() {
                   <LuPhone />
                   {provider.phone || "No phone added"}
                 </p>
-                <div className="mt-5 grid grid-cols-2 rounded-xl bg-muted/50 p-3 text-center text-xs">
+                <div className="mt-5 rounded-xl bg-muted/50 p-3 text-center text-xs">
                   <div>
                     <b className="block text-lg">
                       {provider._count.appointments}
                     </b>
                     Appointments
-                  </div>
-                  <div className="border-l">
-                    <b className="block text-lg">{provider._count.schedules}</b>
-                    Schedules
                   </div>
                 </div>
                 <div className="mt-4 flex justify-end gap-1 border-t pt-3">
@@ -354,29 +336,6 @@ export default function ServiceProviders() {
             <p className="text-muted-foreground">
               {selected.specialty || "Service specialist"}
             </p>
-            <h3 className="mt-8 font-bold">Upcoming schedule</h3>
-            <div className="mt-3 space-y-2">
-              {selected.schedules
-                .filter((s) => new Date(s.endsAt) >= new Date())
-                .slice(0, 5)
-                .map((s) => (
-                  <div
-                    key={s.id}
-                    className="rounded-xl bg-muted/50 p-3 text-sm"
-                  >
-                    <b>{new Date(s.startsAt).toLocaleDateString()}</b>
-                    <p className="text-xs text-muted-foreground">
-                      {new Date(s.startsAt).toLocaleTimeString()} –{" "}
-                      {new Date(s.endsAt).toLocaleTimeString()}
-                    </p>
-                  </div>
-                ))}
-              {selected.schedules.length === 0 && (
-                <p className="text-sm text-muted-foreground">
-                  No schedules assigned.
-                </p>
-              )}
-            </div>
             <h3 className="mt-8 font-bold">Recent appointments</h3>
             <div className="mt-3 space-y-2">
               {selected.appointments.slice(0, 8).map((a) => (

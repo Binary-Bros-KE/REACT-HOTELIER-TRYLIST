@@ -48,11 +48,9 @@ import ProductsReport from "@/pages/ProductsReport";
 import TaxReport from "@/pages/TaxReport";
 import ServiceAppointments from "@/pages/ServiceAppointments";
 import ServiceMembershipPayments from "@/pages/ServiceMembershipPayments";
-import ServiceMembershipPlans from "@/pages/ServiceMembershipPlans";
 import ServiceMemberships from "@/pages/ServiceMemberships";
 import ServicePaymentMethods from "@/pages/ServicePaymentMethods";
 import ServiceProviders from "@/pages/ServiceProviders";
-import ServiceSchedules from "@/pages/ServiceSchedules";
 import {
   navigation,
   navItemAllowed,
@@ -80,10 +78,8 @@ const moduleRoutes = navigation
         "/service-center/appointments",
         "/service-center/memberships",
         "/service-center/payment-methods",
-        "/service-center/membership-plans",
         "/service-center/membership-payments",
         "/service-center/providers",
-        "/service-center/schedules",
       ]).has(item.href),
   );
 
@@ -253,20 +249,12 @@ function App() {
           element={<ServiceMemberships />}
         />
         <Route
-          path="/service-center/membership-plans"
-          element={<ServiceMembershipPlans />}
-        />
-        <Route
           path="/service-center/membership-payments"
           element={<ServiceMembershipPayments />}
         />
         <Route
           path="/service-center/providers"
           element={<ServiceProviders />}
-        />
-        <Route
-          path="/service-center/schedules"
-          element={<ServiceSchedules />}
         />
         <Route path="/finance/transactions" element={<Transactions />} />
         <Route path="/finance/expenses" element={<Expenses />} />

@@ -43,13 +43,6 @@ type Service = {
   locations: { id: string }[];
 };
 type Provider = { id: string; name: string; specialty: string | null };
-type Schedule = {
-  id: string;
-  providerId: string;
-  startsAt: string;
-  endsAt: string;
-  provider: Provider;
-};
 type Plan = { name: string; discountPercent: string | number };
 type Membership = {
   id: string;
@@ -141,7 +134,6 @@ export default function ServiceAppointments() {
     [customers, setCustomers] = useState<Customer[]>([]),
     [services, setServices] = useState<Service[]>([]),
     [providers, setProviders] = useState<Provider[]>([]),
-    [schedules, setSchedules] = useState<Schedule[]>([]),
     [memberships, setMemberships] = useState<Membership[]>([]),
     [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]),
     [locations, setLocations] = useState<Location[]>([]),
@@ -176,7 +168,6 @@ export default function ServiceAppointments() {
           customers: Customer[];
           services: Service[];
           providers: Provider[];
-          schedules: Schedule[];
           memberships: Membership[];
           paymentMethods: PaymentMethod[];
           membershipPayments: MembershipPayment[];
@@ -189,7 +180,6 @@ export default function ServiceAppointments() {
       setCustomers(o.customers);
       setServices(o.services);
       setProviders(o.providers);
-      setSchedules(o.schedules);
       setMemberships(o.memberships);
       setPaymentMethods(o.paymentMethods);
       setLocations(o.locations);
@@ -211,9 +201,6 @@ export default function ServiceAppointments() {
         (m) => m.customerId === form.customerId && m.status === "ACTIVE",
       ),
     [form.customerId, memberships],
-  );
-  const providerSchedules = schedules.filter(
-    (s) => s.providerId === form.providerId,
   );
   const selectedService = services.find((s) => s.id === form.serviceId);
   const selectedVariant = selectedService?.variants.find(
@@ -277,7 +264,7 @@ export default function ServiceAppointments() {
       setNotice(
         editing
           ? "Appointment updated."
-          : "Appointment created and added to the schedule.",
+          : "Appointment created.",
       );
       setOpen(false);
       await load();
@@ -399,7 +386,7 @@ export default function ServiceAppointments() {
                   <tr>
                     <th className="px-5 py-3">Customer</th>
                     <th className="px-5 py-3">Service</th>
-                    <th className="px-5 py-3">Schedule</th>
+                    <th className="px-5 py-3">Time</th>
                     <th className="px-5 py-3">Membership / Sale</th>
                     <th className="px-5 py-3">Status</th>
                     <th className="px-5 py-3"></th>
@@ -700,19 +687,6 @@ export default function ServiceAppointments() {
                   </select>
                 </Field>
               )}
-              <div className="sm:col-span-2 rounded-xl bg-muted/60 p-3 text-xs text-muted-foreground">
-                <b>Provider availability</b>
-                {providerSchedules.length ? (
-                  providerSchedules.map((s) => (
-                    <p key={s.id}>
-                      {new Date(s.startsAt).toLocaleString()} –{" "}
-                      {new Date(s.endsAt).toLocaleString()}
-                    </p>
-                  ))
-                ) : (
-                  <p>No available schedule found.</p>
-                )}
-              </div>
               <Field label="Notes" className="sm:col-span-2">
                 <textarea
                   className="input"
