@@ -45,12 +45,19 @@ export type ShiftSummary = {
   }[]
   sales: {
     id: string
-    orderNumber: number
-    status: string
-    paymentStatus: string
-    saleType: 'SALE' | 'COMPLIMENTARY'
-    complimentaryOrderRole: string | null
-    complimentaryRecipientName: string | null
+    kind?: 'POS_ORDER' | 'FOLIO'
+    orderNumber?: number
+    status?: string
+    paymentStatus?: string
+    saleType?: 'SALE' | 'COMPLIMENTARY'
+    complimentaryOrderRole?: string | null
+    complimentaryRecipientName?: string | null
+    label?: string
+    source?: string
+    reservationNo?: string
+    folioNo?: string
+    roomNumber?: string
+    guestName?: string
     createdAt: string
     total: number
     paid: number
@@ -58,6 +65,7 @@ export type ShiftSummary = {
 }
 
 export const formatKes = (value: number) => `KSh ${value.toLocaleString('en-KE', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
+const titleCase = (value: string) => value.charAt(0) + value.slice(1).toLowerCase().replaceAll('_', ' ')
 
 export type ShiftDecision = { cashVariance?: number; varianceNote?: string }
 
@@ -178,8 +186,21 @@ export default function ShiftSummaryModal({
               </tr>
             ))}
           </ShiftSummaryTable>
-          <ShiftSummaryTable title="Sales" empty="No sales recorded." columns={['Order', 'Status', 'Time', 'Total']} right={[3]}>
-            {summary.sales.map((s) => <tr key={s.id}><td className="px-3 py-2 font-semibold">#{s.orderNumber}</td><td className="px-3 py-2">{s.saleType === 'COMPLIMENTARY' ? `Complimentary${s.complimentaryRecipientName ? ` - ${s.complimentaryRecipientName}` : ''}` : s.paymentStatus}</td><td className="px-3 py-2 tabular-nums">{new Date(s.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td><td className="px-3 py-2 text-right font-bold tabular-nums">{formatKes(s.total)}</td></tr>)}
+          <ShiftSummaryTable title="Sales" empty="No sales recorded." columns={['Sale', 'Status', 'Time', 'Total']} right={[3]}>
+            {summary.sales.map((s) => {
+              const isFolio = s.kind === 'FOLIO'
+              return (
+                <tr key={s.id}>
+                  <td className="px-3 py-2">
+                    <p className="font-semibold">{isFolio ? s.label : `Order #${s.orderNumber}`}</p>
+                    {isFolio && <p className="text-[11px] text-muted-foreground">Room {s.roomNumber} - {s.guestName} ({s.reservationNo})</p>}
+                  </td>
+                  <td className="px-3 py-2">{isFolio ? titleCase(s.source ?? 'FOLIO') : s.saleType === 'COMPLIMENTARY' ? `Complimentary${s.complimentaryRecipientName ? ` - ${s.complimentaryRecipientName}` : ''}` : s.paymentStatus}</td>
+                  <td className="px-3 py-2 tabular-nums">{new Date(s.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                  <td className="px-3 py-2 text-right font-bold tabular-nums">{formatKes(s.total)}</td>
+                </tr>
+              )
+            })}
           </ShiftSummaryTable>
         </div>
         {!approval && decided && (canReview || canSalary) && (

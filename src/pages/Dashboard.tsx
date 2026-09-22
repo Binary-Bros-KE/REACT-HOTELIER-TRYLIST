@@ -73,6 +73,8 @@ type SalesReport = {
 
 type OrderSummary = { id: string; status: string }
 type TableSummary = { id: string; status: 'AVAILABLE' | 'OCCUPIED' | 'RESERVED' | 'OUT_OF_SERVICE'; capacity: number; isActive: boolean }
+type HotelInsightRoom = { id: string; status: RoomStatus; cleanliness: RoomCleanliness }
+type HotelInsightReservation = ReceptionReservation
 type TransactionRow = {
   id: string
   transactionNo: string
@@ -98,12 +100,16 @@ type LocationOption = { id: string; name: string }
  * the operations variant skips (Super Admin/Manager get that same detail
  * from the full Sales Report already). */
 function RevenueDashboard({ variant, pickerSlot }: { variant: 'operations' | 'finance'; pickerSlot: HTMLElement | null }) {
+  const moduleKeys = useAppSelector((s) => s.tenant.moduleKeys)
+  const hasHotelModules = moduleKeys.includes('ROOMS') || moduleKeys.includes('RESERVATIONS')
   const [locations, setLocations] = useState<LocationOption[]>([])
   const { fixed: fixedLocation, options: pickableLocations, selectedId: selectedLocationId, setLocation, effectiveId: effectiveLocationId } = useWorkingLocation(locations, { persist: false })
 
   const [report, setReport] = useState<SalesReport | null>(null)
   const [activeOrderCount, setActiveOrderCount] = useState(0)
   const [tables, setTables] = useState<TableSummary[]>([])
+  const [hotelRooms, setHotelRooms] = useState<HotelInsightRoom[]>([])
+  const [hotelReservations, setHotelReservations] = useState<HotelInsightReservation[]>([])
   const [transactions, setTransactions] = useState<TransactionRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -113,24 +119,28 @@ function RevenueDashboard({ variant, pickerSlot }: { variant: 'operations' | 'fi
     setError('')
     try {
       const locQuery = effectiveLocationId ? `&locationId=${effectiveLocationId}` : ''
-      const [salesResponse, ordersResponse, tablesResponse, transactionsResponse, locationResponse] = await Promise.all([
+      const [salesResponse, ordersResponse, tablesResponse, transactionsResponse, locationResponse, roomResponse, reservationResponse] = await Promise.all([
         api<SalesReport>(`/reports/sales?period=day${locQuery}`),
         variant === 'operations' ? api<{ orders: OrderSummary[] }>(`/pos/orders?channel=FOOD${locQuery}`) : Promise.resolve({ orders: [] }),
         variant === 'operations' ? api<{ tables: TableSummary[] }>(`/tables${effectiveLocationId ? `?locationId=${effectiveLocationId}` : ''}`) : Promise.resolve({ tables: [] }),
         api<{ transactions: TransactionRow[] }>(`/transactions?limit=${variant === 'finance' ? 12 : 8}${locQuery}`),
         api<{ locations: LocationOption[] }>('/locations'),
+        variant === 'operations' && hasHotelModules ? api<{ rooms: HotelInsightRoom[] }>('/reception/rooms') : Promise.resolve({ rooms: [] }),
+        variant === 'operations' && hasHotelModules ? api<{ reservations: HotelInsightReservation[] }>('/reception/reservations') : Promise.resolve({ reservations: [] }),
       ])
       setReport(salesResponse)
       setActiveOrderCount(ordersResponse.orders.filter((o) => NON_FINAL_STATUSES.includes(o.status)).length)
       setTables(tablesResponse.tables)
       setTransactions(transactionsResponse.transactions)
       setLocations(locationResponse.locations)
+      setHotelRooms(roomResponse.rooms)
+      setHotelReservations(reservationResponse.reservations)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not load the dashboard')
     } finally {
       setLoading(false)
     }
-  }, [effectiveLocationId, variant])
+  }, [effectiveLocationId, hasHotelModules, variant])
 
   useEffect(() => { void load() }, [load])
 
@@ -153,6 +163,18 @@ function RevenueDashboard({ variant, pickerSlot }: { variant: 'operations' | 'fi
   const occupiedTables = tables.filter((t) => t.status === 'OCCUPIED')
   const activeTables = tables.filter((t) => t.isActive)
   const estimatedGuests = occupiedTables.reduce((s, t) => s + t.capacity, 0)
+  const today = localIsoDay(new Date())
+  const sevenDaysOut = new Date()
+  sevenDaysOut.setDate(sevenDaysOut.getDate() + 7)
+  const inHouse = hotelReservations.filter((r) => r.status === 'CHECKED_IN')
+  const inHouseBalances = inHouse.map((r) => Math.max(0, folioBalance(r.folio)))
+  const owingRooms = inHouseBalances.filter((balance) => balance > 0.01)
+  const inHouseOwing = inHouseBalances.reduce((sum, balance) => sum + balance, 0)
+  const upcomingReservations = hotelReservations.filter((r) => {
+    const checkIn = new Date(r.checkIn)
+    return (r.status === 'PENDING' || r.status === 'CONFIRMED') && checkIn >= new Date(new Date().setHours(0, 0, 0, 0)) && checkIn <= sevenDaysOut
+  })
+  const todayArrivals = upcomingReservations.filter((r) => isSameLocalDay(r.checkIn, today))
 
   return (
     <>
@@ -247,6 +269,62 @@ function RevenueDashboard({ variant, pickerSlot }: { variant: 'operations' | 'fi
               </div>
             </div>
           )}
+        </section>
+      )}
+
+      {variant === 'operations' && hasHotelModules && (
+        <section className="mt-6 grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+          <div className="overflow-hidden rounded-sm border bg-card">
+            <header className="flex items-center justify-between border-b p-4">
+              <div>
+                <h2 className="font-semibold">Hotel State</h2>
+                <p className="text-xs text-muted-foreground">Rooms, in-house balances, and upcoming reservations.</p>
+              </div>
+              <Link to="/rooms" className="text-xs font-semibold text-secondary hover:underline">Rooms →</Link>
+            </header>
+            <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-4">
+              <MiniCount label="Vacant" value={hotelRooms.filter((r) => r.status === 'VACANT').length} cls="bg-success/10 text-success" />
+              <MiniCount label="Occupied" value={hotelRooms.filter((r) => r.status === 'OCCUPIED').length} cls="bg-warning/15 text-warning" />
+              <MiniCount label="Out of Service" value={hotelRooms.filter((r) => r.status === 'OUT_OF_SERVICE').length} cls="bg-destructive/10 text-destructive" />
+              <MiniCount label="Dirty" value={hotelRooms.filter((r) => r.cleanliness === 'DIRTY').length} cls="bg-secondary/10 text-secondary" />
+            </div>
+            <div className="grid gap-3 border-t p-4 sm:grid-cols-3">
+              <div className="rounded-sm border bg-muted/30 p-3">
+                <p className="text-xs text-muted-foreground">Checked-in Guests</p>
+                <p className="font-semibold">{inHouse.length}</p>
+              </div>
+              <div className="rounded-sm border bg-success/5 p-3">
+                <p className="text-xs text-muted-foreground">Settled In-house</p>
+                <p className="font-semibold">{inHouse.length - owingRooms.length}</p>
+              </div>
+              <div className="rounded-sm border bg-warning/10 p-3">
+                <p className="text-xs text-muted-foreground">Still Owing</p>
+                <p className="font-semibold">{formatKes(inHouseOwing)}</p>
+              </div>
+            </div>
+          </div>
+          <div className="overflow-hidden rounded-sm border bg-card">
+            <header className="flex items-center justify-between border-b p-4">
+              <h2 className="font-semibold">Reservations</h2>
+              <Link to="/reservations" className="text-xs font-semibold text-secondary hover:underline">Reception →</Link>
+            </header>
+            <div className="grid grid-cols-2 gap-3 p-4">
+              <MiniCount label="Arriving Today" value={todayArrivals.length} cls="bg-secondary/10 text-secondary" />
+              <MiniCount label="Next 7 Days" value={upcomingReservations.length} cls="bg-warning/15 text-warning" />
+            </div>
+            <div className="max-h-52 divide-y overflow-auto border-t">
+              {upcomingReservations.slice(0, 8).map((r) => (
+                <div key={r.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">{r.customer.firstName} {r.customer.lastName ?? ''}</p>
+                    <p className="text-xs text-muted-foreground">{r.reservationNo} · Room {r.room.number} · {new Date(r.checkIn).toLocaleDateString()}</p>
+                  </div>
+                  <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{r.status}</span>
+                </div>
+              ))}
+              {upcomingReservations.length === 0 && <p className="p-6 text-center text-sm text-muted-foreground">No upcoming reservations.</p>}
+            </div>
+          </div>
         </section>
       )}
 
