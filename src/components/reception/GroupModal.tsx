@@ -321,7 +321,7 @@ export default function GroupModal({ groupId, at, rooms, customers, onClose, onC
                         <td className="px-3 py-2.5 text-right tabular-nums">{kes(Math.max(0, balanceOf(r, bizTax)))}{(r.folio?.creditOutstanding ?? 0) > 0.01 && <span className="block text-[11px] text-warning">on credit</span>}</td>
                         <td className="px-3 py-2.5 text-right">
                           {r.status === 'CHECKED_IN' && <button type="button" onClick={() => onOpenStay(r.id)} className="text-xs font-semibold text-secondary hover:underline">Manage stay</button>}
-                          {(r.status === 'PENDING' || r.status === 'CONFIRMED') && <button type="button" disabled={busy === r.id} onClick={() => void run(r.id, () => at(`/reception/reservations/${r.id}/check-in`, { method: 'PATCH' }), `Room ${r.room.number} checked in.`)} className="text-xs font-semibold text-secondary hover:underline">Check in</button>}
+                          {(r.status === 'PENDING' || r.status === 'CONFIRMED') && <button type="button" disabled={busy === r.id} onClick={() => void run(r.id, () => at(`/reception/reservations/${r.id}/check-in`, { method: 'PATCH', body: '{}' }), `Room ${r.room.number} checked in.`)} className="text-xs font-semibold text-secondary hover:underline">Check in</button>}
                         </td>
                       </tr>
                     ))}

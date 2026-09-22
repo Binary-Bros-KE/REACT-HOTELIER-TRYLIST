@@ -292,7 +292,7 @@ export default function Reception() {
   async function checkIn(reservation: Reservation) {
     setWorking(reservation.id);
     try {
-      await at(`/reception/reservations/${reservation.id}/check-in`, { method: "PATCH" });
+      await at(`/reception/reservations/${reservation.id}/check-in`, { method: "PATCH", body: "{}" });
       toast.success(`Room ${reservation.room.number}: guest checked in.`);
       await load();
     } catch (e) {
