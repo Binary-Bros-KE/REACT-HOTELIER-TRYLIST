@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { CSSProperties, FormEvent } from 'react'
 import { useLocation, useNavigate, Navigate } from 'react-router-dom'
-import { LuCircleAlert, LuIdCard, LuLoaderCircle, LuLock } from 'react-icons/lu'
+import { LuCircleAlert, LuDelete, LuIdCard, LuKeyboard, LuLoaderCircle, LuLock, LuPanelTop } from 'react-icons/lu'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import { login } from '@/store/authSlice'
 import { fetchTenantContext } from '@/store/tenantSlice'
@@ -17,6 +17,9 @@ const businessTypeLabel: Record<string, string> = {
   CLUB: 'Club',
   RESTAURANT: 'Restaurant',
 }
+
+type LoginMode = 'keyboard' | 'touch'
+const LOGIN_MODE_KEY = 'hotelier_login_input_mode'
 
 // "Tue, 26/09" — weekday + day/month, no year.
 function shortDateLabel(d = new Date()): string {
@@ -43,8 +46,23 @@ export default function Login() {
   const tenant = useAppSelector((s) => s.tenant)
   const [employeeCode, setEmployeeCode] = useState('')
   const [pin, setPin] = useState('')
+  const [loginMode, setLoginMode] = useState<LoginMode>(() => {
+    try {
+      return localStorage.getItem(LOGIN_MODE_KEY) === 'touch' ? 'touch' : 'keyboard'
+    } catch {
+      return 'keyboard'
+    }
+  })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LOGIN_MODE_KEY, loginMode)
+    } catch {
+      // Device preference only; ignore storage failures.
+    }
+  }, [loginMode])
 
   if (user) {
     const redirectTo = (location.state as { from?: Location })?.from?.pathname ?? '/'
@@ -56,12 +74,13 @@ export default function Login() {
     setSaving(true)
     setError('')
     try {
-      await dispatch(login({ employeeCode, pin })).unwrap()
+      const trimmedCode = employeeCode.trim()
+      await dispatch(login({ ...(loginMode === 'keyboard' && trimmedCode ? { employeeCode: trimmedCode } : {}), pin })).unwrap()
       void dispatch(fetchTenantContext())
       const redirectTo = (location.state as { from?: Location })?.from?.pathname ?? '/'
       navigate(redirectTo, { replace: true })
     } catch (cause) {
-      const message = getErrorMessage(cause, 'Incorrect employee code or PIN')
+      const message = getErrorMessage(cause, loginMode === 'touch' ? 'Incorrect PIN' : 'Incorrect employee code or PIN')
       setError(message)
       toast.error(message)
     } finally {
@@ -152,7 +171,24 @@ export default function Login() {
           <div className="relative rounded-lg border bg-card p-7 shadow-xl sm:p-8">
             <p className="text-sm font-semibold text-secondary">Login Account</p>
             <h2 className="mt-1 font-display text-2xl font-semibold text-foreground">Sign in to your workspace</h2>
-            <p className="mt-2 text-sm text-muted-foreground">Enter your employee code and PIN to continue.</p>
+            <p className="mt-2 text-sm text-muted-foreground">{loginMode === 'touch' ? 'Enter your PIN on this device.' : 'Enter your employee code and PIN to continue.'}</p>
+
+            <div className="mt-5 grid grid-cols-2 gap-2 rounded-sm bg-muted/50 p-1">
+              <button
+                type="button"
+                onClick={() => { setLoginMode('keyboard'); setPin('') }}
+                className={`inline-flex items-center justify-center gap-2 rounded-sm px-3 py-2 text-xs font-semibold ${loginMode === 'keyboard' ? 'bg-card shadow-sm' : 'text-muted-foreground'}`}
+              >
+                <LuKeyboard /> Keyboard
+              </button>
+              <button
+                type="button"
+                onClick={() => { setLoginMode('touch'); setEmployeeCode(''); setPin('') }}
+                className={`inline-flex items-center justify-center gap-2 rounded-sm px-3 py-2 text-xs font-semibold ${loginMode === 'touch' ? 'bg-card shadow-sm' : 'text-muted-foreground'}`}
+              >
+                <LuPanelTop /> Touch PIN
+              </button>
+            </div>
 
             {error && (
               <div className="mt-5 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive">
@@ -162,32 +198,38 @@ export default function Login() {
             )}
 
             <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-              <label className="block text-sm font-medium">
-                Employee Code
-                <span className="relative mt-1.5 block">
-                  <LuIdCard className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                  <input
-                    required
-                    type="text"
-                    autoComplete="username"
-                    placeholder="e.g. EMP-0007"
-                    value={employeeCode}
-                    onChange={(e) => setEmployeeCode(e.target.value)}
-                    className="input pl-9!"
-                  />
-                </span>
-              </label>
-              <label className="block text-sm font-medium">
-                PIN
-                <span className="relative mt-1.5 block">
-                  <LuLock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                  <PinInput required placeholder="Enter your PIN" value={pin} onChange={setPin} className="input pl-9!" />
-                </span>
-              </label>
+              {loginMode === 'keyboard' ? (
+                <>
+                  <label className="block text-sm font-medium">
+                    Employee Code
+                    <span className="relative mt-1.5 block">
+                      <LuIdCard className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                      <input
+                        required
+                        type="text"
+                        autoComplete="username"
+                        placeholder="e.g. EMP-0007"
+                        value={employeeCode}
+                        onChange={(e) => setEmployeeCode(e.target.value)}
+                        className="input pl-9!"
+                      />
+                    </span>
+                  </label>
+                  <label className="block text-sm font-medium">
+                    PIN
+                    <span className="relative mt-1.5 block">
+                      <LuLock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                      <PinInput required placeholder="Enter your PIN" value={pin} onChange={setPin} className="input pl-9!" />
+                    </span>
+                  </label>
+                </>
+              ) : (
+                <TouchPinPad value={pin} onChange={setPin} disabled={saving} />
+              )}
 
               <button
                 type="submit"
-                disabled={saving}
+                disabled={saving || pin.length < 4}
                 className="inline-flex w-full items-center justify-center gap-2 rounded-sm bg-secondary py-2.5 text-sm font-semibold text-secondary-foreground shadow-sm transition-opacity hover:opacity-90 disabled:opacity-60"
               >
                 {saving && <LuLoaderCircle className="animate-spin" />}
@@ -196,6 +238,38 @@ export default function Login() {
             </form>
           </div>
         </div>
+      </div>
+    </div>
+  )
+}
+
+function TouchPinPad({ value, onChange, disabled }: { value: string; onChange: (value: string) => void; disabled?: boolean }) {
+  const append = (digit: string) => onChange(`${value}${digit}`.replace(/\D/g, '').slice(0, 8))
+  return (
+    <div className="space-y-4">
+      <div className="rounded-sm border bg-background px-4 py-4 text-center">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">PIN</p>
+        <div className="mt-2 flex min-h-9 items-center justify-center gap-2">
+          {Array.from({ length: Math.max(4, value.length || 4) }).map((_, index) => (
+            <span key={index} className={`size-3 rounded-full border ${index < value.length ? 'border-secondary bg-secondary' : 'border-muted-foreground/35'}`} />
+          ))}
+        </div>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => (
+          <button key={digit} disabled={disabled} type="button" onClick={() => append(digit)} className="h-16 rounded-sm border bg-card font-display text-2xl font-semibold shadow-sm active:scale-[0.98] disabled:opacity-60">
+            {digit}
+          </button>
+        ))}
+        <button disabled={disabled || value.length === 0} type="button" onClick={() => onChange('')} className="h-16 rounded-sm border bg-card text-sm font-semibold text-muted-foreground shadow-sm active:scale-[0.98] disabled:opacity-40">
+          Clear
+        </button>
+        <button disabled={disabled} type="button" onClick={() => append('0')} className="h-16 rounded-sm border bg-card font-display text-2xl font-semibold shadow-sm active:scale-[0.98] disabled:opacity-60">
+          0
+        </button>
+        <button disabled={disabled || value.length === 0} type="button" onClick={() => onChange(value.slice(0, -1))} className="inline-flex h-16 items-center justify-center rounded-sm border bg-card text-muted-foreground shadow-sm active:scale-[0.98] disabled:opacity-40">
+          <LuDelete className="size-5" />
+        </button>
       </div>
     </div>
   )

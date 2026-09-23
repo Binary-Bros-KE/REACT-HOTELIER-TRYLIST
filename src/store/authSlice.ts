@@ -56,7 +56,7 @@ const initialState: AuthState = { ...readPersisted(), status: 'idle', error: nul
 
 export const login = createAsyncThunk(
   'auth/login',
-  async (credentials: { employeeCode: string; pin: string }) => {
+  async (credentials: { employeeCode?: string; pin: string }) => {
     const response = await api<{ token: string; expiresAt: string; user: AuthUser }>('/auth/login', {
       method: 'POST',
       body: JSON.stringify(credentials),
