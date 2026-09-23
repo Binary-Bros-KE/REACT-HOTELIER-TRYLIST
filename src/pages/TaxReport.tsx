@@ -153,7 +153,7 @@ export default function TaxReport() {
           <section className="mt-6 overflow-hidden rounded-sm border bg-card shadow-sm">
             <header className="border-b border-l-4 border-l-accent p-4">
               <h2 className="font-display text-lg font-semibold leading-tight">Breakdown by Tax Category</h2>
-              <p className="text-xs text-muted-foreground">{report.summary.orders.toLocaleString()} completed order{report.summary.orders === 1 ? '' : 's'} and {report.summary.lines.toLocaleString()} taxable line{report.summary.lines === 1 ? '' : 's'} in this period.</p>
+              <p className="text-xs text-muted-foreground">{report.summary.orders.toLocaleString()} sale/stay record{report.summary.orders === 1 ? '' : 's'} and {report.summary.lines.toLocaleString()} taxable line{report.summary.lines === 1 ? '' : 's'} in this period.</p>
             </header>
             {report.breakdown.length === 0 ? (
               <p className="p-6 text-center text-sm text-muted-foreground">No completed sales in this period.</p>
