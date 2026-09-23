@@ -25,6 +25,7 @@ import { useAppSelector } from "@/store/hooks";
 import { useWorkingLocation } from "@/lib/useWorkingLocation";
 import SharedStatCard from "@/components/ui/StatCard";
 import ActionButton from "@/components/ui/ActionButton";
+import ConfirmModal from "@/components/ui/ConfirmModal";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import { hasVariants, roomPricing, roomPriceHint, toApiDate, unitWord, type RoomRateOption } from "@/lib/roomRates";
 import GroupCheckInModal from "@/components/reception/GroupCheckInModal";
@@ -243,6 +244,7 @@ export default function Reception() {
   const [showClosedGroups, setShowClosedGroups] = useState(false);
   const { fixed: fixedLocation, options: pickableLocations, selectedId: selectedLocationId, setLocation, effectiveId: deskId } = useWorkingLocation(locations);
   const at = useMemo(() => apiAt(deskId), [deskId]);
+  const isSuperAdmin = user?.role?.name === "Super Admin";
 
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setLoading(true);
@@ -420,7 +422,10 @@ export default function Reception() {
                             </>
                           )}
                           {b.status === "CHECKED_IN" && (
-                            <ActionButton tone="success" icon={<LuBedDouble />} onClick={() => setStayOpen(b)}>Manage stay</ActionButton>
+                            <>
+                              <ActionButton tone="success" icon={<LuBedDouble />} onClick={() => setStayOpen(b)}>Manage stay</ActionButton>
+                              {isSuperAdmin && <ActionButton tone="danger" icon={<LuBan />} onClick={() => setCancelling(b)}>Cancel</ActionButton>}
+                            </>
                           )}
                         </div>
                       </td>
@@ -876,6 +881,7 @@ function CancelModal({ reservation, at, onClose, onCancelled }: { reservation: R
   const [reason, setReason] = useState<(typeof CANCELLATION_REASONS)[number]>("CHANGED_MIND");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
+  const activeStay = reservation.status === "CHECKED_IN" || reservation.status === "CHECKED_OUT";
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -901,7 +907,7 @@ function CancelModal({ reservation, at, onClose, onCancelled }: { reservation: R
         <>
           <button type="button" onClick={onClose} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted">Back</button>
           <button form="cancel-reservation-form" disabled={saving} className="inline-flex items-center gap-2 bg-destructive px-4 py-2 text-xs font-bold uppercase tracking-wider text-white transition hover:brightness-110 disabled:opacity-60">
-            {saving && <LuLoaderCircle className="animate-spin" />} Cancel reservation
+            {saving && <LuLoaderCircle className="animate-spin" />} {activeStay ? "Cancel stay" : "Cancel reservation"}
           </button>
         </>
       }
@@ -917,6 +923,7 @@ function CancelModal({ reservation, at, onClose, onCancelled }: { reservation: R
           Notes (optional)
           <textarea rows={2} className="input mt-1.5" value={notes} onChange={(e) => setNotes(e.target.value)} />
         </label>
+        {activeStay && <p className="border border-destructive/30 bg-destructive/10 p-3 text-xs font-semibold text-destructive">This will cancel the stay, free the room if it is occupied, void its original payment ledger entries, and record reversal/refund transactions.</p>}
       </form>
     </ModalShell>
   );
@@ -942,6 +949,7 @@ function StayModal({ reservation, at, onClose, onChanged, onCheckedOut }: { rese
   const [termsOpen, setTermsOpen] = useState(false);
   const [terms, setTerms] = useState<RoomTerms>(termsFromReservation(reservation));
   const [busy, setBusy] = useState(false);
+  const [confirmCheckout, setConfirmCheckout] = useState(false);
   const [bizTax, setBizTax] = useState<BizTax | null>(null);
   const [docProfile, setDocProfile] = useState<DocProfile>(null);
   const [linkedInvoices, setLinkedInvoices] = useState<LinkedCommercialDocument[]>([]);
@@ -965,7 +973,6 @@ function StayModal({ reservation, at, onClose, onChanged, onCheckedOut }: { rese
       // folio — offering it here, to settle the folio itself, is circular.
       const methods = r.methods.filter((m) => m.code !== "ROOM_CHARGE");
       setPaymentMethods(methods);
-      setPayMethodId((current) => current || methods[0]?.id || "");
     }).catch(() => {});
   }, []);
 
@@ -1100,7 +1107,7 @@ function StayModal({ reservation, at, onClose, onChanged, onCheckedOut }: { rese
     try {
       await at(`/reception/reservations/${reservation.id}/folio/deposits`, { method: "POST", body: JSON.stringify({ paymentMethodId: payMethodId, amount: Number(payAmount), reference: payReference || undefined }) });
       toast.success("Deposit recorded.");
-      setPayAmount(""); setPayReference("");
+      setPayMethodId(""); setPayAmount(""); setPayReference("");
       onChanged();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not record deposit");
@@ -1110,14 +1117,17 @@ function StayModal({ reservation, at, onClose, onChanged, onCheckedOut }: { rese
   }
 
   async function completeCheckout() {
+    setConfirmCheckout(false);
     const amount = Number(payAmount) || 0;
     if (amount > 0 && !payMethodId) { toast.error("Choose a payment method"); return; }
+    if (amount > totals.balance + 0.01) { toast.error(`Amount exceeds the balance due of ${formatKes(totals.balance)}`); return; }
     if (amount > 0 && selectedPayMethod?.requiresReference && !payReference.trim()) { toast.error(`${selectedPayMethod.name} requires a reference number`); return; }
     if (onCredit > 0.01 && (creditReason.trim().length < 3 || !creditExpectedAt)) { toast.error("Give a reason for the credit and an expected payment date"); return; }
     setBusy(true);
     try {
       await at(`/reception/reservations/${reservation.id}/checkout`, { method: "PATCH", body: JSON.stringify({ paymentMethodId: amount > 0 ? payMethodId : undefined, amount, reference: payReference || undefined, ...(onCredit > 0.01 ? { creditReason: creditReason.trim(), creditExpectedAt } : {}) }) });
       toast.success(onCredit > 0.01 ? `Room ${reservation.room.number}: checked out on credit (${formatKes(onCredit)} owing).` : `Room ${reservation.room.number}: checked out and sent to Housekeeping.`);
+      setPayMethodId(""); setPayAmount(""); setPayReference("");
       onCheckedOut();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not check out");
@@ -1278,20 +1288,21 @@ function StayModal({ reservation, at, onClose, onChanged, onCheckedOut }: { rese
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <select className="input" value={payMethodId} onChange={(e) => setPayMethodId(e.target.value)}>
-                  <option value="">Select method</option>
+                  <option value="">Pick payment method</option>
                   {paymentMethods.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
                 </select>
-                <input type="number" min="0" placeholder="Amount" className="input" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} />
+                <input type="number" min="0" step="0.01" max={Math.max(0, totals.balance)} placeholder="Amount" className="input" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} />
                 <input placeholder={selectedPayMethod?.requiresReference ? "Reference *" : "Reference (optional)"} required={selectedPayMethod?.requiresReference} className="input" value={payReference} onChange={(e) => setPayReference(e.target.value)} />
               </div>
+              {enteredPay > totals.balance + 0.01 && <p className="text-xs font-semibold text-destructive">Amount exceeds the balance due of {formatKes(totals.balance)}.</p>}
               {totals.balance > 0.01 && (
                 <button type="button" onClick={() => setPayAmount(String(Math.round(totals.balance * 100) / 100))} className="text-xs font-semibold text-secondary hover:underline">Pay the full balance ({formatKes(totals.balance)})</button>
               )}
               {onCredit > 0.01 && <CreditFields reason={creditReason} expectedAt={creditExpectedAt} onReason={setCreditReason} onExpectedAt={setCreditExpectedAt} />}
               {onCredit > 0.01 && <p className="text-xs font-semibold text-warning">{formatKes(onCredit)} will be left owing on this guest's account.</p>}
               <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => void addDeposit()} disabled={busy || !payAmount || !payMethodId} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted disabled:opacity-60">Record deposit</button>
-                <button type="button" onClick={() => void completeCheckout()} disabled={busy} className={cn("inline-flex items-center justify-center gap-2 rounded-sm px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60", onCredit > 0.01 ? "bg-warning" : "bg-success")}>
+                <button type="button" onClick={() => void addDeposit()} disabled={busy || !payAmount || !payMethodId || enteredPay > totals.balance + 0.01} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted disabled:opacity-60">Record deposit</button>
+                <button type="button" onClick={() => setConfirmCheckout(true)} disabled={busy || enteredPay > totals.balance + 0.01} className={cn("inline-flex items-center justify-center gap-2 rounded-sm px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60", onCredit > 0.01 ? "bg-warning" : "bg-success")}>
                   {busy && <LuLoaderCircle className="animate-spin" />} {onCredit > 0.01 ? "Complete on credit" : "Complete checkout"}
                 </button>
               </div>
@@ -1314,6 +1325,16 @@ function StayModal({ reservation, at, onClose, onChanged, onCheckedOut }: { rese
             </div>
           )}
         </div>
+        <ConfirmModal
+          open={confirmCheckout}
+          tone="warning"
+          title="Check this guest out?"
+          message={onCredit > 0.01 ? `${formatKes(onCredit)} will remain owing on this guest account.` : `This will close the stay for room ${reservation.room.number}, settle the folio, and send the room to housekeeping.`}
+          confirmLabel={onCredit > 0.01 ? "Complete on credit" : "Complete checkout"}
+          loading={busy}
+          onCancel={() => setConfirmCheckout(false)}
+          onConfirm={() => void completeCheckout()}
+        />
         {invoicePreview && docProfile && <DocumentViewer kind="commercial-document" data={invoicePreview} profile={docProfile} onClose={() => setInvoicePreview(null)} />}
     </ModalShell>
   );
