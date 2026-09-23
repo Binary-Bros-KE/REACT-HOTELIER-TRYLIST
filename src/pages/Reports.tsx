@@ -422,7 +422,7 @@ export default function Reports() {
           {/* Sales by Payment Method */}
           <BreakdownSection
             title="Sales by Payment Method"
-            note="Cash/mobile-money/etc. rows are money actually received; Credit and Complimentary are sold value that wasn't (yet, or ever) collected — shown here so the two don't go unaccounted for."
+            note="Cash/mobile-money/etc. rows are new-sale collections; credit repayments are excluded so credit is not counted twice. Credit and Complimentary are sold value that was not collected in cash."
             rows={report.byPaymentMethod.map((m) => ({ key: m.name, label: m.name, value: m.total, percent: m.percentOfTotal }))}
           >
             <table className="w-full text-left text-sm">
