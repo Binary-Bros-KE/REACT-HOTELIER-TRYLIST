@@ -232,6 +232,7 @@ export default function Reception() {
   const [bookings, setBookings] = useState<Reservation[]>([]);
   const [locations, setLocations] = useState<DeskLocation[]>([]);
   const [businessName, setBusinessName] = useState("");
+  const [bizTax, setBizTax] = useState<BizTax | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [working, setWorking] = useState("");
@@ -273,7 +274,10 @@ export default function Reception() {
   }, [load]);
   useEffect(() => {
     api<{ locations: DeskLocation[] }>("/locations").then((r) => setLocations(r.locations)).catch(() => {});
-    api<{ profile: { businessName: string } | null }>("/business-profile").then((r) => setBusinessName(r.profile?.businessName ?? "")).catch(() => {});
+    api<{ profile: ({ businessName: string } & BizTax) | null }>("/business-profile").then((r) => {
+      setBusinessName(r.profile?.businessName ?? "");
+      setBizTax(r.profile);
+    }).catch(() => {});
   }, []);
 
   // Keep the open stay panel's data fresh against the latest load, and close
@@ -323,6 +327,15 @@ export default function Reception() {
   const deskInfo = (b: Reservation) => {
     const event = b.activities.find((a) => a.action === "CHECKED_IN") ?? b.activities.find((a) => a.action === "CREATED");
     return { desk: event?.location?.name ?? b.location?.name ?? null, by: event?.employee ? `${event.employee.firstName} ${event.employee.lastName}` : null };
+  };
+
+  const paymentInfo = (b: Reservation) => {
+    const totals = folioTotals(b.folio, bizTax);
+    const paid = totals.paid;
+    const balance = totals.balance;
+    if (paid > 0.01 && balance > 0.01) return { label: "Partially paid", tone: "warning" as PillTone, detail: `${formatKes(paid)} paid · ${formatKes(balance)} due` };
+    if (paid > 0.01 && balance <= 0.01) return { label: "Paid", tone: "success" as PillTone, detail: `${formatKes(paid)} paid` };
+    return { label: "Pending", tone: "danger" as PillTone, detail: balance > 0.01 ? `${formatKes(balance)} due` : "No payment yet" };
   };
 
   return (
@@ -379,13 +392,13 @@ export default function Reception() {
           <div className="p-16 text-center"><LuLoaderCircle className="mx-auto animate-spin" /></div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[860px] text-left text-sm">
+            <table className="w-full min-w-[760px] text-left text-sm">
               <thead className="bg-primary text-primary-foreground">
                 <tr>
                   <th className={TH}>Guest</th>
                   <th className={TH}>Room</th>
-                  <th className={TH}>Stay</th>
                   <th className={TH}>Desk</th>
+                  <th className={TH}>Payment</th>
                   <th className={TH}>Status</th>
                   <th className={cn(TH, "text-right")}>Action</th>
                 </tr>
@@ -393,19 +406,22 @@ export default function Reception() {
               <tbody className="divide-y">
                 {activeBookings.map((b) => {
                   const info = deskInfo(b);
+                  const payment = paymentInfo(b);
                   return (
                     <tr key={b.id} className="align-middle even:bg-muted/30">
                       <td className="px-5 py-3.5">
                         <p className="font-semibold">{b.customer.firstName} {b.customer.lastName}</p>
-                        <p className="text-xs text-muted-foreground">{b.reservationNo}{b.group && <button type="button" onClick={() => setGroupOpenId(b.group!.id)} className="ml-2 font-semibold text-secondary hover:underline">Group: {b.group.name}</button>}</p>
+                        <p className="text-xs text-muted-foreground">{new Date(b.checkIn).toLocaleDateString()} – {new Date(b.checkOut).toLocaleDateString()}</p>
+                        {b.group && <button type="button" onClick={() => setGroupOpenId(b.group!.id)} className="mt-1 text-xs font-semibold text-secondary hover:underline">Group: {b.group.name}</button>}
                       </td>
                       <td className="px-5 py-3.5">{b.room.number} · {b.room.roomType.name}</td>
-                      <td className="whitespace-nowrap px-5 py-3.5 text-xs text-muted-foreground">
-                        {new Date(b.checkIn).toLocaleDateString()} – {new Date(b.checkOut).toLocaleDateString()}
-                      </td>
                       <td className="px-5 py-3.5">
                         <p className="text-sm font-medium">{info.desk ?? "—"}</p>
                         {info.by && <p className="text-xs text-muted-foreground">by {info.by}</p>}
+                      </td>
+                      <td className="px-5 py-3.5">
+                        <Pill tone={payment.tone}>{payment.label}</Pill>
+                        <p className="mt-1 text-xs text-muted-foreground">{payment.detail}</p>
                       </td>
                       <td className="px-5 py-3.5">
                         <Pill tone={STATUS_TONE[b.status]}>{titleCase(b.status)}</Pill>
@@ -415,7 +431,7 @@ export default function Reception() {
                           {(b.status === "PENDING" || b.status === "CONFIRMED") && (
                             <>
                               <ActionButton tone="primary" icon={<LuLogIn />} loading={working === b.id} onClick={() => void checkIn(b)}>Check in</ActionButton>
-                              <ActionButton tone="danger" icon={<LuBan />} onClick={() => setCancelling(b)}>Cancel</ActionButton>
+                              {isSuperAdmin && <ActionButton tone="danger" icon={<LuBan />} title="Cancel reservation" onClick={() => setCancelling(b)} />}
                               {new Date(b.checkIn) <= new Date() && (
                                 <ActionButton tone="neutral" icon={<LuUserX />} onClick={() => void markNoShow(b)}>No-show</ActionButton>
                               )}
@@ -424,7 +440,7 @@ export default function Reception() {
                           {b.status === "CHECKED_IN" && (
                             <>
                               <ActionButton tone="success" icon={<LuBedDouble />} onClick={() => setStayOpen(b)}>Manage stay</ActionButton>
-                              {isSuperAdmin && <ActionButton tone="danger" icon={<LuBan />} onClick={() => setCancelling(b)}>Cancel</ActionButton>}
+                              {isSuperAdmin && <ActionButton tone="danger" icon={<LuBan />} title="Cancel stay" onClick={() => setCancelling(b)} />}
                             </>
                           )}
                         </div>
