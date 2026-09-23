@@ -3,6 +3,7 @@ import { LuBan, LuCalendarDays, LuCircleAlert, LuLoaderCircle, LuMapPin, LuPrint
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/Toast'
+import { useAppSelector } from '@/store/hooks'
 import { useWorkingLocation } from '@/lib/useWorkingLocation'
 import StatCard from '@/components/ui/StatCard'
 import { type ReceiptOrder, type ReceiptProfile } from '@/components/pos/OrderReceipt'
@@ -53,6 +54,8 @@ const paymentStatusOf = (row: ReceiptRow): PaymentStatus => {
 export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 'SERVICES' } = {}) {
   const isServices = channel === 'SERVICES'
   const toast = useToast()
+  const user = useAppSelector((s) => s.auth.user)
+  const isSuperAdmin = user?.role?.name === 'Super Admin'
   const [orders, setOrders] = useState<ReceiptRow[]>([])
   const [locations, setLocations] = useState<LocationOption[]>([])
   const [employees, setEmployees] = useState<EmployeeOption[]>([])
@@ -69,6 +72,7 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
   const [error, setError] = useState('')
   const [manageId, setManageId] = useState<string | null>(null)
   const [receiptOrderId, setReceiptOrderId] = useState<string | null>(null)
+  const [voidingId, setVoidingId] = useState<string | null>(null)
 
   const { fixed: fixedLocation, options: pickableLocations, selectedId: selectedLocationId, setLocation, effectiveId: effectiveLocationId } = useWorkingLocation(locations, { persist: false })
 
@@ -111,6 +115,21 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
   }, [effectiveLocationId, channel, overridesOnly, statusFilter, employeeFilter, dateFrom, dateTo, toast])
 
   useEffect(() => { void load() }, [load])
+
+  async function voidSale(order: ReceiptRow) {
+    const reason = window.prompt(`Void completed sale #${order.orderNumber}? Give a reason:`)?.trim()
+    if (!reason) return
+    setVoidingId(order.id)
+    try {
+      await api(`/pos/orders/${order.id}/void`, { method: 'POST', body: JSON.stringify({ reason }) })
+      toast.success(`Order #${order.orderNumber} voided.`)
+      await load()
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : 'Could not void this sale')
+    } finally {
+      setVoidingId(null)
+    }
+  }
 
   const staffNames = useMemo(() => Object.fromEntries(employees.map((e) => [e.id, `${e.firstName} ${e.lastName ?? ''}`.trim()])), [employees])
 
@@ -287,6 +306,9 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
                           )}
                           <ActionButton tone="neutral" icon={<LuPrinter />} title="View / print receipt" onClick={() => setReceiptOrderId(order.id)} />
                           <ActionButton tone="neutral" icon={<LuReceiptText />} title="Manage / request a return" onClick={() => setManageId(order.id)} />
+                          {isSuperAdmin && order.status === 'COMPLETED' && (
+                            <ActionButton tone="danger" icon={voidingId === order.id ? <LuLoaderCircle className="animate-spin" /> : <LuBan />} title="Void completed sale" onClick={() => void voidSale(order)} />
+                          )}
                         </div>
                       </td>
                     </tr>

@@ -195,6 +195,7 @@ export default function PointOfSale() {
   // hint — the actual scoping happens server-side regardless of what the
   // client thinks, so this can never be a security check, just a label.
   const canSeeAllOrders = ['POS_VIEW_ALL_ORDERS', 'POS_APPROVE_COUNTER', 'POS_APPROVE_CANCELLATION'].some((p) => user?.role?.permissions.includes(p))
+  const isSuperAdmin = user?.role?.name === 'Super Admin'
   const [tab, setTab] = useState<'NEW' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED'>('NEW')
   const [menuItems, setMenuItems] = useState<MenuItem[]>([])
   const [allAddons, setAllAddons] = useState<CatalogAddon[]>([])
@@ -252,6 +253,7 @@ export default function PointOfSale() {
   const [ackingId, setAckingId] = useState<string | null>(null)
   const [revertOrder, setRevertOrder] = useState<ActiveOrder | null>(null)
   const [revertingId, setRevertingId] = useState<string | null>(null)
+  const [voidingId, setVoidingId] = useState<string | null>(null)
 
   const { fixed: fixedLocation, options: pickableLocations, selectedId: selectedLocationId, setLocation, effectiveId: effectiveLocationId, needsChoice: needsLocationChoice } = useWorkingLocation(locations)
 
@@ -567,6 +569,21 @@ export default function PointOfSale() {
     }
   }
 
+  async function voidCompletedSale(order: CompletedOrder) {
+    const reason = window.prompt(`Void completed sale #${order.orderNumber}? Give a reason:`)?.trim()
+    if (!reason) return
+    setVoidingId(order.id)
+    try {
+      await api(`/pos/orders/${order.id}/void`, { method: 'POST', body: JSON.stringify({ reason }) })
+      toast.success(`Order #${order.orderNumber} voided.`)
+      await Promise.all([loadCompletedOrders(), loadCancelledOrders()])
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : 'Could not void this sale')
+    } finally {
+      setVoidingId(null)
+    }
+  }
+
   return (
     <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
       <div className="relative">
@@ -690,6 +707,11 @@ export default function PointOfSale() {
                         <button onClick={() => setSettlementOrderId(order.id)} className={cn('inline-flex items-center gap-1.5 rounded-sm px-3 py-1.5 text-xs font-semibold', owed > 0.01 ? 'bg-primary text-primary-foreground' : 'border hover:bg-muted')}>
                           <LuReceiptText className="size-3.5" /> {owed > 0.01 ? 'Take payment' : 'View receipt'}
                         </button>
+                        {isSuperAdmin && (
+                          <button onClick={() => void voidCompletedSale(order)} disabled={voidingId === order.id} className="inline-flex items-center gap-1.5 rounded-sm bg-destructive px-3 py-1.5 text-xs font-semibold text-destructive-foreground disabled:opacity-60">
+                            {voidingId === order.id ? <LuLoaderCircle className="size-3.5 animate-spin" /> : <LuBan className="size-3.5" />} Void sale
+                          </button>
+                        )}
                       </div>
                     </article>
                   )
