@@ -157,7 +157,7 @@ export default function RoomsReport() {
       ) : (
         <>
           <section className="mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard index={0} label="Room revenue" value={formatKes(report.cards.roomRevenue)} icon={<LuBadgeDollarSign />} hint={`${report.cards.roomDiscounts ? `${formatKes(report.cards.roomDiscounts)} discounted` : 'No room discounts'} in this period`} />
+            <StatCard index={0} label="Room charges" value={formatKes(report.cards.roomRevenue)} icon={<LuBadgeDollarSign />} hint={`${report.cards.roomDiscounts ? `${formatKes(report.cards.roomDiscounts)} discounted` : 'Folio room charges after discounts'}`} />
             <StatCard index={1} label="Room payments" value={formatKes(report.cards.roomPayments)} icon={<LuWallet />} hint={`${formatKes(report.cards.deposits)} deposits, ${formatKes(report.cards.settlements)} settlements`} />
             <StatCard index={2} label="Occupancy" value={`${report.cards.occupancyRate.toFixed(1)}%`} icon={<LuBedDouble />} hint={`${report.cards.occupiedRoomNights.toLocaleString()} occupied room-nights`} />
             <StatCard index={3} label="In-house balance" value={formatKes(report.cards.inHouseBalance)} icon={<LuReceiptText />} tone={report.cards.inHouseBalance > 0 ? 'warn' : undefined} hint={`${report.cards.owingGuests} owing, ${report.cards.paidGuests} cleared`} />
