@@ -226,6 +226,7 @@ export const navigation: NavGroup[] = [
       { label: 'Sales Report', href: '/reports', icon: LuChartColumn, moduleKey: 'REPORTS' },
       { label: 'Inventory Report', href: '/reports/inventory-report', icon: LuBoxes },
       { label: 'Products Report', href: '/reports/products-report', icon: LuTrendingUp },
+      { label: 'Rooms Report', href: '/reports/rooms-report', icon: LuBedDouble, moduleKey: 'ROOMS' },
       { label: 'Tax Report', href: '/reports/tax-report', icon: LuBadgeDollarSign },
     ],
   },

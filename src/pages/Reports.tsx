@@ -44,6 +44,9 @@ type RevenueBreakdown = {
   creditRepaymentsCash?: number
   folioDepositsCash: number
   folioSettlementsCash: number
+  roomSalesValue?: number
+  roomSalesCount?: number
+  roomDiscountsGiven?: number
   serviceCenterCash: number
   totalRevenue: number
   taxCollected: number
@@ -277,6 +280,15 @@ export default function Reports() {
                   <div className="rounded-sm border bg-card p-2.5">
                     <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Discounts Given</p>
                     <p className="mt-0.5 font-semibold">{formatKes(report.revenueBreakdown.discountsGiven)}</p>
+                  </div>
+                  <div className="rounded-sm border bg-card p-2.5">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Room Sales</p>
+                    <p className="mt-0.5 font-semibold">{formatKes(report.revenueBreakdown.roomSalesValue ?? 0)}</p>
+                    <p className="text-[11px] text-muted-foreground">{report.revenueBreakdown.roomSalesCount ?? 0} stay{(report.revenueBreakdown.roomSalesCount ?? 0) === 1 ? '' : 's'} charged</p>
+                  </div>
+                  <div className="rounded-sm border bg-card p-2.5">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Room Discounts</p>
+                    <p className="mt-0.5 font-semibold">{formatKes(report.revenueBreakdown.roomDiscountsGiven ?? 0)}</p>
                   </div>
                   <div className="rounded-sm border bg-card p-2.5">
                     <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Complementary Value</p>
