@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import { LuCheck, LuCircleAlert, LuCreditCard, LuFileText, LuLoaderCircle, LuPencil, LuPlus, LuPrinter, LuRefreshCw, LuSearch, LuSend, LuSignature, LuTrash2 } from 'react-icons/lu'
+import { useLocation } from 'react-router-dom'
 import { api } from '@/lib/api'
 import { useToast } from '@/components/ui/Toast'
 import PageBanner from '@/components/ui/PageBanner'
@@ -44,6 +45,7 @@ const statusTone = (s: Status) => s === 'PAID' || s === 'ACCEPTED' ? 'success' :
 
 export default function CommercialDocuments({ type }: { type: DocType }) {
   const toast = useToast()
+  const path = useLocation().pathname
   const isInvoice = type === 'INVOICE'
   const [documents, setDocuments] = useState<DocumentRow[]>([])
   const [summary, setSummary] = useState({ total: 0, value: 0, paid: 0, balance: 0, overdue: 0 })
@@ -110,7 +112,7 @@ export default function CommercialDocuments({ type }: { type: DocType }) {
 
   return (
     <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
-      <PageBanner kicker="Reception" title={isInvoice ? 'Invoices' : 'Quotations'} />
+      <PageBanner kicker={path.startsWith('/finance') ? 'Finance' : 'Reception'} title={isInvoice ? 'Invoices' : 'Quotations'} />
       <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard index={0} icon={isInvoice ? <LuFileText /> : <LuSignature />} label={isInvoice ? 'Invoices' : 'Quotations'} value={summary.total} />
         <StatCard index={1} icon={<LuCreditCard />} label="Total value" value={money(summary.value)} />

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { LuBan, LuCalendarDays, LuCircleAlert, LuLoaderCircle, LuMapPin, LuPrinter, LuReceiptText, LuSearch, LuUserRound, LuWallet } from 'react-icons/lu'
+import { useLocation } from 'react-router-dom'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/Toast'
@@ -53,6 +54,8 @@ const paymentStatusOf = (row: ReceiptRow): PaymentStatus => {
 /** channel: leave unset for every sale (Sales > Receipts) or pass 'SERVICES' for the Service Center's own receipts. */
 export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 'SERVICES' } = {}) {
   const isServices = channel === 'SERVICES'
+  const path = useLocation().pathname
+  const isReception = path.startsWith('/reception')
   const toast = useToast()
   const user = useAppSelector((s) => s.auth.user)
   const isSuperAdmin = user?.role?.name === 'Super Admin'
@@ -75,6 +78,11 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
   const [voidingId, setVoidingId] = useState<string | null>(null)
 
   const { fixed: fixedLocation, options: pickableLocations, selectedId: selectedLocationId, setLocation, effectiveId: effectiveLocationId } = useWorkingLocation(locations, { persist: false })
+  const assignedLocationCount = user?.locations.length ?? 0
+
+  useEffect(() => {
+    if (!fixedLocation && assignedLocationCount > 0 && !selectedLocationId && pickableLocations[0]) setLocation(pickableLocations[0].id)
+  }, [assignedLocationCount, fixedLocation, pickableLocations, selectedLocationId, setLocation])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -155,7 +163,7 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
 
   return (
     <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
-      <PageBanner kicker={isServices ? 'Service center' : 'Sales'} title={isServices ? 'Service Receipts' : 'Receipts'} />
+      <PageBanner kicker={isServices ? 'Service center' : isReception ? 'Reception' : 'Sales'} title={isServices ? 'Service Receipts' : 'Receipts'} />
 
       <section className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatCard index={0} icon={<LuReceiptText className="size-4" />} label="Sales" value={formatKes(totalSales)} hint={`${completedVisible.length} order${completedVisible.length === 1 ? '' : 's'}`} />
@@ -222,7 +230,7 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
               <label className="flex flex-col gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
                 Location
                 <select aria-label="Filter by location" value={selectedLocationId} onChange={(e) => setLocation(e.target.value)} className="input font-normal normal-case tracking-normal">
-                  <option value="">All locations</option>
+                  {assignedLocationCount === 0 && <option value="">All locations</option>}
                   {pickableLocations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
                 </select>
               </label>

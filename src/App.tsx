@@ -40,6 +40,7 @@ import Transactions from "@/pages/Transactions";
 import Expenses from "@/pages/Expenses";
 import LostAndFound from "@/pages/LostAndFound";
 import ProductsPointOfSale from "@/pages/ProductsPointOfSale";
+import ReceptionProductStock from "@/pages/ReceptionProductStock";
 import ServicesPointOfSale from "@/pages/ServicesPointOfSale";
 import Assets from "@/pages/Assets";
 import StockLedger from "@/pages/StockLedger";
@@ -195,6 +196,7 @@ function App() {
         <Route path="/settings" element={<CafeSettings />} />
         <Route path="/pos" element={<PointOfSale />} />
         <Route path="/sales/products-pos" element={<ProductsPointOfSale />} />
+        <Route path="/reception/products-pos" element={<ProductsPointOfSale />} />
         <Route path="/service-center/pos" element={<ServicesPointOfSale />} />
         <Route path="/kitchen" element={<Kitchen />} />
         <Route path="/reservations" element={<Reception />} />
@@ -222,7 +224,9 @@ function App() {
         <Route path="/sales/tables" element={<Tables />} />
         <Route path="/sales/approvals" element={<Approvals />} />
         <Route path="/sales/receipts" element={<Receipts />} />
+        <Route path="/reception/receipts" element={<Receipts />} />
         <Route path="/service-center/receipts" element={<Receipts channel="SERVICES" />} />
+        <Route path="/reception/product-stock" element={<ReceptionProductStock />} />
         <Route path="/reports" element={<Reports />} />
         <Route path="/reports/inventory-report" element={<InventoryOverview />} />
         <Route path="/reports/products-report" element={<ProductsReport />} />
@@ -240,6 +244,8 @@ function App() {
         <Route path="/reception/stays" element={<Stays />} />
         <Route path="/reception/invoices" element={<CommercialDocuments type="INVOICE" />} />
         <Route path="/reception/quotations" element={<CommercialDocuments type="QUOTATION" />} />
+        <Route path="/finance/invoices" element={<CommercialDocuments type="INVOICE" />} />
+        <Route path="/finance/quotations" element={<CommercialDocuments type="QUOTATION" />} />
         <Route path="/reception/payment-methods" element={<PaymentMethods />} />
         <Route path="/sales/payment-methods" element={<PaymentMethods />} />
         <Route path="/sales/printer-settings" element={<PrinterSettings />} />
