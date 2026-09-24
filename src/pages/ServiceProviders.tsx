@@ -1,20 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { FormEvent, ReactNode } from "react";
+import type { ReactNode } from "react";
 import {
   LuCalendarCheck,
   LuCheck,
   LuLoaderCircle,
-  LuPencil,
   LuPhone,
-  LuPlus,
   LuSearch,
   LuSparkles,
-  LuTrash2,
   LuUserRoundCheck,
   LuUsers,
 } from "react-icons/lu";
 import { api } from "@/lib/api";
-import Button from "@/components/ui/Button";
 
 type Appointment = {
   id: string;
@@ -29,16 +25,11 @@ type Provider = {
   specialty: string | null;
   phone: string | null;
   isActive: boolean;
+  locations: { id: string; name: string }[];
+  shift: { name: string; startTime: string; endTime: string } | null;
   appointments: Appointment[];
   _count: { appointments: number };
 };
-type Form = {
-  name: string;
-  specialty: string;
-  phone: string;
-  isActive: boolean;
-};
-const blank: Form = { name: "", specialty: "", phone: "", isActive: true };
 const colors = [
   "from-violet-700 to-fuchsia-500",
   "from-sky-700 to-cyan-400",
@@ -49,14 +40,9 @@ const colors = [
 export default function ServiceProviders() {
   const [providers, setProviders] = useState<Provider[]>([]),
     [query, setQuery] = useState(""),
-    [form, setForm] = useState<Form>(blank),
-    [editing, setEditing] = useState<Provider | null>(null),
-    [open, setOpen] = useState(false),
     [selected, setSelected] = useState<Provider | null>(null),
     [loading, setLoading] = useState(true),
-    [saving, setSaving] = useState(false),
-    [error, setError] = useState(""),
-    [notice, setNotice] = useState("");
+    [error, setError] = useState("");
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -95,78 +81,6 @@ export default function ServiceProviders() {
         new Date(a.startsAt) > new Date() &&
         !["CANCELLED", "NO_SHOW"].includes(a.status),
     ).length;
-  function create() {
-    setEditing(null);
-    setForm(blank);
-    setOpen(true);
-    setError("");
-  }
-  function edit(provider: Provider) {
-    setEditing(provider);
-    setForm({
-      name: provider.name,
-      specialty: provider.specialty ?? "",
-      phone: provider.phone ?? "",
-      isActive: provider.isActive,
-    });
-    setOpen(true);
-    setError("");
-  }
-  async function save(event: FormEvent) {
-    event.preventDefault();
-    setSaving(true);
-    try {
-      await api(
-        editing
-          ? `/service-center/providers/${editing.id}`
-          : "/service-center/providers",
-        {
-          method: editing ? "PATCH" : "POST",
-          body: JSON.stringify({
-            ...form,
-            specialty: form.specialty || null,
-            phone: form.phone || null,
-          }),
-        },
-      );
-      setOpen(false);
-      setNotice(
-        editing
-          ? "Provider profile updated."
-          : "Provider added to the Service Centre.",
-      );
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not save provider");
-    } finally {
-      setSaving(false);
-    }
-  }
-  async function toggle(provider: Provider) {
-    try {
-      await api(`/service-center/providers/${provider.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ isActive: !provider.isActive }),
-      });
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not update provider");
-    }
-  }
-  async function remove(provider: Provider) {
-    if (!confirm(`Delete ${provider.name}?`)) return;
-    try {
-      await api(`/service-center/providers/${provider.id}`, {
-        method: "DELETE",
-      });
-      setNotice("Provider deleted.");
-      setSelected(null);
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not delete provider");
-    }
-  }
-
   return (
     <div className="mx-auto max-w-7xl px-6 py-8 lg:px-10">
       <header className="relative overflow-hidden rounded-[2rem] bg-[#101827] p-8 text-white shadow-2xl">
@@ -185,27 +99,24 @@ export default function ServiceProviders() {
               The people behind every experience.
             </h1>
             <p className="mt-2 max-w-2xl text-sm text-white/70">
-              Manage specialists and keep their profiles connected to services
-              and appointments.
+              Service centre staff are employees pinned to a service location.
+              Add someone here by assigning them to that location under Team;
+              their shifts decide when they can be booked.
             </p>
           </div>
-          <Button onClick={create} className="shrink-0">
-            <LuPlus /> Add provider
-          </Button>
         </div>
       </header>
-      {error && <Message error text={error} />}{" "}
-      {notice && <Message text={notice} />}
+      {error && <Message error text={error} />}
       <section className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Metric
           icon={<LuUsers />}
           value={providers.length}
-          label="Provider profiles"
+          label="Service staff"
         />
         <Metric
           icon={<LuUserRoundCheck />}
-          value={providers.filter((p) => p.isActive).length}
-          label="Active providers"
+          value={providers.filter((p) => p.shift).length}
+          label="On a shift rota"
         />
         <Metric
           icon={<LuCalendarCheck />}
@@ -255,22 +166,10 @@ export default function ServiceProviders() {
                     .slice(0, 2)
                     .join("")}
                 </span>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    void toggle(provider);
-                  }}
-                  className={`absolute right-5 top-4 rounded-full px-3 py-1 text-xs font-bold ${provider.isActive ? "bg-emerald-100 text-emerald-700" : "bg-muted text-muted-foreground"}`}
-                >
-                  {provider.isActive ? (
-                    <>
-                      <LuCheck className="mr-1 inline" />
-                      Available
-                    </>
-                  ) : (
-                    "Inactive"
-                  )}
-                </button>
+                <span className="absolute right-5 top-4 rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">
+                  <LuCheck className="mr-1 inline" />
+                  {provider.shift ? `${provider.shift.name} ${provider.shift.startTime}-${provider.shift.endTime}` : "Any time"}
+                </span>
                 <h3 className="text-xl font-bold">{provider.name}</h3>
                 <p className="text-sm font-medium text-secondary">
                   {provider.specialty || "Service specialist"}
@@ -279,6 +178,7 @@ export default function ServiceProviders() {
                   <LuPhone />
                   {provider.phone || "No phone added"}
                 </p>
+                <p className="mt-1 text-xs text-muted-foreground">{provider.locations.map((l) => l.name).join(", ")}</p>
                 <div className="mt-5 rounded-xl bg-muted/50 p-3 text-center text-xs">
                   <div>
                     <b className="block text-lg">
@@ -286,28 +186,6 @@ export default function ServiceProviders() {
                     </b>
                     Appointments
                   </div>
-                </div>
-                <div className="mt-4 flex justify-end gap-1 border-t pt-3">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      edit(provider);
-                    }}
-                    className="rounded-lg p-2 text-secondary hover:bg-muted"
-                    aria-label="Edit"
-                  >
-                    <LuPencil />
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      void remove(provider);
-                    }}
-                    className="rounded-lg p-2 text-destructive hover:bg-muted"
-                    aria-label="Delete"
-                  >
-                    <LuTrash2 />
-                  </button>
                 </div>
               </div>
             </article>
@@ -362,85 +240,15 @@ export default function ServiceProviders() {
           </aside>
         </div>
       )}
-      {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-sm">
-          <form
-            onSubmit={save}
-            className="w-full max-w-lg rounded-3xl bg-card p-6 shadow-2xl"
-          >
-            <p className="text-sm font-bold text-sky-700">
-              {editing ? "Edit specialist" : "New specialist"}
-            </p>
-            <h2 className="mt-1 text-2xl font-semibold">Provider profile</h2>
-            <div className="mt-5 grid gap-4 sm:grid-cols-2">
-              <Field label="Full name">
-                <input
-                  autoFocus
-                  required
-                  minLength={2}
-                  maxLength={100}
-                  className="input"
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder="e.g. Wanjiku Mwangi"
-                />
-              </Field>
-              <Field label="Specialty">
-                <input
-                  maxLength={120}
-                  className="input"
-                  value={form.specialty}
-                  onChange={(e) =>
-                    setForm({ ...form, specialty: e.target.value })
-                  }
-                  placeholder="Massage therapy"
-                />
-              </Field>
-              <Field label="Kenyan phone number">
-                <input
-                  maxLength={30}
-                  className="input"
-                  value={form.phone}
-                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                  placeholder="+254 7XX XXX XXX"
-                />
-              </Field>
-              <label className="flex items-center justify-between rounded-xl border p-4">
-                <span>
-                  <b className="block text-sm">Available</b>
-                  <span className="text-xs text-muted-foreground">
-                    Can receive bookings
-                  </span>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={form.isActive}
-                  onChange={(e) =>
-                    setForm({ ...form, isActive: e.target.checked })
-                  }
-                  className="h-5 w-5"
-                />
-              </label>
-            </div>
-            <div className="mt-6 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                className="rounded-xl border px-4 py-2.5"
-              >
-                Cancel
-              </button>
-              <button
-                disabled={saving}
-                className="flex items-center gap-2 rounded-xl bg-sky-800 px-4 py-2.5 font-bold text-white"
-              >
-                {saving && <LuLoaderCircle className="animate-spin" />}
-                {editing ? "Save profile" : "Add provider"}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
+    </div>
+  );
+}
+function Message({ text, error = false }: { text: string; error?: boolean }) {
+  return (
+    <div
+      className={`mt-4 rounded-xl border p-3 text-sm ${error ? "border-red-200 bg-red-50 text-red-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}
+    >
+      {text}
     </div>
   );
 }
@@ -460,23 +268,6 @@ function Metric({
       </span>
       <b className="mt-4 block text-2xl">{value}</b>
       <p className="text-xs text-muted-foreground">{label}</p>
-    </div>
-  );
-}
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label className="text-sm font-medium">
-      <span className="mb-1.5 block">{label}</span>
-      {children}
-    </label>
-  );
-}
-function Message({ text, error = false }: { text: string; error?: boolean }) {
-  return (
-    <div
-      className={`mt-4 rounded-xl border p-3 text-sm ${error ? "border-red-200 bg-red-50 text-red-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}
-    >
-      {text}
     </div>
   );
 }

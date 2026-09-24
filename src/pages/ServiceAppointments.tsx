@@ -42,7 +42,7 @@ type Service = {
   variants: ServiceVariant[];
   locations: { id: string }[];
 };
-type Provider = { id: string; name: string; specialty: string | null };
+type Provider = { id: string; name: string; specialty: string | null; locationIds?: string[] };
 type Plan = { name: string; discountPercent: string | number };
 type Membership = {
   id: string;
@@ -606,7 +606,7 @@ export default function ServiceAppointments() {
                     setForm({ ...form, providerId: e.target.value })
                   }
                 >
-                  {providers.map((p) => (
+                  {providers.filter((p) => !form.locationId || (p.locationIds ?? []).includes(form.locationId)).map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name} · {p.specialty}
                     </option>

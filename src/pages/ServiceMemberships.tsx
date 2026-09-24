@@ -29,6 +29,8 @@ type Customer = {
 };
 type Plan = {
   id: string;
+  visitLimit?: number | null;
+  discountOnProducts?: boolean;
   name: string;
   price: string | number;
   durationDays: number;
@@ -47,6 +49,10 @@ type Membership = {
   id: string;
   customerId: string;
   planId: string | null;
+  visitLimit: number | null;
+  visitsUsed: number;
+  discountOnProducts: boolean;
+  visits: { id: string; visitedAt: string; note: string | null }[];
   planName: string;
   planPrice: string | number;
   durationDays: number;
@@ -69,6 +75,8 @@ type Summary = {
 type Form = {
   customerId: string;
   planId: string;
+  visitLimit: string;
+  discountOnProducts: boolean;
   planName: string;
   planPrice: string;
   durationDays: string;
@@ -80,6 +88,8 @@ type Form = {
 const blank: Form = {
   customerId: "",
   planId: "",
+  visitLimit: "",
+  discountOnProducts: false,
   planName: "",
   planPrice: "0",
   durationDays: "30",
@@ -213,6 +223,8 @@ export default function ServiceMemberships() {
     setForm({
       customerId: item.customerId,
       planId: item.planId ?? "",
+      visitLimit: item.visitLimit != null ? String(item.visitLimit) : "",
+      discountOnProducts: item.discountOnProducts,
       planName: item.planName,
       planPrice: String(item.planPrice ?? 0),
       durationDays: String(item.durationDays ?? 30),
@@ -238,6 +250,7 @@ export default function ServiceMemberships() {
           body: JSON.stringify({
             ...form,
             planId: form.planId || null,
+            visitLimit: form.visitLimit ? Number(form.visitLimit) : null,
             planPrice: Number(form.planPrice) || 0,
             durationDays: Number(form.durationDays) || 30,
             discountPercent: Number(form.discountPercent) || 0,
@@ -285,9 +298,29 @@ export default function ServiceMemberships() {
   function pickPlan(id: string) {
     const plan = plans.find((p) => p.id === id);
     setForm(plan
-      ? { ...form, planId: id, planName: plan.name, planPrice: String(plan.price), durationDays: String(plan.durationDays), discountPercent: String(plan.discountPercent), endsAt: "" }
+      ? { ...form, planId: id, planName: plan.name, planPrice: String(plan.price), durationDays: String(plan.durationDays), discountPercent: String(plan.discountPercent), visitLimit: plan.visitLimit != null ? String(plan.visitLimit) : "", discountOnProducts: Boolean(plan.discountOnProducts), endsAt: "" }
       : { ...form, planId: "" });
   }
+  async function checkIn(item: Membership) {
+    try {
+      await api(`/service-center/memberships/${item.id}/visits`, { method: "POST", body: JSON.stringify({}) });
+      setNotice(`${item.customer.firstName} checked in.`);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not check in");
+    }
+  }
+  async function undoVisit(item: Membership) {
+    const last = item.visits[0];
+    if (!last || !confirm("Remove the most recent visit?")) return;
+    try {
+      await api(`/service-center/memberships/${item.id}/visits/${last.id}`, { method: "DELETE" });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not remove visit");
+    }
+  }
+  const visitsText = (m: Membership) => (m.visitLimit != null ? `${m.visitsUsed} / ${m.visitLimit} visits` : `${m.visitsUsed} visit${m.visitsUsed === 1 ? "" : "s"} this term`);
   async function setStatus(item: Membership, status: Status) {
     try {
       await api(`/service-center/memberships/${item.id}`, {
@@ -471,6 +504,13 @@ export default function ServiceMemberships() {
                     <button onClick={() => void renew(m)} className="rounded-full border px-2 py-1 text-[11px] font-bold hover:bg-muted">Renew</button>
                   )}
                 </div>
+                <div className="mt-3 flex items-center justify-between rounded-xl border p-2 text-xs">
+                  <span className="font-semibold">{visitsText(m)}</span>
+                  <span className="flex gap-1.5">
+                    <button onClick={() => void checkIn(m)} className="rounded-full bg-secondary px-3 py-1 font-bold text-white">Check in</button>
+                    {m.visits.length > 0 && <button onClick={() => void undoVisit(m)} className="rounded-full border px-2 py-1 font-bold">Undo</button>}
+                  </span>
+                </div>
                 <h3 className="mt-4 text-lg font-bold">
                   {m.customer.firstName} {m.customer.lastName}
                 </h3>
@@ -596,6 +636,11 @@ export default function ServiceMemberships() {
                           ),
                         )}
                       </select>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px]">
+                        <span className="font-semibold">{visitsText(m)}</span>
+                        <button onClick={() => void checkIn(m)} className="rounded-full bg-secondary px-2 py-0.5 font-bold text-white">Check in</button>
+                        {m.status !== "CANCELLED" && <button onClick={() => void renew(m)} className="rounded-full border px-2 py-0.5 font-bold">Renew</button>}
+                      </div>
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex gap-1">
@@ -660,6 +705,12 @@ export default function ServiceMemberships() {
                   ))}
                 </select>
               </Field>
+              <Field label="Visit limit per term (blank = unlimited)">
+                <input type="number" min="1" className="input" value={form.visitLimit} onChange={(e) => setForm({ ...form, visitLimit: e.target.value })} placeholder="e.g. 12" />
+              </Field>
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <input type="checkbox" checked={form.discountOnProducts} onChange={(e) => setForm({ ...form, discountOnProducts: e.target.checked })} /> Discount also applies to products
+              </label>
               <Field label="Membership name">
                 <input
                   required
@@ -782,7 +833,7 @@ function Metric({
   return <SharedStatCard index={index} icon={icon} label={label} value={value} />;
 }
 function PlansModal({ plans, onClose, onChanged }: { plans: CatalogPlan[]; onClose: () => void; onChanged: () => Promise<void> }) {
-  const empty = { name: "", price: "", durationDays: "30", discountPercent: "0", description: "" };
+  const empty = { name: "", price: "", durationDays: "30", discountPercent: "0", description: "", visitLimit: "", discountOnProducts: false };
   const [draft, setDraft] = useState(empty);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [err, setErr] = useState("");
@@ -792,7 +843,7 @@ function PlansModal({ plans, onClose, onChanged }: { plans: CatalogPlan[]; onClo
     try {
       await api(editingId ? `/service-center/membership-plans/${editingId}` : "/service-center/membership-plans", {
         method: editingId ? "PATCH" : "POST",
-        body: JSON.stringify({ ...draft, price: Number(draft.price) || 0, durationDays: Number(draft.durationDays) || 30, discountPercent: Number(draft.discountPercent) || 0, description: draft.description || null }),
+        body: JSON.stringify({ ...draft, price: Number(draft.price) || 0, durationDays: Number(draft.durationDays) || 30, discountPercent: Number(draft.discountPercent) || 0, description: draft.description || null, visitLimit: draft.visitLimit ? Number(draft.visitLimit) : null }),
       });
       setDraft(empty);
       setEditingId(null);
@@ -834,6 +885,8 @@ function PlansModal({ plans, onClose, onChanged }: { plans: CatalogPlan[]; onClo
           <Field label="Price"><input required type="number" min="0" step="0.01" className="input" value={draft.price} onChange={(e) => setDraft({ ...draft, price: e.target.value })} /></Field>
           <Field label="Duration (days)"><input required type="number" min="1" className="input" value={draft.durationDays} onChange={(e) => setDraft({ ...draft, durationDays: e.target.value })} /></Field>
           <Field label="Discount on services (%)"><input required type="number" min="0" max="100" step="0.01" className="input" value={draft.discountPercent} onChange={(e) => setDraft({ ...draft, discountPercent: e.target.value })} /></Field>
+          <Field label="Visit limit per term (blank = unlimited)"><input type="number" min="1" className="input" value={draft.visitLimit} onChange={(e) => setDraft({ ...draft, visitLimit: e.target.value })} /></Field>
+          <label className="flex items-center gap-2 pt-6 text-sm font-medium"><input type="checkbox" checked={draft.discountOnProducts} onChange={(e) => setDraft({ ...draft, discountOnProducts: e.target.checked })} /> Discount also applies to products</label>
           <div className="flex gap-2 sm:col-span-2">
             <Button type="submit">{editingId ? "Save plan" : "Add plan"}</Button>
             {editingId && <button type="button" onClick={() => { setEditingId(null); setDraft(empty); }} className="rounded-lg border px-3 text-sm font-semibold">Cancel</button>}
@@ -845,10 +898,10 @@ function PlansModal({ plans, onClose, onChanged }: { plans: CatalogPlan[]; onClo
             <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm">
               <div>
                 <p className={`font-semibold ${p.isActive ? "" : "text-muted-foreground line-through"}`}>{p.name}</p>
-                <p className="text-xs text-muted-foreground">{money(Number(p.price))} · {p.durationDays} days · {Number(p.discountPercent)}% off · {p._count?.memberships ?? 0} member(s)</p>
+                <p className="text-xs text-muted-foreground">{money(Number(p.price))} · {p.durationDays} days · {Number(p.discountPercent)}% off{p.discountOnProducts ? " (incl. products)" : ""} · {p.visitLimit ? `${p.visitLimit} visits` : "unlimited visits"} · {p._count?.memberships ?? 0} member(s)</p>
               </div>
               <div className="flex gap-1.5 text-xs font-semibold">
-                <button onClick={() => { setEditingId(p.id); setDraft({ name: p.name, price: String(p.price), durationDays: String(p.durationDays), discountPercent: String(p.discountPercent), description: p.description ?? "" }); }} className="rounded-lg border px-2 py-1">Edit</button>
+                <button onClick={() => { setEditingId(p.id); setDraft({ name: p.name, price: String(p.price), durationDays: String(p.durationDays), discountPercent: String(p.discountPercent), description: p.description ?? "", visitLimit: p.visitLimit != null ? String(p.visitLimit) : "", discountOnProducts: Boolean(p.discountOnProducts) }); }} className="rounded-lg border px-2 py-1">Edit</button>
                 <button onClick={() => void toggle(p)} className="rounded-lg border px-2 py-1">{p.isActive ? "Deactivate" : "Activate"}</button>
                 <button onClick={() => void remove(p)} className="rounded-lg border px-2 py-1 text-destructive">Delete</button>
               </div>
