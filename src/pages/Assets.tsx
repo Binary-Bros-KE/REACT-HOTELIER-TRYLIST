@@ -30,6 +30,7 @@ const movementLabels: Record<(typeof MOVEMENT_TYPES)[number], string> = { RECEIP
 
 type Category = { id: string; name: string; level: number }
 type Location = { id: string; name: string }
+type Room = { id: string; number: string; name: string | null; roomType: { name: string } }
 type PaymentMethod = { id: string; name: string; requiresReference: boolean }
 type Asset = {
   id: string
@@ -43,6 +44,8 @@ type Asset = {
   unitCost: string | null
   locationId: string | null
   location: { id: string; name: string } | null
+  roomId: string | null
+  room: Room | null
   isActive: boolean
   notes: string | null
   createdAt: string
@@ -50,7 +53,11 @@ type Asset = {
   createdByEmployee: { id: string; firstName: string; lastName: string } | null
   updatedByEmployee: { id: string; firstName: string; lastName: string } | null
 }
-type Summary = { total: number; totalValue: number }
+type Summary = { total: number; totalValue: number; roomAssets?: number }
+type RoomAssetReport = {
+  rooms: { room: Room; assetCount: number; quantity: number; value: number; assets: Asset[] }[]
+  summary: { rooms: number; assets: number; quantity: number; value: number }
+}
 
 type AssetForm = {
   categoryId: string
@@ -60,12 +67,13 @@ type AssetForm = {
   quantity: string
   unitCost: string
   locationId: string
+  roomId: string
   paymentMethodId: string
   reference: string
   notes: string
   isActive: boolean
 }
-const emptyForm: AssetForm = { categoryId: '', name: '', description: '', unit: 'Each', quantity: '0', unitCost: '', locationId: '', paymentMethodId: '', reference: '', notes: '', isActive: true }
+const emptyForm: AssetForm = { categoryId: '', name: '', description: '', unit: 'Each', quantity: '0', unitCost: '', locationId: '', roomId: '', paymentMethodId: '', reference: '', notes: '', isActive: true }
 
 type MovementForm = { type: (typeof MOVEMENT_TYPES)[number]; quantity: string; unitCost: string; paymentMethodId: string; reference: string; note: string }
 const emptyMovement: MovementForm = { type: 'RECEIPT', quantity: '', unitCost: '', paymentMethodId: '', reference: '', note: '' }
@@ -87,8 +95,12 @@ export default function Assets() {
   const [categories, setCategories] = useState<Category[]>([])
   const [quickCategory, setQuickCategory] = useState(false)
   const [locations, setLocations] = useState<Location[]>([])
+  const [rooms, setRooms] = useState<Room[]>([])
+  const [roomReport, setRoomReport] = useState<RoomAssetReport | null>(null)
   const [methods, setMethods] = useState<PaymentMethod[]>([])
   const [search, setSearch] = useState('')
+  const [assignment, setAssignment] = useState<'all' | 'rooms' | 'locations' | 'unassigned'>('all')
+  const [roomFilter, setRoomFilter] = useState('')
   const [form, setForm] = useState<AssetForm>(emptyForm)
   const [editing, setEditing] = useState<Asset | null>(null)
   const [showForm, setShowForm] = useState(false)
@@ -108,6 +120,8 @@ export default function Assets() {
     try {
       const query = new URLSearchParams()
       if (search.trim()) query.set('search', search.trim())
+      if (assignment !== 'all') query.set('assignment', assignment)
+      if (roomFilter) query.set('roomId', roomFilter)
       const response = await api<{ assets: Asset[]; summary: Summary }>(`/assets${query.size ? `?${query}` : ''}`)
       setAssets(response.assets)
       setSummary(response.summary)
@@ -118,15 +132,20 @@ export default function Assets() {
     } finally {
       setLoading(false)
     }
-  }, [search, toast])
+  }, [search, assignment, roomFilter, toast])
 
   useEffect(() => { const timer = window.setTimeout(() => void load(), 250); return () => window.clearTimeout(timer) }, [load])
 
   useEffect(() => {
     api<{ categories: Category[] }>('/categories?scope=ASSETS').then((r) => setCategories(r.categories)).catch(() => {})
     api<{ locations: Location[] }>('/locations').then((r) => setLocations(r.locations)).catch(() => {})
+    api<{ rooms: Room[] }>('/rooms/rooms').then((r) => setRooms(r.rooms)).catch(() => {})
     api<{ methods: PaymentMethod[] }>('/payment-methods?activeOnly=true').then((r) => setMethods(r.methods)).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    api<RoomAssetReport>('/assets/reports/rooms').then(setRoomReport).catch(() => setRoomReport(null))
+  }, [notice])
 
   const categoryLabel = useMemo(() => (c: Category) => '— '.repeat(c.level - 1) + c.name, [])
   const selectedMethod = methods.find((m) => m.id === form.paymentMethodId)
@@ -149,6 +168,7 @@ export default function Assets() {
       quantity: '0',
       unitCost: asset.unitCost ?? '',
       locationId: asset.locationId ?? '',
+      roomId: asset.roomId ?? '',
       paymentMethodId: '',
       reference: '',
       notes: asset.notes ?? '',
@@ -165,8 +185,8 @@ export default function Assets() {
     setNotice('')
     try {
       const payload = editing
-        ? { categoryId: form.categoryId || undefined, name: form.name, description: form.description || undefined, unit: form.unit, unitCost: form.unitCost || undefined, locationId: form.locationId || undefined, notes: form.notes || undefined, isActive: form.isActive }
-        : { ...form, categoryId: form.categoryId || undefined, locationId: form.locationId || undefined, paymentMethodId: form.paymentMethodId || undefined, reference: form.reference || undefined }
+        ? { categoryId: form.categoryId || undefined, name: form.name, description: form.description || undefined, unit: form.unit, unitCost: form.unitCost || undefined, locationId: form.locationId || undefined, roomId: form.roomId || undefined, notes: form.notes || undefined, isActive: form.isActive }
+        : { ...form, categoryId: form.categoryId || undefined, locationId: form.locationId || undefined, roomId: form.roomId || undefined, paymentMethodId: form.paymentMethodId || undefined, reference: form.reference || undefined }
       await api(editing ? `/assets/${editing.id}` : '/assets', { method: editing ? 'PATCH' : 'POST', body: JSON.stringify(payload) })
       setNotice(editing ? 'Asset updated.' : 'Asset registered.')
       toast.success(editing ? 'Asset updated.' : 'Asset registered.')
@@ -240,10 +260,11 @@ export default function Assets() {
     <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
       <PageBanner kicker="Inventory" title="Assets" />
 
-      <section className="mt-7 grid gap-3 sm:grid-cols-2">
+      <section className="mt-7 grid gap-3 sm:grid-cols-3">
         {([
           ['Total assets', summary.total, <LuBoxes key="a" />],
           ['Total value', formatKes(summary.totalValue), <LuClipboardList key="b" />],
+          ['Room assets', summary.roomAssets ?? 0, <LuPackageSearch key="c" />],
         ] as const).map(([label, value, icon], i) => (
           <StatCard key={label} index={i} label={label} value={value} icon={icon} />
         ))}
@@ -268,6 +289,16 @@ export default function Assets() {
             <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name or asset no…" className="w-full rounded-sm border bg-background py-2.5 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
           </label>
+          <select className="input h-10 w-full sm:w-44" value={assignment} onChange={(e) => setAssignment(e.target.value as typeof assignment)}>
+            <option value="all">All assignments</option>
+            <option value="rooms">Room assets</option>
+            <option value="locations">Location assets</option>
+            <option value="unassigned">Unassigned</option>
+          </select>
+          <select className="input h-10 w-full sm:w-48" value={roomFilter} onChange={(e) => { setRoomFilter(e.target.value); if (e.target.value) setAssignment('rooms') }}>
+            <option value="">All rooms</option>
+            {rooms.map((room) => <option key={room.id} value={room.id}>Room {room.number}</option>)}
+          </select>
           <ActionButton tone="primary" icon={<LuPlus />} onClick={openCreate}>Register asset</ActionButton>
         </div>
 
@@ -282,7 +313,7 @@ export default function Assets() {
                 <tr>
                   <th className="px-5 py-3">Asset</th>
                   <th className="px-5 py-3">Category</th>
-                  <th className="px-5 py-3">Location</th>
+                  <th className="px-5 py-3">Assigned to</th>
                   <th className="px-5 py-3">Quantity</th>
                   <th className="px-5 py-3">Value</th>
                   <th className="px-5 py-3 text-right">Actions</th>
@@ -296,7 +327,7 @@ export default function Assets() {
                       <p className="text-xs text-muted-foreground">{asset.assetNo}</p>
                     </td>
                     <td className="px-5 py-4 text-muted-foreground">{asset.category?.name ?? '—'}</td>
-                    <td className="px-5 py-4 text-muted-foreground">{asset.location?.name ?? '—'}</td>
+                    <td className="px-5 py-4 text-muted-foreground">{asset.room ? `Room ${asset.room.number}` : asset.location?.name ?? '—'}</td>
                     <td className="px-5 py-4">
                       <span className="font-semibold">{Number(asset.quantity).toLocaleString()} {asset.unit}</span>
                       {!asset.isActive && <span className="ml-2 keep-round border border-dashed border-muted-foreground/50 px-2 py-0.5 text-xs font-semibold text-muted-foreground">Inactive</span>}
@@ -346,6 +377,12 @@ export default function Assets() {
                 <select className="input" value={form.locationId} onChange={(e) => setForm({ ...form, locationId: e.target.value })}>
                   <option value="">Not assigned yet</option>
                   {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+                </select>
+              </Field>
+              <Field label="Room">
+                <select className="input" value={form.roomId} onChange={(e) => setForm({ ...form, roomId: e.target.value })}>
+                  <option value="">Not inside a room</option>
+                  {rooms.map((room) => <option key={room.id} value={room.id}>Room {room.number} - {room.roomType.name}</option>)}
                 </select>
               </Field>
               <Field label="Unit Cost (KES)"><input type="number" min="0" step="0.01" placeholder="e.g. 3500" value={form.unitCost} onChange={(e) => setForm({ ...form, unitCost: e.target.value })} className="input" /></Field>
@@ -407,6 +444,33 @@ export default function Assets() {
           </form>
         </div>
       )}
+
+      <section className="mt-6 overflow-hidden rounded-sm border bg-card shadow-sm">
+        <div className="border-b p-4">
+          <h2 className="font-display text-xl font-semibold">Room asset register</h2>
+          <p className="text-xs text-muted-foreground">Durable items assigned inside rooms, with replacement value.</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[820px] text-left text-sm">
+            <thead className="bg-primary text-xs uppercase tracking-wider text-primary-foreground">
+              <tr><th className="px-5 py-3">Room</th><th className="px-5 py-3">Assets</th><th className="px-5 py-3">Quantity</th><th className="px-5 py-3">Value</th><th className="px-5 py-3">Items</th></tr>
+            </thead>
+            <tbody>
+              {!roomReport ? <tr><td colSpan={5} className="p-8 text-center text-sm text-muted-foreground">No room asset data yet.</td></tr>
+                : roomReport.rooms.length === 0 ? <tr><td colSpan={5} className="p-8 text-center text-sm text-muted-foreground">No assets assigned to rooms yet.</td></tr>
+                : roomReport.rooms.map((row) => (
+                  <tr key={row.room.id} className="border-t align-top even:bg-muted/30">
+                    <td className="px-5 py-4"><p className="font-semibold">Room {row.room.number}</p><p className="text-xs text-muted-foreground">{row.room.roomType.name}</p></td>
+                    <td className="px-5 py-4 font-semibold tabular-nums">{row.assetCount}</td>
+                    <td className="px-5 py-4 tabular-nums">{row.quantity}</td>
+                    <td className="px-5 py-4 font-semibold tabular-nums">{formatKes(row.value)}</td>
+                    <td className="px-5 py-4 text-muted-foreground">{row.assets.map((asset) => `${asset.name} (${Number(asset.quantity)} ${asset.unit})`).join(', ')}</td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       {movementFor && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
