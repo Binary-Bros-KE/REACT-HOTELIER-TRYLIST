@@ -94,8 +94,8 @@ export default function Login() {
           so the mobile view gets its own branded band. Fills the safe area
           so the brand colour runs up behind the status bar. */}
       <div
-        className="relative overflow-hidden bg-primary px-6 pb-9 text-white lg:hidden"
-        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1.75rem)' }}
+        className="relative overflow-hidden bg-primary px-6 pb-5 text-white lg:hidden"
+        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1.25rem)' }}
       >
         <div className="pointer-events-none absolute inset-0" style={MESH_STYLE} />
         <div className="pointer-events-none absolute inset-0 overflow-hidden">
@@ -117,7 +117,7 @@ export default function Login() {
           <p className="shrink-0 pt-1 text-xs font-semibold text-white/80">{shortDateLabel()}</p>
         </div>
 
-        <h1 className="relative mt-7 font-display text-[26px] font-extrabold leading-[1.15]">
+        <h1 className="relative mt-4 font-display text-2xl font-extrabold leading-[1.15]">
           Welcome back.
         </h1>
       </div>
@@ -154,7 +154,7 @@ export default function Login() {
         </div>
       </div>
 
-      <div className="flex w-full flex-1 items-center justify-center bg-background px-6 py-10 lg:w-1/2 lg:py-12">
+      <div className="flex w-full flex-1 items-center justify-center bg-background px-6 py-5 lg:w-1/2 lg:py-6">
         {/* max-w-sm centred in the column; the orange accent overhangs a few
             px on the left but is decorative and doesn't shift the card. */}
         <div className="relative w-full max-w-sm">
@@ -168,12 +168,12 @@ export default function Login() {
           {/* Tilted accent behind the card's top-left corner, in the Hotelier favicon's orange. */}
           <div className="pointer-events-none absolute -left-3 -top-3 size-16 rotate-12 rounded-lg bg-[#f2921a] shadow-lg" aria-hidden="true" />
 
-          <div className="relative rounded-lg border bg-card p-7 shadow-xl sm:p-8">
+          <div className="relative rounded-lg border bg-card p-5 shadow-xl sm:p-6">
             <p className="text-sm font-semibold text-secondary">Login Account</p>
-            <h2 className="mt-1 font-display text-2xl font-semibold text-foreground">Sign in to your workspace</h2>
-            <p className="mt-2 text-sm text-muted-foreground">{loginMode === 'touch' ? 'Enter your PIN on this device.' : 'Enter your employee code and PIN to continue.'}</p>
+            <h2 className="mt-1 font-display text-xl font-semibold text-foreground sm:text-2xl">Sign in to your workspace</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{loginMode === 'touch' ? 'Enter your PIN on this device.' : 'Enter your employee code and PIN to continue.'}</p>
 
-            <div className="mt-5 grid grid-cols-2 gap-2 rounded-sm bg-muted/50 p-1">
+            <div className="mt-3 grid grid-cols-2 gap-2 rounded-sm bg-muted/50 p-1">
               <button
                 type="button"
                 onClick={() => { setLoginMode('keyboard'); setPin('') }}
@@ -191,13 +191,13 @@ export default function Login() {
             </div>
 
             {error && (
-              <div className="mt-5 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive">
+              <div className="mt-3 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive">
                 <LuCircleAlert />
                 {error}
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+            <form onSubmit={handleSubmit} className="mt-4 space-y-3">
               {loginMode === 'keyboard' ? (
                 <>
                   <label className="block text-sm font-medium">
@@ -246,10 +246,10 @@ export default function Login() {
 function TouchPinPad({ value, onChange, disabled }: { value: string; onChange: (value: string) => void; disabled?: boolean }) {
   const append = (digit: string) => onChange(`${value}${digit}`.replace(/\D/g, '').slice(0, 8))
   return (
-    <div className="space-y-4">
-      <div className="rounded-sm border bg-background px-4 py-4 text-center">
+    <div className="space-y-2.5">
+      <div className="rounded-sm border bg-background px-4 py-2 text-center">
         <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">PIN</p>
-        <div className="mt-2 flex min-h-9 items-center justify-center gap-2">
+        <div className="mt-1 flex min-h-6 items-center justify-center gap-2">
           {Array.from({ length: Math.max(4, value.length || 4) }).map((_, index) => (
             <span key={index} className={`size-3 rounded-full border ${index < value.length ? 'border-secondary bg-secondary' : 'border-muted-foreground/35'}`} />
           ))}
@@ -257,17 +257,17 @@ function TouchPinPad({ value, onChange, disabled }: { value: string; onChange: (
       </div>
       <div className="grid grid-cols-3 gap-2">
         {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => (
-          <button key={digit} disabled={disabled} type="button" onClick={() => append(digit)} className="h-16 rounded-sm border bg-card font-display text-2xl font-semibold shadow-sm active:scale-[0.98] disabled:opacity-60">
+          <button key={digit} disabled={disabled} type="button" onClick={() => append(digit)} className="h-[clamp(2.75rem,7vh,4rem)] rounded-sm border bg-card font-display text-2xl font-semibold shadow-sm active:scale-[0.98] disabled:opacity-60">
             {digit}
           </button>
         ))}
-        <button disabled={disabled || value.length === 0} type="button" onClick={() => onChange('')} className="h-16 rounded-sm border bg-card text-sm font-semibold text-muted-foreground shadow-sm active:scale-[0.98] disabled:opacity-40">
+        <button disabled={disabled || value.length === 0} type="button" onClick={() => onChange('')} className="h-[clamp(2.75rem,7vh,4rem)] rounded-sm border bg-card text-sm font-semibold text-muted-foreground shadow-sm active:scale-[0.98] disabled:opacity-40">
           Clear
         </button>
-        <button disabled={disabled} type="button" onClick={() => append('0')} className="h-16 rounded-sm border bg-card font-display text-2xl font-semibold shadow-sm active:scale-[0.98] disabled:opacity-60">
+        <button disabled={disabled} type="button" onClick={() => append('0')} className="h-[clamp(2.75rem,7vh,4rem)] rounded-sm border bg-card font-display text-2xl font-semibold shadow-sm active:scale-[0.98] disabled:opacity-60">
           0
         </button>
-        <button disabled={disabled || value.length === 0} type="button" onClick={() => onChange(value.slice(0, -1))} className="inline-flex h-16 items-center justify-center rounded-sm border bg-card text-muted-foreground shadow-sm active:scale-[0.98] disabled:opacity-40">
+        <button disabled={disabled || value.length === 0} type="button" onClick={() => onChange(value.slice(0, -1))} className="inline-flex h-[clamp(2.75rem,7vh,4rem)] items-center justify-center rounded-sm border bg-card text-muted-foreground shadow-sm active:scale-[0.98] disabled:opacity-40">
           <LuDelete className="size-5" />
         </button>
       </div>
