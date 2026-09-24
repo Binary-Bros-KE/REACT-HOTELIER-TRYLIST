@@ -24,7 +24,6 @@ import {
   LuIdCard,
   LuPackage,
   LuWallet,
-  LuBriefcase,
   LuTags,
   LuRuler,
   LuWarehouse,
@@ -179,7 +178,6 @@ export const navigation: NavGroup[] = [
       { label: 'Products', href: '/service-center/products', icon: LuPackage },
       { label: 'Customers', href: '/service-center/customers', icon: LuUsers },
       { label: 'Membership Payments', href: '/service-center/membership-payments', icon: LuWallet },
-      { label: 'Providers', href: '/service-center/providers', icon: LuBriefcase },
     ],
   },
   {
