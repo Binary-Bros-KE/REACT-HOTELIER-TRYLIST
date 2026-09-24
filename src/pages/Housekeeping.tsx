@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { LuBan, LuCalendarClock, LuCircleAlert, LuLoaderCircle, LuPlay, LuPlus, LuCheck, LuUserRoundPlus } from 'react-icons/lu'
+import { LuBan, LuCalendarClock, LuCircleAlert, LuLoaderCircle, LuPackageCheck, LuPlay, LuPlus, LuCheck, LuTrash2, LuUserRoundPlus } from 'react-icons/lu'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/Toast'
@@ -16,6 +16,16 @@ import { PriorityBadge, SOURCE_LABEL, StatusBadge, TYPE_LABEL, fmtDateTime, task
 
 type Summary = { pending: number; inProgress: number; unassigned: number; overdue: number }
 type RoomOption = { id: string; number: string; cleanliness: string; roomType: { name: string } }
+type LocationOption = { id: string; name: string; type?: string | null }
+type ConsumableProduct = {
+  id: string
+  name: string
+  sku: string | null
+  unit: string
+  packLabel: string | null
+  stockOnHand: string | number
+}
+type ConsumableStandard = { id: string; productId: string; quantity: string | number; product: Omit<ConsumableProduct, 'stockOnHand'> }
 type Tab = 'tasks' | 'history' | 'reports'
 
 const POLL_MS = 10_000
@@ -36,6 +46,7 @@ export default function Housekeeping() {
   const [createOpen, setCreateOpen] = useState(false)
   const [assigning, setAssigning] = useState<Task | null>(null)
   const [cancelling, setCancelling] = useState<Task | null>(null)
+  const [replenishing, setReplenishing] = useState<Task | null>(null)
   const [detailId, setDetailId] = useState<string | null>(null)
   const seen = useRef<Set<string> | null>(null)
 
@@ -77,6 +88,11 @@ export default function Housekeeping() {
       await load(true)
     } catch (cause) { toast.error(cause instanceof Error ? cause.message : 'Could not update task') }
     finally { setWorking('') }
+  }
+
+  function completeTask(task: Task) {
+    if (task.roomId && task.type !== 'MAINTENANCE') setReplenishing(task)
+    else void act(task, 'complete')
   }
 
   const tabs: { key: Tab; label: string }[] = [{ key: 'tasks', label: isManager ? 'Tasks' : 'My tasks' }, { key: 'history', label: 'History' }, { key: 'reports', label: isManager ? 'Reports' : 'My report' }]
@@ -143,7 +159,7 @@ export default function Housekeeping() {
                     {task.notes && <p className="mt-2 text-sm text-muted-foreground">{task.notes}</p>}
                     <div className="mt-auto flex flex-wrap gap-2 pt-4">
                       {task.assigneeName && task.status === 'PENDING' && <ActionButton tone="secondary" icon={<LuPlay />} loading={working === task.id} onClick={() => void act(task, 'start')}>Start</ActionButton>}
-                      {task.status === 'IN_PROGRESS' && <ActionButton tone="success" icon={<LuCheck />} loading={working === task.id} onClick={() => void act(task, 'complete')}>Complete</ActionButton>}
+                      {task.status === 'IN_PROGRESS' && <ActionButton tone="success" icon={<LuCheck />} loading={working === task.id} onClick={() => completeTask(task)}>Complete</ActionButton>}
                       {isManager && <ActionButton tone="neutral" icon={<LuUserRoundPlus />} onClick={() => setAssigning(task)}>{task.assignedToId ? 'Reassign' : 'Assign'}</ActionButton>}
                       {isManager && <ActionButton tone="danger" icon={<LuBan />} title="Cancel task" onClick={() => setCancelling(task)}>Cancel</ActionButton>}
                     </div>
@@ -157,8 +173,159 @@ export default function Housekeeping() {
       {createOpen && <CreateTaskModal staff={staff} onClose={() => setCreateOpen(false)} onCreated={() => { setCreateOpen(false); toast.success('Task created'); void load(true) }} />}
       {assigning && <AssignModal task={assigning} staff={staff} onClose={() => setAssigning(null)} onDone={() => { setAssigning(null); void load(true) }} />}
       {cancelling && <CancelModal task={cancelling} onClose={() => setCancelling(null)} onDone={() => { setCancelling(null); toast.success('Task cancelled'); void load(true) }} />}
+      {replenishing && <ReplenishModal task={replenishing} onClose={() => setReplenishing(null)} onDone={() => { setReplenishing(null); void load(true) }} />}
       {detailId && <TaskDetailModal taskId={detailId} onClose={() => setDetailId(null)} />}
     </div>
+  )
+}
+
+function ReplenishModal({ task, onClose, onDone }: { task: Task; onClose: () => void; onDone: () => void }) {
+  const toast = useToast()
+  const [locations, setLocations] = useState<LocationOption[]>([])
+  const [locationId, setLocationId] = useState('')
+  const [standards, setStandards] = useState<ConsumableStandard[]>([])
+  const [products, setProducts] = useState<ConsumableProduct[]>([])
+  const [search, setSearch] = useState('')
+  const [quantities, setQuantities] = useState<Record<string, string>>({})
+  const [note, setNote] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [productLoading, setProductLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([
+      api<{ locations: LocationOption[] }>('/locations').catch(() => ({ locations: [] })),
+      task.roomId ? api<{ standards: ConsumableStandard[] }>(`/room-consumables/standards/for-room/${task.roomId}`).catch(() => ({ standards: [] })) : Promise.resolve({ standards: [] }),
+    ]).then(([locs, standardResponse]) => {
+      if (cancelled) return
+      setLocations(locs.locations)
+      const preferred = locs.locations.find((l) => l.type === 'HOUSEKEEPING') ?? locs.locations[0]
+      if (preferred) setLocationId(preferred.id)
+      setStandards(standardResponse.standards)
+      setQuantities(Object.fromEntries(standardResponse.standards.map((s) => [s.productId, String(Number(s.quantity) || '')])))
+    }).catch((cause) => setError(cause instanceof Error ? cause.message : 'Could not load room supplies'))
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [task.roomId])
+
+  useEffect(() => {
+    if (!locationId) { setProducts([]); return }
+    const timer = window.setTimeout(() => {
+      setProductLoading(true)
+      const q = new URLSearchParams({ locationId, pageSize: '100' })
+      if (search.trim()) q.set('search', search.trim())
+      api<{ products: ConsumableProduct[] }>(`/room-consumables/products?${q}`)
+        .then((r) => { setProducts(r.products); setError('') })
+        .catch((cause) => setError(cause instanceof Error ? cause.message : 'Could not load products at this location'))
+        .finally(() => setProductLoading(false))
+    }, 250)
+    return () => window.clearTimeout(timer)
+  }, [locationId, search])
+
+  const productMap = new Map<string, ConsumableProduct | Omit<ConsumableProduct, 'stockOnHand'>>([
+    ...standards.map((s) => [s.productId, s.product] as const),
+    ...products.map((p) => [p.id, p] as const),
+  ])
+  const chosen = Object.entries(quantities)
+    .map(([productId, qty]) => ({ productId, quantity: Number(qty) }))
+    .filter((item) => Number.isFinite(item.quantity) && item.quantity > 0)
+  const valid = Boolean(task.roomId && locationId && chosen.length > 0)
+
+  function setQty(productId: string, quantity: string) {
+    setQuantities((current) => ({ ...current, [productId]: quantity }))
+  }
+
+  async function finish(skipSupplies = false) {
+    setSaving(true); setError('')
+    try {
+      if (!skipSupplies) {
+        if (!valid) { setError('Choose at least one replenished item, or skip supplies.'); setSaving(false); return }
+        await api('/room-consumables/usages', {
+          method: 'POST',
+          body: JSON.stringify({ roomId: task.roomId, taskId: task.id, locationId, note: note.trim() || undefined, items: chosen }),
+        })
+      }
+      await api(`/housekeeping/tasks/${task.id}/complete`, { method: 'POST', body: JSON.stringify({}) })
+      toast.success(skipSupplies ? `${taskName(task)} completed` : `Supplies recorded and ${taskName(task)} completed`)
+      onDone()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not complete task')
+      toast.error(cause instanceof Error ? cause.message : 'Could not complete task')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <ModalShell
+      kicker={task.taskNo ?? 'Task'}
+      title="Replenished items"
+      subtitle={task.roomNumber ? `Room ${task.roomNumber}` : undefined}
+      onClose={onClose}
+      size="xl"
+      footer={(
+        <>
+          <ActionButton tone="neutral" icon={<LuCheck />} loading={saving} onClick={() => void finish(true)}>Skip supplies</ActionButton>
+          <ActionButton tone="success" icon={<LuPackageCheck />} loading={saving} disabled={!valid} onClick={() => void finish(false)}>Record and complete</ActionButton>
+        </>
+      )}
+    >
+      <div className="space-y-4 p-5">
+        {loading ? <div className="p-10 text-center"><LuLoaderCircle className="mx-auto animate-spin" /></div> : (
+          <>
+            <div className="grid gap-3 md:grid-cols-[minmax(220px,320px)_1fr]">
+              <div className="text-sm font-medium">Stock location
+                <div className="mt-1.5">
+                  <SearchableSelect
+                    value={locationId}
+                    onChange={setLocationId}
+                    placeholder="Choose source location"
+                    searchPlaceholder="Search locations..."
+                    emptyText="No locations"
+                    options={locations.map((l) => ({ value: l.id, label: l.name, hint: l.type ?? undefined }))}
+                  />
+                </div>
+              </div>
+              <label className="block text-sm font-medium">Find another product
+                <input className="input mt-1.5" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search soap, sugar, cocoa..." />
+              </label>
+            </div>
+
+            {error && <div className="flex items-center gap-2 border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert /> {error}</div>}
+
+            <div className="overflow-x-auto border">
+              <table className="w-full min-w-[680px] text-left text-sm">
+                <thead className="bg-primary text-primary-foreground">
+                  <tr className="text-xs font-bold uppercase tracking-wider [&>th]:px-4 [&>th]:py-3"><th>Product</th><th>Suggested</th><th>In stock</th><th className="w-36">Used</th><th className="w-16"></th></tr>
+                </thead>
+                <tbody className="divide-y">
+                  {Array.from(productMap.entries()).map(([productId, product]) => {
+                    const standard = standards.find((s) => s.productId === productId)
+                    const stock = 'stockOnHand' in product ? Number(product.stockOnHand) : null
+                    return (
+                      <tr key={productId} className="even:bg-muted/30">
+                        <td className="px-4 py-3"><p className="font-semibold">{product.name}</p><p className="text-xs text-muted-foreground">{product.sku ?? product.unit}</p></td>
+                        <td className="px-4 py-3 tabular-nums">{standard ? `${Number(standard.quantity)} ${product.unit}` : '-'}</td>
+                        <td className={cn('px-4 py-3 tabular-nums', stock !== null && stock <= 0 && 'text-destructive')}>{stock === null ? (productLoading ? 'Loading...' : '-') : `${stock} ${product.unit}`}</td>
+                        <td className="px-4 py-3"><input type="number" min="0" step="0.001" className="input h-9" value={quantities[productId] ?? ''} onChange={(e) => setQty(productId, e.target.value)} /></td>
+                        <td className="px-4 py-3 text-right"><ActionButton tone="neutral" icon={<LuTrash2 />} title="Clear item" onClick={() => setQty(productId, '')} /></td>
+                      </tr>
+                    )
+                  })}
+                  {productMap.size === 0 && <tr><td colSpan={5} className="p-8 text-center text-sm text-muted-foreground">No room supply products found at this location.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+
+            <label className="block text-sm font-medium">Note
+              <textarea rows={2} className="input mt-1.5" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional note, e.g. guest used extra sugar" />
+            </label>
+          </>
+        )}
+      </div>
+    </ModalShell>
   )
 }
 
