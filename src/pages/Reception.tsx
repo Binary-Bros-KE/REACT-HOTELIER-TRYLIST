@@ -939,7 +939,7 @@ function CancelModal({ reservation, at, onClose, onCancelled }: { reservation: R
           Notes (optional)
           <textarea rows={2} className="input mt-1.5" value={notes} onChange={(e) => setNotes(e.target.value)} />
         </label>
-        {activeStay && <p className="border border-destructive/30 bg-destructive/10 p-3 text-xs font-semibold text-destructive">This will cancel the stay, free the room if it is occupied, void its original payment ledger entries, and record reversal/refund transactions.</p>}
+        {activeStay && <p className="border border-destructive/30 bg-destructive/10 p-3 text-xs font-semibold text-destructive">This will cancel the stay, free the room if it is occupied, and void its original payment ledger entries.</p>}
       </form>
     </ModalShell>
   );
