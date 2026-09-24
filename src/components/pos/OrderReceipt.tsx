@@ -54,6 +54,13 @@ export type ReceiptOrder = {
   complimentaryRecipientName?: string | null
   creditReason?: string | null
   creditExpectedAt?: string | null
+  billedToRoomAt?: string | null
+  roomBillSettledAt?: string | null
+  roomBillSettlementLocation?: string | null
+  roomBillSettlementMethod?: string | null
+  roomBillSettlementReference?: string | null
+  roomBillSettledByEmployee?: { firstName: string; lastName: string } | null
+  reservation?: { room?: { number: string } | null } | null
   items: ReceiptOrderItem[]
   returnRequests?: { id: string; status: 'PENDING' | 'APPROVED' | 'REJECTED'; quantity: number; reason: string; orderItem: { menuItem: { name: string } | null; variant: { name: string } | null } }[]
   payments: ReceiptPayment[]
@@ -74,7 +81,8 @@ export default function OrderReceipt({ order, profile }: { order: ReceiptOrder; 
   const paid = order.payments.reduce((sum, p) => sum + Number(p.amount), 0)
   const owed = Math.max(0, order.financials.total - paid)
   const creditOverdue = !isComplementary && owed > 0.01 && order.creditExpectedAt ? new Date(order.creditExpectedAt).getTime() < Date.now() : false
-  const statusText = isComplementary ? 'Complementary' : creditOverdue ? 'Overdue credit' : owed > 0.01 ? 'On credit' : order.status
+  const roomBilled = Boolean(order.billedToRoomAt)
+  const statusText = isComplementary ? 'Complementary' : roomBilled && owed > 0.01 ? 'Billed to room' : creditOverdue ? 'Overdue credit' : owed > 0.01 ? 'On credit' : order.status
   const approvedReturns = (order.returnRequests ?? []).filter((request) => request.status === 'APPROVED')
 
   return (
@@ -96,6 +104,7 @@ export default function OrderReceipt({ order, profile }: { order: ReceiptOrder; 
         <div className="flex justify-between text-gray-600"><span>{order.table ? `Table: ${order.table.label}` : 'Takeaway'}</span><span>Status: {statusText}</span></div>
         {isComplementary && <div className="flex justify-between text-gray-600"><span>Recipient</span><span>{order.complimentaryRecipientName || (order.customer ? `${order.customer.firstName} ${order.customer.lastName ?? ''}`.trim() : 'Walk-in')}</span></div>}
         {order.complimentarySession && <div className="flex justify-between text-gray-600"><span>Host/Event</span><span>{order.complimentarySession.title}</span></div>}
+        {roomBilled && <div className="flex justify-between text-gray-600"><span>Room bill</span><span>{order.reservation?.room?.number ? `Room ${order.reservation.room.number}` : 'Billed to room'}</span></div>}
         {order.creditReason && <div className="flex justify-between gap-3 text-gray-600"><span>Credit reason</span><span className="text-right">{order.creditReason}</span></div>}
         {order.creditExpectedAt && <div className="flex justify-between text-gray-600"><span>Expected pay date</span><span>{new Date(order.creditExpectedAt).toLocaleDateString()}</span></div>}
       </div>
@@ -181,6 +190,15 @@ export default function OrderReceipt({ order, profile }: { order: ReceiptOrder; 
       </div>
 
       <div className="my-3 border-t border-dashed border-gray-400" />
+
+      {order.roomBillSettledAt && (
+        <>
+          <p className="text-center text-[11px] text-gray-500">
+            Room bill settled by {order.roomBillSettledByEmployee ? `${order.roomBillSettledByEmployee.firstName} ${order.roomBillSettledByEmployee.lastName}` : 'Reception'} via {order.roomBillSettlementMethod ?? 'payment'}{order.roomBillSettlementLocation ? ` at ${order.roomBillSettlementLocation}` : ''} on {new Date(order.roomBillSettledAt).toLocaleString('en-KE')}{order.roomBillSettlementReference ? ` (${order.roomBillSettlementReference})` : ''}.
+          </p>
+          <div className="my-3 border-t border-dashed border-gray-400" />
+        </>
+      )}
 
       <p className="whitespace-pre-wrap text-center text-xs text-gray-500">{receiptFooterText(order)}</p>
     </div>

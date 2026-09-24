@@ -12,6 +12,7 @@ import {
   LuLogIn,
   LuMapPin,
   LuMoveRight,
+  LuPrinter,
   LuUserPlus,
   LuUserRound,
   LuUsersRound,
@@ -34,6 +35,8 @@ import GroupModal from "@/components/reception/GroupModal";
 import RoomTermsFields, { CreditFields, defaultTerms, termsDiscount, termsFromReservation, termsInvalid, termsPayload, type RoomTerms } from "@/components/reception/RoomTerms";
 import DocumentViewer from "@/components/documents/DocumentViewer";
 import type { DocProfile } from "@/components/documents/pdf";
+import ReceiptPreviewModal from "@/components/pos/ReceiptPreviewModal";
+import type { ReceiptProfile } from "@/components/pos/OrderReceipt";
 import { computeFinancialsFromRows } from "@/lib/orderTotals";
 import type { BizTax } from "@/lib/taxChoices";
 
@@ -61,6 +64,7 @@ type FolioLineItem = {
   label: string;
   amount: string | number;
   quantity: number;
+  sourceRefId?: string | null;
   createdAt: string;
   taxRate?: string | number | null;
   taxMode?: "INCLUSIVE" | "EXCLUSIVE" | null;
@@ -984,6 +988,7 @@ function StayModal({ reservation, rooms, at, onClose, onChanged, onCheckedOut }:
   const [docProfile, setDocProfile] = useState<DocProfile>(null);
   const [linkedInvoices, setLinkedInvoices] = useState<LinkedCommercialDocument[]>([]);
   const [invoicePreview, setInvoicePreview] = useState<LinkedCommercialDocument | null>(null);
+  const [receiptOrderId, setReceiptOrderId] = useState<string | null>(null);
 
   const loadLinkedInvoices = useCallback(async () => {
     if (!reservation.folio) { setLinkedInvoices([]); return; }
@@ -1248,7 +1253,14 @@ function StayModal({ reservation, rooms, at, onClose, onChanged, onCheckedOut }:
                         <td className="px-3 py-2">{item.quantity}</td>
                         <td className="px-3 py-2 text-right">{formatKes(Number(item.amount) * item.quantity)}</td>
                         <td className="px-2 py-2 text-right">
-                          {item.source !== "ROOM" && item.source !== "DISCOUNT" && <button onClick={() => void removeCharge(item.id)} className="text-xs text-destructive hover:underline">Remove</button>}
+                          <div className="flex items-center justify-end gap-1">
+                            {item.source === "POS_ORDER" && item.sourceRefId && (
+                              <button type="button" onClick={() => setReceiptOrderId(item.sourceRefId ?? null)} title="View / print receipt" className="rounded-sm p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground">
+                                <LuPrinter className="size-4" />
+                              </button>
+                            )}
+                            {item.source !== "ROOM" && item.source !== "DISCOUNT" && <button onClick={() => void removeCharge(item.id)} className="text-xs text-destructive hover:underline">Remove</button>}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -1458,7 +1470,7 @@ function StayModal({ reservation, rooms, at, onClose, onChanged, onCheckedOut }:
               </div>
               <div className="grid grid-cols-3 gap-2">
                 <select className="input" value={payMethodId} onChange={(e) => setPayMethodId(e.target.value)}>
-                  <option value="">Pick payment method</option>
+                  <option value="">Choose payment method</option>
                   {paymentMethods.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
                 </select>
                 <input type="number" min="0" step="0.01" max={Math.max(0, totals.balance)} placeholder="Amount" className="input" value={payAmount} onChange={(e) => setPayAmount(e.target.value)} />
@@ -1506,6 +1518,7 @@ function StayModal({ reservation, rooms, at, onClose, onChanged, onCheckedOut }:
           onConfirm={() => void completeCheckout()}
         />
         {invoicePreview && docProfile && <DocumentViewer kind="commercial-document" data={invoicePreview} profile={docProfile} onClose={() => setInvoicePreview(null)} />}
+        {receiptOrderId && <ReceiptPreviewModal orderId={receiptOrderId} profile={docProfile as ReceiptProfile} onClose={() => setReceiptOrderId(null)} />}
     </ModalShell>
   );
 }
