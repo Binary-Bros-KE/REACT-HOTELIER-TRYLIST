@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  LuBedDouble, LuBuilding2, LuCheck, LuChevronDown, LuCircleAlert, LuCircleCheck, LuConciergeBell, LuLoaderCircle, LuMapPin, LuMinus,
+  LuBedDouble, LuCheck, LuChevronDown, LuCircleAlert, LuCircleCheck, LuConciergeBell, LuLoaderCircle, LuMapPin, LuMinus,
   LuPencil, LuPlus, LuSearch, LuTrash2, LuUserRound, LuX,
 } from 'react-icons/lu'
 import { api } from '@/lib/api'
-import { useAppSelector } from '@/store/hooks'
 import { useWorkingLocation } from '@/lib/useWorkingLocation'
 import { cn } from '@/lib/utils'
 import RetailCheckoutModal, { type CreatedOrder, type PaymentMethod } from '@/components/pos/RetailCheckoutModal'
@@ -16,6 +15,8 @@ import { computeFinancialsFromRows } from '@/lib/orderTotals'
 import ServiceOptionsModal from '@/components/services/ServiceOptionsModal'
 import ActiveServicesTab from '@/components/services/ActiveServicesTab'
 import { useToast } from '@/components/ui/Toast'
+import PageBanner from '@/components/ui/PageBanner'
+import ActionButton from '@/components/ui/ActionButton'
 import { chargedPrice, isOverridden, lineKey, lineTotal, linePayload, listPrice, needsOptions, type CartLine, type PosService, type PosServiceAddon } from '@/components/services/serviceTill'
 
 type ApiService = {
@@ -43,7 +44,6 @@ function computeFinancials(cart: CartLine[], discountInput: string) {
 }
 
 export default function ServicesPointOfSale() {
-  const user = useAppSelector((s) => s.auth.user)
   const toast = useToast()
   // New sale = ring up now; Active = services that are running and paid at the end.
   const [tab, setTab] = useState<'NEW' | 'ACTIVE'>('NEW')
@@ -195,32 +195,21 @@ export default function ServicesPointOfSale() {
   }
 
   return (
-    <div className="mx-auto grid min-h-full max-w-7xl gap-0 px-6 py-8 sm:px-8 lg:grid-cols-[minmax(0,1fr)_24px_360px] lg:px-10">
-      <section>
-        <div className="relative">
-          <div className="pointer-events-none absolute -left-2.5 -top-2.5 size-12 rotate-12 rounded-sm bg-accent shadow-lg" aria-hidden="true" />
-          <div className="relative flex flex-wrap items-center justify-between gap-3 rounded-sm bg-secondary px-5 py-3.5 shadow-sm">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/70">Checkout</p>
-              <h1 className="mt-1 font-display text-2xl font-semibold text-white">Services POS</h1>
-            </div>
-            <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-white/80">
-              <span className="flex items-center gap-1.5"><LuBuilding2 className="size-3.5" /> {profile?.businessName ?? '—'}</span>
-              <span className="flex items-center gap-1.5"><LuUserRound className="size-3.5" /> {user ? `${user.firstName} ${user.lastName}` : '—'}</span>
-              {fixedLocation ? (
-                <span className="flex items-center gap-1.5"><LuMapPin className="size-3.5" /> {fixedLocation.name}</span>
-              ) : pickableLocations.length > 0 ? (
-                <label className="flex items-center gap-1.5">
-                  <LuMapPin className="size-3.5" />
-                  <select value={selectedLocationId} onChange={(e) => setLocation(e.target.value)} className="rounded-sm border border-white/30 bg-white/10 px-1.5 py-1 text-xs font-medium text-white outline-none [&>option]:text-foreground">
-                    <option value="">Select location…</option>
-                    {pickableLocations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-                  </select>
-                </label>
-              ) : null}
-            </div>
-          </div>
-        </div>
+    <div className="dashboard-square mx-auto grid min-h-full max-w-7xl grid-cols-1 gap-0 px-6 py-6 sm:px-8 sm:py-8 lg:grid-cols-[minmax(0,1fr)_24px_360px] lg:px-10">
+      <section className="min-w-0">
+        <PageBanner kicker="Checkout" title="Services POS">
+          {fixedLocation ? (
+            <span className="flex items-center gap-1.5"><LuMapPin className="size-3.5" /> {fixedLocation.name}</span>
+          ) : pickableLocations.length > 0 ? (
+            <label className="flex items-center gap-1.5">
+              <LuMapPin className="size-3.5" />
+              <select value={selectedLocationId} onChange={(e) => setLocation(e.target.value)} className="border border-slate-300 bg-white px-1.5 py-1 text-xs font-medium text-slate-700 outline-none">
+                <option value="">Select location…</option>
+                {pickableLocations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+              </select>
+            </label>
+          ) : null}
+        </PageBanner>
 
         <div className="mt-5 flex w-fit border bg-card">
           {([['NEW', 'New sale'], ['ACTIVE', `Active services${activeCount > 0 ? ` (${activeCount})` : ''}`]] as const).map(([value, text]) => (
@@ -280,16 +269,16 @@ export default function ServicesPointOfSale() {
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {visibleItems.map((item) => (
-                <button key={item.id} onClick={() => openService(item)} className="group relative overflow-hidden rounded-sm border border-border bg-card p-5 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-accent/50 hover:shadow-xl">
+                <button key={item.id} onClick={() => openService(item)} className="group relative flex flex-col overflow-hidden border border-border bg-card p-5 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-accent/50 hover:shadow-xl">
                   <div className="flex items-start justify-between">
                     <span className="flex size-11 items-center justify-center rounded-sm bg-accent/10 text-accent"><LuConciergeBell className="size-5" /></span>
-                    <span className="rounded-sm bg-muted px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{item.category.name}</span>
+                    <span className="max-w-[55%] truncate bg-muted px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{item.category.name}</span>
                   </div>
                   <h2 className="mt-5 text-base font-semibold text-foreground">{item.name}</h2>
                   <p className="mt-1 text-xs text-muted-foreground">Per {item.unit.name}{item.variants.length > 0 ? ` · ${item.variants.length} options` : ''}{item.durationMinutes ? ` · ${item.durationMinutes} min` : ''}</p>
-                  <div className="mt-4 flex items-center justify-between border-t pt-4">
+                  <div className="mt-4 border-t pt-4">
                     <span className="text-lg font-bold text-foreground">{item.variants.length > 0 ? `From ${formatKes(Math.min(...item.variants.map((v) => v.price)))}` : formatKes(item.price)}</span>
-                    <span className="flex size-8 items-center justify-center rounded-sm bg-accent text-lg text-accent-foreground shadow-md transition group-hover:scale-110"><LuPlus /></span>
+                    <span className="mt-3 flex w-full items-center justify-center gap-1.5 bg-accent py-2 text-xs font-bold uppercase tracking-wide text-accent-foreground shadow-md transition group-hover:brightness-95"><LuPlus className="size-4" /> {needsOptions(item, serviceAddons) ? 'Choose options' : 'Add'}</span>
                   </div>
                 </button>
               ))}
@@ -305,10 +294,10 @@ export default function ServicesPointOfSale() {
       </div>
 
       <aside className="mt-8 flex h-fit flex-col gap-3 lg:mt-0">
-        <div className="flex flex-col rounded-sm border border-border bg-card shadow-sm">
+        <div className="flex flex-col border-2 border-secondary/40 bg-card shadow-md">
           <div className="flex items-start justify-between gap-3 border-b p-4">
             <div className="min-w-0">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">New Sale</p>
+              <span className="inline-flex items-center gap-1.5 keep-round border border-dashed border-accent px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-accent"><span className="size-1.5 rounded-full bg-accent" /> New Sale</span>
               <button type="button" onClick={() => setCustomerModalOpen(true)} className="mt-1.5 flex max-w-full items-center gap-2 text-left">
                 {party.kind === 'ROOM' ? <LuBedDouble className="size-4 shrink-0 text-secondary" /> : <LuUserRound className="size-4 shrink-0 text-primary" />}
                 <span className="truncate text-lg font-semibold text-foreground">{partyLabel(party)}</span>
@@ -316,9 +305,7 @@ export default function ServicesPointOfSale() {
               </button>
               {party.kind === 'ROOM' && <p className="mt-1 text-xs font-semibold text-secondary">Charges to Room {party.roomNumber}</p>}
             </div>
-            <button type="button" onClick={resetSale} disabled={cart.length === 0 && party.kind === 'WALK_IN'} title="Clear this sale" className="rounded-sm p-1 text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive disabled:pointer-events-none disabled:opacity-30">
-              <LuTrash2 className="size-4" />
-            </button>
+            <ActionButton tone="neutral" icon={<LuTrash2 />} title="Clear this sale" disabled={cart.length === 0 && party.kind === 'WALK_IN'} onClick={resetSale} />
           </div>
 
           <div className="max-h-96 overflow-y-auto p-4">
@@ -381,17 +368,17 @@ export default function ServicesPointOfSale() {
           {addingTo ? (
             <div className="space-y-2 p-4 pt-0">
               <p className="flex items-center justify-between gap-2 border bg-secondary/10 px-3 py-2 text-xs font-semibold text-secondary">Adding to #{addingTo.orderNumber} · {addingTo.label}<button type="button" onClick={() => setAddingTo(null)} title="Stop adding" className="text-muted-foreground hover:text-destructive"><LuX className="size-3.5" /></button></p>
-              <button disabled={cart.length === 0 || starting} onClick={() => void addToTab()} className="flex w-full items-center justify-center gap-2 rounded-sm bg-secondary py-2.5 text-sm font-bold text-secondary-foreground transition hover:opacity-90 disabled:opacity-50">{starting && <LuLoaderCircle className="animate-spin" />}Add to tab · {formatKes(financials.total)}</button>
+              <button disabled={cart.length === 0 || starting} onClick={() => void addToTab()} className="flex w-full items-center justify-center gap-2 bg-secondary py-2.5 text-xs font-bold uppercase tracking-wider text-secondary-foreground transition hover:opacity-90 disabled:opacity-50">{starting && <LuLoaderCircle className="animate-spin" />}Add to tab · {formatKes(financials.total)}</button>
             </div>
           ) : (
             <div className="space-y-2 px-4">
               <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Label a running service (Pool, Room 5, KDA 123A)" maxLength={120} className="w-full rounded-sm border bg-background px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-ring" />
-              <button disabled={cart.length === 0 || needsLocationChoice || starting} onClick={() => void startService()} className="flex w-full items-center justify-center gap-2 rounded-sm border-2 border-secondary py-2 text-sm font-bold text-secondary transition hover:bg-secondary/10 disabled:opacity-50">{starting && <LuLoaderCircle className="animate-spin" />}Start service · pay at the end</button>
+              <button disabled={cart.length === 0 || needsLocationChoice || starting} onClick={() => void startService()} className="flex w-full items-center justify-center gap-2 border-2 border-secondary py-2 text-xs font-bold uppercase tracking-wider text-secondary transition hover:bg-secondary/10 disabled:opacity-50">{starting && <LuLoaderCircle className="animate-spin" />}Start service · pay at the end</button>
             </div>
           )}
 
           <div className={cn('p-4 pt-2', addingTo && 'hidden')}>
-            <button disabled={cart.length === 0 || needsLocationChoice} onClick={() => setShowCheckout(true)} className="flex w-full items-center justify-center gap-2 rounded-sm bg-primary py-2.5 text-sm font-bold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50">
+            <button disabled={cart.length === 0 || needsLocationChoice} onClick={() => setShowCheckout(true)} className="flex w-full items-center justify-center gap-2 bg-primary py-2.5 text-xs font-bold uppercase tracking-wider text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50">
               Checkout · {formatKes(financials.total)}
             </button>
           </div>
