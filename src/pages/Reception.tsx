@@ -11,6 +11,7 @@ import {
   LuLoaderCircle,
   LuLogIn,
   LuMapPin,
+  LuMoveRight,
   LuUserPlus,
   LuUserRound,
   LuUsersRound,
@@ -93,6 +94,8 @@ type Reservation = {
   notes: string | null;
   customer: Customer;
   room: Room;
+  rateId?: string | null;
+  rateName?: string | null;
   location: { id: string; name: string } | null;
   folio: Folio | null;
   additionalGuests: Guest[];
@@ -532,6 +535,7 @@ export default function Reception() {
       {stayOpen && (
         <StayModal
           reservation={stayOpen}
+          rooms={rooms}
           at={at}
           onClose={() => setStayOpen(null)}
           onChanged={() => load(true)}
@@ -945,11 +949,11 @@ function CancelModal({ reservation, at, onClose, onCancelled }: { reservation: R
   );
 }
 
-function StayModal({ reservation, at, onClose, onChanged, onCheckedOut }: { reservation: Reservation; at: ApiAt; onClose: () => void; onChanged: () => void; onCheckedOut: () => void }) {
+function StayModal({ reservation, rooms, at, onClose, onChanged, onCheckedOut }: { reservation: Reservation; rooms: Room[]; at: ApiAt; onClose: () => void; onChanged: () => void; onCheckedOut: () => void }) {
   const toast = useToast();
   const [services, setServices] = useState<Service[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
-  const [tab, setTab] = useState<"folio" | "extend" | "guests" | "checkout" | "activity">("folio");
+  const [tab, setTab] = useState<"folio" | "room" | "extend" | "guests" | "checkout" | "activity">("folio");
   const [extendDate, setExtendDate] = useState(reservation.checkOut.slice(0, 10));
   const [serviceId, setServiceId] = useState("");
   const [serviceQty, setServiceQty] = useState("1");
@@ -957,6 +961,16 @@ function StayModal({ reservation, at, onClose, onChanged, onCheckedOut }: { rese
   const [adHocAmount, setAdHocAmount] = useState("");
   const [guestName, setGuestName] = useState("");
   const [guestIdNumber, setGuestIdNumber] = useState("");
+  const [guestCharge, setGuestCharge] = useState("");
+  const [moveRoomId, setMoveRoomId] = useState("");
+  const [moveRateId, setMoveRateId] = useState("");
+  const [moveDate, setMoveDate] = useState(() => {
+    const d = new Date(reservation.checkIn);
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().slice(0, 10);
+  });
+  const [roomRateId, setRoomRateId] = useState(reservation.rateId ?? "");
+  const [roomQty, setRoomQty] = useState("");
   const [payMethodId, setPayMethodId] = useState("");
   const [payAmount, setPayAmount] = useState("");
   const [payReference, setPayReference] = useState("");
@@ -997,6 +1011,13 @@ function StayModal({ reservation, at, onClose, onChanged, onCheckedOut }: { rese
   }, [loadLinkedInvoices]);
 
   const selectedPayMethod = paymentMethods.find((m) => m.id === payMethodId);
+  const vacantRooms = rooms.filter((r) => r.id !== reservation.room.id && r.status === "VACANT" && r.cleanliness === "CLEAN");
+  const moveRoom = rooms.find((r) => r.id === moveRoomId);
+  const movePricing = moveRoom ? roomPricing(moveRoom, moveRateId, moveDate, reservation.checkOut.slice(0, 10)) : null;
+  const moveNeedsRate = Boolean(moveRoom) && hasVariants(moveRoom!) && !moveRateId;
+  const canReplaceRoomCharge = (reservation.folio?.payments.length ?? 0) === 0;
+  const roomChargePricing = roomPricing(reservation.room, roomRateId, reservation.checkIn, reservation.checkOut);
+  const roomChargeNeedsRate = hasVariants(reservation.room) && !roomRateId;
 
   const totals = folioTotals(reservation.folio, bizTax);
   const enteredPay = Number(payAmount) || 0;
@@ -1027,6 +1048,39 @@ function StayModal({ reservation, at, onClose, onChanged, onCheckedOut }: { rese
       onChanged();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not extend stay");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function replaceRoomCharge(e: FormEvent) {
+    e.preventDefault();
+    if (roomChargeNeedsRate) { toast.error("Choose a room rate"); return; }
+    setBusy(true);
+    try {
+      await at(`/reception/reservations/${reservation.id}/room-charge`, { method: "PATCH", body: JSON.stringify({ rateId: roomRateId || undefined, quantityOverride: roomQty ? Number(roomQty) : undefined }) });
+      toast.success("Room charge updated.");
+      setRoomQty("");
+      onChanged();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not update room charge");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function changeRoom(e: FormEvent) {
+    e.preventDefault();
+    if (!moveRoomId) return;
+    if (moveNeedsRate) { toast.error("Choose the new room rate"); return; }
+    setBusy(true);
+    try {
+      await at(`/reception/reservations/${reservation.id}/change-room`, { method: "PATCH", body: JSON.stringify({ roomId: moveRoomId, effectiveAt: toApiDate(moveDate), rateId: moveRateId || undefined }) });
+      toast.success("Room changed and folio charges split.");
+      setMoveRoomId(""); setMoveRateId("");
+      onChanged();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not change room");
     } finally {
       setBusy(false);
     }
@@ -1096,9 +1150,9 @@ function StayModal({ reservation, at, onClose, onChanged, onCheckedOut }: { rese
     if (!guestName.trim()) return;
     setBusy(true);
     try {
-      await at(`/reception/reservations/${reservation.id}/guests`, { method: "POST", body: JSON.stringify({ name: guestName, idNumber: guestIdNumber || undefined }) });
+      await at(`/reception/reservations/${reservation.id}/guests`, { method: "POST", body: JSON.stringify({ name: guestName, idNumber: guestIdNumber || undefined, extraChargeAmount: guestCharge ? Number(guestCharge) : undefined }) });
       toast.success("Guest added.");
-      setGuestName(""); setGuestIdNumber("");
+      setGuestName(""); setGuestIdNumber(""); setGuestCharge("");
       onChanged();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not add guest");
@@ -1161,7 +1215,7 @@ function StayModal({ reservation, at, onClose, onChanged, onCheckedOut }: { rese
       onClose={onClose}
     >
         <div className="flex border-b bg-muted/40">
-          {([["folio", "Folio"], ["extend", "Extend"], ["guests", "Guests"], ["checkout", "Checkout"], ["activity", "Activity"]] as const).map(([value, label]) => (
+          {([["folio", "Folio"], ["room", "Room"], ["extend", "Extend"], ["guests", "Guests"], ["checkout", "Checkout"], ["activity", "Activity"]] as const).map(([value, label]) => (
             <button key={value} onClick={() => setTab(value)} className={cn("flex-1 border-b-4 px-3 py-2.5 text-xs font-bold uppercase tracking-wider transition", tab === value ? "border-secondary bg-card text-foreground" : "border-transparent text-muted-foreground hover:bg-muted hover:text-foreground")}>
               {label}
             </button>
@@ -1257,6 +1311,84 @@ function StayModal({ reservation, at, onClose, onChanged, onCheckedOut }: { rese
             </div>
           )}
 
+          {tab === "room" && (
+            <div className="space-y-5">
+              <div className="rounded-sm border p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold">Current room</p>
+                    <p className="text-xs text-muted-foreground">Room {reservation.room.number} · {reservation.room.roomType.name}</p>
+                  </div>
+                  <Pill tone={canReplaceRoomCharge ? "success" : "muted"}>{canReplaceRoomCharge ? "No payments yet" : "Payment recorded"}</Pill>
+                </div>
+                <form onSubmit={replaceRoomCharge} className="mt-3 grid gap-3 sm:grid-cols-2">
+                  {hasVariants(reservation.room) ? (
+                    <label className="text-sm font-medium sm:col-span-2">Room rate
+                      <select className="input mt-1.5" value={roomRateId} onChange={(e) => setRoomRateId(e.target.value)} disabled={!canReplaceRoomCharge}>
+                        <option value="">Select a rate</option>
+                        {reservation.room.roomType.rates.map((r) => <option key={r.id} value={r.id}>{r.name} — {formatKes(Number(r.price))}{r.unit ? ` / ${unitWord(r.unit.name)}` : ""}</option>)}
+                      </select>
+                    </label>
+                  ) : (
+                    <p className="border bg-muted/40 p-3 text-xs text-muted-foreground sm:col-span-2">Price: <span className="font-semibold text-foreground">{roomPriceHint(reservation.room)}</span></p>
+                  )}
+                  <label className="text-sm font-medium">Quantity override
+                    <input type="number" min="0.01" step="0.01" className="input mt-1.5" value={roomQty} onChange={(e) => setRoomQty(e.target.value)} disabled={!canReplaceRoomCharge} placeholder={roomChargePricing ? String(roomChargePricing.quantity) : ""} />
+                  </label>
+                  <div className="flex items-end">
+                    <button disabled={busy || !canReplaceRoomCharge || roomChargeNeedsRate} className="inline-flex w-full items-center justify-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+                      {busy && <LuLoaderCircle className="animate-spin" />} Replace room charge
+                    </button>
+                  </div>
+                  {!canReplaceRoomCharge && <p className="text-xs font-semibold text-warning sm:col-span-2">Room charge replacement is locked after any payment. Use room change for the remaining stay instead.</p>}
+                </form>
+              </div>
+
+              <div className="rounded-sm border p-3">
+                <div className="mb-3">
+                  <p className="text-sm font-semibold">Change room mid-stay</p>
+                  <p className="text-xs text-muted-foreground">The old room keeps its charge up to the move date. The new room charges from the move date to check-out.</p>
+                </div>
+                <form onSubmit={changeRoom} className="grid gap-3 sm:grid-cols-2">
+                  <label className="text-sm font-medium">Move date
+                    <input type="date" className="input mt-1.5" min={new Date(new Date(reservation.checkIn).getTime() + 86_400_000).toISOString().slice(0, 10)} max={new Date(new Date(reservation.checkOut).getTime() - 86_400_000).toISOString().slice(0, 10)} value={moveDate} onChange={(e) => setMoveDate(e.target.value)} />
+                  </label>
+                  <div className="sm:col-span-2">
+                    <SearchableSelect
+                      options={vacantRooms.map((r) => ({ value: r.id, label: `Room ${r.number}${r.name ? ` — ${r.name}` : ""} · ${r.roomType.name}`, hint: `${r.capacity} guests · ${roomPriceHint(r)}` }))}
+                      value={moveRoomId}
+                      onChange={(value) => { setMoveRoomId(value); setMoveRateId(""); }}
+                      placeholder={vacantRooms.length ? "Select the new clean, vacant room" : "No clean vacant rooms right now"}
+                      searchPlaceholder="Search rooms..."
+                      emptyText="No ready rooms match."
+                      disabled={vacantRooms.length === 0}
+                    />
+                  </div>
+                  {moveRoom && hasVariants(moveRoom) && (
+                    <label className="text-sm font-medium sm:col-span-2">New room rate
+                      <select className="input mt-1.5" value={moveRateId} onChange={(e) => setMoveRateId(e.target.value)}>
+                        <option value="">Select a rate</option>
+                        {moveRoom.roomType.rates.map((r) => <option key={r.id} value={r.id}>{r.name} — {formatKes(Number(r.price))}{r.unit ? ` / ${unitWord(r.unit.name)}` : ""}</option>)}
+                      </select>
+                    </label>
+                  )}
+                  {moveRoom && (
+                    <div className="flex items-start justify-between gap-3 border border-l-4 border-l-secondary bg-secondary/5 p-3 sm:col-span-2">
+                      <div>
+                        <p className="text-sm font-semibold">Move to room {moveRoom.number}</p>
+                        <p className="text-xs text-muted-foreground">{moveNeedsRate ? "Choose a rate to preview the remaining charge" : `${movePricing?.quantity ?? 0} ${unitWord(movePricing?.unitName)}${movePricing?.quantity === 1 ? "" : "s"}${movePricing?.rateName ? ` · ${movePricing.rateName}` : ""}`}</p>
+                      </div>
+                      <p className="text-right text-sm font-bold text-secondary">{movePricing ? formatKes(movePricing.total) : "—"}</p>
+                    </div>
+                  )}
+                  <button disabled={busy || !moveRoomId || moveNeedsRate} className="inline-flex items-center justify-center gap-2 rounded-sm bg-secondary px-4 py-2.5 text-sm font-semibold text-secondary-foreground disabled:opacity-60 sm:col-span-2">
+                    {busy ? <LuLoaderCircle className="animate-spin" /> : <LuMoveRight />} Change room
+                  </button>
+                </form>
+              </div>
+            </div>
+          )}
+
           {tab === "extend" && (
             <form onSubmit={extend} className="space-y-3">
               <label className="block text-sm font-medium">
@@ -1275,6 +1407,7 @@ function StayModal({ reservation, at, onClose, onChanged, onCheckedOut }: { rese
               <form onSubmit={addGuest} className="flex gap-2">
                 <input placeholder="Guest name" className="input flex-1" value={guestName} onChange={(e) => setGuestName(e.target.value)} />
                 <input placeholder="ID/Passport (optional)" className="input flex-1" value={guestIdNumber} onChange={(e) => setGuestIdNumber(e.target.value)} />
+                <input type="number" min="0" step="0.01" placeholder="Charge (optional)" className="input w-36" value={guestCharge} onChange={(e) => setGuestCharge(e.target.value)} />
                 <button disabled={busy || !guestName.trim()} className="rounded-sm bg-secondary px-3 text-xs font-semibold text-secondary-foreground disabled:opacity-60">Add</button>
               </form>
               <div className="space-y-2">
