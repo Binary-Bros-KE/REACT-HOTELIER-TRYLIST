@@ -227,6 +227,7 @@ function App() {
         <Route path="/reception/receipts" element={<Receipts />} />
         <Route path="/service-center/receipts" element={<Receipts channel="SERVICES" />} />
         <Route path="/reception/product-stock" element={<ReceptionProductStock />} />
+        <Route path="/housekeeping/product-stock" element={<ReceptionProductStock />} />
         <Route path="/reports" element={<Reports />} />
         <Route path="/reports/inventory-report" element={<InventoryOverview />} />
         <Route path="/reports/products-report" element={<ProductsReport />} />

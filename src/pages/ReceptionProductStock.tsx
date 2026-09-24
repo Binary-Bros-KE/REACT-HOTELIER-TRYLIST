@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { LuBoxes, LuCircleAlert, LuLoaderCircle, LuMapPin, LuPackage, LuPackageX, LuSearch, LuShoppingCart, LuTriangleAlert } from 'react-icons/lu'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -43,7 +44,9 @@ const quantityLabel = (product: ProductStockRow) => packAndUnit(product.quantity
 
 export default function ReceptionProductStock() {
   const toast = useToast()
+  const location = useLocation()
   const user = useAppSelector((s) => s.auth.user)
+  const sectionName = location.pathname.startsWith('/housekeeping') ? 'Housekeeping' : 'Reception'
   const [locations, setLocations] = useState<LocationOption[]>([])
   const { fixed: fixedLocation, options: pickableLocations, selectedId, setLocation, effectiveId } = useWorkingLocation(locations, { persist: false })
   const assignedLocationCount = user?.locations.length ?? 0
@@ -88,7 +91,7 @@ export default function ReceptionProductStock() {
 
   return (
     <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
-      <PageBanner kicker="Reception" title="Products Stock">
+      <PageBanner kicker={sectionName} title="Products Stock">
         {fixedLocation ? (
           <span className="flex items-center gap-1.5"><LuMapPin className="size-3.5" /> {fixedLocation.name}</span>
         ) : pickableLocations.length > 0 ? (
@@ -115,7 +118,7 @@ export default function ReceptionProductStock() {
         <div className="border-b p-4">
           <div className="border-l-4 border-accent pl-3">
             <h2 className="font-display text-xl font-semibold leading-tight">Location product list</h2>
-            <p className="text-xs text-muted-foreground">Stock visibility for the working location. This is view-only for front desk users.</p>
+            <p className="text-xs text-muted-foreground">Stock visibility for the working location. This is view-only for {sectionName.toLowerCase()} users.</p>
           </div>
           <div className="mt-4 flex flex-wrap items-end gap-3">
             <label className="flex min-w-[240px] flex-1 flex-col gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
