@@ -15,6 +15,11 @@ import {
   LuWalletCards,
 } from "react-icons/lu";
 import { api } from "@/lib/api";
+import SharedStatCard from "@/components/ui/StatCard";
+import { useToast } from "@/components/ui/Toast";
+import PageBanner from "@/components/ui/PageBanner";
+import ActionButton from "@/components/ui/ActionButton";
+import ModalShell from "@/components/ui/ModalShell";
 
 type Status = "PENDING" | "PAID" | "REFUNDED" | "FAILED";
 type Customer = { firstName: string; lastName: string; phone: string | null };
@@ -64,10 +69,10 @@ const blank: Form = {
 const money = (value: number) =>
   `KSh ${value.toLocaleString("en-KE", { maximumFractionDigits: 2 })}`;
 const statusStyle: Record<Status, string> = {
-  PAID: "bg-emerald-100 text-emerald-700",
-  PENDING: "bg-amber-100 text-amber-800",
-  REFUNDED: "bg-sky-100 text-sky-700",
-  FAILED: "bg-red-100 text-red-700",
+  PAID: "border-success/70 text-success",
+  PENDING: "border-warning/70 text-warning",
+  REFUNDED: "border-secondary/70 text-secondary",
+  FAILED: "border-destructive/70 text-destructive",
 };
 
 export default function ServiceMembershipPayments() {
@@ -86,8 +91,9 @@ export default function ServiceMembershipPayments() {
     ),
     [loading, setLoading] = useState(true),
     [saving, setSaving] = useState(false),
-    [error, setError] = useState(""),
-    [notice, setNotice] = useState("");
+    [error, setError] = useState("");
+  const toast = useToast();
+  const setNotice = (message: string) => { if (message) toast.success(message); };
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -136,13 +142,9 @@ export default function ServiceMembershipPayments() {
     payments.flatMap((p) => p.membership.appointments.map((a) => a.id)),
   ).size;
   function create() {
-    const membership = memberships[0];
     setEditing(null);
     setForm({
       ...blank,
-      membershipId: membership?.id ?? "",
-      paymentMethodId: methods[0]?.id ?? "",
-      amount: membership ? String(membership.plan.price) : "",
       paidAt: new Date().toISOString().slice(0, 16),
     });
     setOpen(true);
@@ -227,92 +229,50 @@ export default function ServiceMembershipPayments() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-6 py-8 lg:px-10">
-      <header className="relative overflow-hidden rounded-[2rem] bg-linear-to-br from-[#071e3d] via-[#0c4a6e] to-[#0f766e] p-8 text-white shadow-2xl">
-        <div className="absolute -right-10 -top-16 h-64 w-64 rounded-full bg-cyan-300/15 blur-2xl" />
-        <div className="relative flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[.25em] text-cyan-200">
-              Connected financial ledger
-            </p>
-            <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
-              Membership payments, clearly accounted for.
-            </h1>
-            <p className="mt-2 max-w-2xl text-sm text-white/70">
-              Every receipt stays linked to its customer, membership plan,
-              membership and associated appointments.
-            </p>
-          </div>
-          <button
-            onClick={create}
-            className="flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-sky-950 shadow-lg"
-          >
-            <LuPlus /> Record payment
-          </button>
-        </div>
-      </header>
-      {error && <Message error text={error} />}{" "}
-      {notice && <Message text={notice} />}
+    <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
+      <PageBanner kicker="Service centre" title="Membership Payments" />
+      {error && <Message error text={error} />}
       <section className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Metric
-          icon={<LuCircleDollarSign />}
-          value={money(paid)}
-          label="Successfully paid"
-        />
-        <Metric
-          icon={<LuWalletCards />}
-          value={money(pending)}
-          label="Awaiting payment"
-        />
-        <Metric
-          icon={<LuReceiptText />}
-          value={payments.length}
-          label="Payment records"
-        />
-        <Metric
-          icon={<LuCalendarCheck />}
-          value={linkedAppointments}
-          label="Linked appointments"
-        />
+        <Metric index={0} icon={<LuCircleDollarSign />} value={money(paid)} label="Successfully paid" />
+        <Metric index={1} icon={<LuWalletCards />} value={money(pending)} label="Awaiting payment" />
+        <Metric index={2} icon={<LuReceiptText />} value={payments.length} label="Payment records" />
+        <Metric index={3} icon={<LuCalendarCheck />} value={linkedAppointments} label="Linked appointments" />
       </section>
-      <section className="mt-6">
-        <div className="flex flex-col gap-3 rounded-2xl border bg-card p-4 shadow-sm lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-wrap gap-2">
-            {(["ALL", "PAID", "PENDING", "REFUNDED", "FAILED"] as const).map(
-              (item) => (
-                <button
-                  key={item}
-                  onClick={() => setFilter(item)}
-                  className={`rounded-full px-3 py-1.5 text-xs font-bold ${filter === item ? "bg-sky-800 text-white" : "bg-muted text-muted-foreground"}`}
-                >
-                  {item}
-                </button>
-              ),
-            )}
+      <section className="mt-6 border bg-card shadow-sm">
+        <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="border-l-4 border-accent pl-3">
+            <h2 className="font-display text-xl font-semibold leading-tight">Payment ledger</h2>
+            <p className="text-xs text-muted-foreground">Every receipt stays linked to its customer, membership plan, membership and associated appointments.</p>
+          </div>
+          <ActionButton tone="primary" icon={<LuPlus />} onClick={create}>Record payment</ActionButton>
+        </div>
+        <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-wrap border bg-background">
+            {(["ALL", "PAID", "PENDING", "REFUNDED", "FAILED"] as const).map((item) => (
+              <button
+                key={item}
+                onClick={() => setFilter(item)}
+                className={"px-3 py-2 text-xs font-bold uppercase tracking-wider " + (filter === item ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted")}
+              >
+                {item}
+              </button>
+            ))}
           </div>
           <div className="flex gap-2">
-            <label className="flex flex-1 items-center gap-2 rounded-xl border px-3">
-              <LuSearch />
+            <label className="relative flex-1">
+              <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                className="h-10 min-w-0 bg-transparent text-sm outline-none"
+                className="w-full min-w-56 border bg-background py-2.5 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
                 placeholder="Customer, plan or reference"
               />
             </label>
-            <div className="flex rounded-xl bg-muted p-1">
-              <button
-                onClick={() => setView("cards")}
-                className={`rounded-lg p-2 ${view === "cards" ? "bg-card shadow" : ""}`}
-                aria-label="Card view"
-              >
+            <div className="flex border bg-background">
+              <button onClick={() => setView("cards")} className={"p-2.5 " + (view === "cards" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted")} aria-label="Card view" title="Card view">
                 <LuLayoutGrid />
               </button>
-              <button
-                onClick={() => setView("list")}
-                className={`rounded-lg p-2 ${view === "list" ? "bg-card shadow" : ""}`}
-                aria-label="List view"
-              >
+              <button onClick={() => setView("list")} className={"p-2.5 " + (view === "list" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted")} aria-label="List view" title="List view">
                 <LuList />
               </button>
             </div>
@@ -323,17 +283,9 @@ export default function ServiceMembershipPayments() {
             <LuLoaderCircle className="mx-auto animate-spin" />
           </div>
         ) : visible.length === 0 ? (
-          <div className="mt-4 rounded-2xl border bg-card p-20 text-center text-sm text-muted-foreground">
-            No matching payments.
-          </div>
+          <div className="p-20 text-center text-sm text-muted-foreground">No matching payments.</div>
         ) : (
-          <div
-            className={
-              view === "cards"
-                ? "mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3"
-                : "mt-5 space-y-3"
-            }
-          >
+          <div className={view === "cards" ? "grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-3" : "space-y-3 p-5"}>
             {visible.map((payment) => (
               <PaymentCard
                 key={payment.id}
@@ -348,109 +300,94 @@ export default function ServiceMembershipPayments() {
         )}
       </section>
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-sm">
-          <form
-            onSubmit={save}
-            className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-3xl bg-card p-6 shadow-2xl"
-          >
-            <p className="text-sm font-bold text-sky-700">
-              {editing ? "Edit transaction" : "New transaction"}
-            </p>
-            <h2 className="mt-1 text-2xl font-semibold">Membership payment</h2>
-            <div className="mt-5 grid gap-4 sm:grid-cols-2">
-              <Field label="Customer membership">
-                <select
-                  required
-                  className="input"
-                  value={form.membershipId}
-                  onChange={(e) => chooseMembership(e.target.value)}
-                >
-                  {memberships.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.customer.firstName} {m.customer.lastName} ·{" "}
-                      {m.plan.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Payment method">
-                <select
-                  required
-                  className="input"
-                  value={form.paymentMethodId}
-                  onChange={(e) =>
-                    setForm({ ...form, paymentMethodId: e.target.value })
-                  }
-                >
-                  {methods.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Amount (KSh)">
-                <input
-                  required
-                  min="0.01"
-                  step="0.01"
-                  type="number"
-                  className="input"
-                  value={form.amount}
-                  onChange={(e) => setForm({ ...form, amount: e.target.value })}
-                />
-              </Field>
-              <Field label="Status">
-                <select
-                  className="input"
-                  value={form.status}
-                  onChange={(e) =>
-                    setForm({ ...form, status: e.target.value as Status })
-                  }
-                >
-                  {["PENDING", "PAID", "REFUNDED", "FAILED"].map((s) => (
-                    <option key={s}>{s}</option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Transaction reference">
-                <input
-                  maxLength={120}
-                  className="input"
-                  value={form.reference}
-                  onChange={(e) =>
-                    setForm({ ...form, reference: e.target.value })
-                  }
-                  placeholder="e.g. M-Pesa code"
-                />
-              </Field>
-              <Field label="Payment date and time">
-                <input
-                  type="datetime-local"
-                  className="input"
-                  value={form.paidAt}
-                  onChange={(e) => setForm({ ...form, paidAt: e.target.value })}
-                />
-              </Field>
-            </div>
-            <div className="mt-6 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setOpen(false)}
-                className="rounded-xl border px-4 py-2.5"
-              >
-                Cancel
-              </button>
-              <button
-                disabled={saving}
-                className="flex items-center gap-2 rounded-xl bg-sky-800 px-4 py-2.5 font-bold text-white"
-              >
+        <ModalShell
+          size="lg"
+          kicker={editing ? "Edit transaction" : "New transaction"}
+          title="Membership payment"
+          onClose={() => setOpen(false)}
+          footer={
+            <>
+              <button type="button" onClick={() => setOpen(false)} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted">Cancel</button>
+              <button form="membership-payment-form" disabled={saving} className="inline-flex items-center gap-2 bg-primary px-5 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground transition hover:brightness-110 disabled:opacity-60">
                 {saving && <LuLoaderCircle className="animate-spin" />}
                 {editing ? "Save changes" : "Record payment"}
               </button>
-            </div>
+            </>
+          }
+        >
+          <form id="membership-payment-form" onSubmit={save} className="grid gap-4 p-5 sm:grid-cols-2">
+            <Field label="Customer membership" required>
+              <select
+                required
+                className="input"
+                value={form.membershipId}
+                onChange={(e) => chooseMembership(e.target.value)}
+              >
+                <option value="" disabled>Select membership</option>
+                {memberships.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.customer.firstName} {m.customer.lastName} · {m.plan.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Payment method" required>
+              <select
+                required
+                className="input"
+                value={form.paymentMethodId}
+                onChange={(e) => setForm({ ...form, paymentMethodId: e.target.value })}
+              >
+                <option value="" disabled>Select payment method</option>
+                {methods.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Amount (KSh)" required>
+              <input
+                required
+                min="0.01"
+                step="0.01"
+                type="number"
+                className="input"
+                placeholder="e.g. 5000"
+                value={form.amount}
+                onChange={(e) => setForm({ ...form, amount: e.target.value })}
+              />
+            </Field>
+            <Field label="Status">
+              <select
+                className="input"
+                value={form.status}
+                onChange={(e) => setForm({ ...form, status: e.target.value as Status })}
+              >
+                {["PENDING", "PAID", "REFUNDED", "FAILED"].map((s) => (
+                  <option key={s}>{s}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Transaction reference">
+              <input
+                maxLength={120}
+                className="input"
+                value={form.reference}
+                onChange={(e) => setForm({ ...form, reference: e.target.value })}
+                placeholder="e.g. M-Pesa code"
+              />
+            </Field>
+            <Field label="Payment date and time">
+              <input
+                type="datetime-local"
+                className="input"
+                value={form.paidAt}
+                onChange={(e) => setForm({ ...form, paidAt: e.target.value })}
+              />
+            </Field>
           </form>
-        </div>
+        </ModalShell>
       )}
     </div>
   );
@@ -471,67 +408,59 @@ function PaymentCard({
 }) {
   return (
     <article
-      className={`rounded-2xl border bg-card shadow-sm transition hover:shadow-lg ${compact ? "flex flex-col gap-3 p-4 md:flex-row md:items-center" : "overflow-hidden"}`}
+      className={"border bg-background shadow-sm " + (compact ? "flex flex-col gap-3 border-l-4 border-l-accent p-4 md:flex-row md:items-center" : "overflow-hidden border-t-4 border-t-accent")}
     >
-      <div
-        className={
-          compact ? "hidden" : "h-1.5 bg-linear-to-r from-sky-600 to-teal-400"
-        }
-      />
-      <div className={compact ? "min-w-56 flex-1" : "p-5"}>
+      <div className={compact ? "flex min-w-56 flex-1 flex-col gap-3 md:flex-row md:items-center md:justify-between" : "p-5"}>
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
               {payment.membership.plan.name}
             </p>
             <h3 className="mt-1 text-lg font-bold">
-              {payment.membership.customer.firstName}{" "}
-              {payment.membership.customer.lastName}
+              {payment.membership.customer.firstName} {payment.membership.customer.lastName}
             </h3>
           </div>
-          <select
-            value={payment.status}
-            onChange={(e) => onStatus(e.target.value as Status)}
-            className={`rounded-full border-0 px-2 py-1 text-xs font-bold ${statusStyle[payment.status]}`}
-          >
-            {["PENDING", "PAID", "REFUNDED", "FAILED"].map((s) => (
-              <option key={s}>{s}</option>
-            ))}
-          </select>
+          {!compact && (
+            <select
+              value={payment.status}
+              onChange={(e) => onStatus(e.target.value as Status)}
+              className={"border border-dashed bg-background px-2 py-1 text-xs font-bold " + statusStyle[payment.status]}
+            >
+              {["PENDING", "PAID", "REFUNDED", "FAILED"].map((s) => (
+                <option key={s}>{s}</option>
+              ))}
+            </select>
+          )}
         </div>
-        <div
-          className={`mt-4 ${compact ? "flex flex-wrap items-center gap-5" : ""}`}
-        >
+        <div className={compact ? "flex flex-wrap items-center gap-5" : "mt-4"}>
           <b className="text-2xl">{money(Number(payment.amount))}</b>
-          <p className="text-xs text-muted-foreground">
-            {payment.paymentMethod.name} · {payment.reference || "No reference"}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {payment.paidAt
-              ? new Date(payment.paidAt).toLocaleString()
-              : "Payment date pending"}
-          </p>
+          <div>
+            <p className="text-xs text-muted-foreground">
+              {payment.paymentMethod.name} · {payment.reference || "No reference"}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {payment.paidAt ? new Date(payment.paidAt).toLocaleString() : "Payment date pending"}
+            </p>
+          </div>
+          {compact && (
+            <select
+              value={payment.status}
+              onChange={(e) => onStatus(e.target.value as Status)}
+              className={"border border-dashed bg-background px-2 py-1 text-xs font-bold " + statusStyle[payment.status]}
+            >
+              {["PENDING", "PAID", "REFUNDED", "FAILED"].map((s) => (
+                <option key={s}>{s}</option>
+              ))}
+            </select>
+          )}
         </div>
-        <div className="mt-4 flex items-center justify-between border-t pt-3">
-          <span className="flex items-center gap-1 text-xs font-semibold text-sky-700">
-            <LuBadgeCheck /> {payment.membership.appointments.length} linked
-            appointments
+        <div className={compact ? "flex items-center gap-4" : "mt-4 flex items-center justify-between border-t pt-3"}>
+          <span className="flex items-center gap-1 text-xs font-semibold text-secondary">
+            <LuBadgeCheck /> {payment.membership.appointments.length} linked appointments
           </span>
-          <div className="flex">
-            <button
-              onClick={onEdit}
-              className="rounded-lg p-2 text-secondary hover:bg-muted"
-              aria-label="Edit payment"
-            >
-              <LuPencil />
-            </button>
-            <button
-              onClick={onDelete}
-              className="rounded-lg p-2 text-destructive hover:bg-muted"
-              aria-label="Delete payment"
-            >
-              <LuTrash2 />
-            </button>
+          <div className="flex gap-1.5">
+            <ActionButton tone="neutral" icon={<LuPencil />} title="Edit payment" onClick={onEdit} />
+            <ActionButton tone="neutral" icon={<LuTrash2 />} title="Delete payment" onClick={onDelete} />
           </div>
         </div>
       </div>
@@ -542,25 +471,22 @@ function Metric({
   icon,
   value,
   label,
+  index,
 }: {
   icon: ReactNode;
   value: ReactNode;
   label: string;
+  index?: number;
 }) {
-  return (
-    <div className="rounded-2xl border bg-card p-5 shadow-sm">
-      <span className="inline-flex rounded-xl bg-sky-100 p-2.5 text-sky-700">
-        {icon}
-      </span>
-      <b className="mt-4 block text-2xl">{value}</b>
-      <p className="text-xs text-muted-foreground">{label}</p>
-    </div>
-  );
+  return <SharedStatCard index={index} icon={icon} label={label} value={value} />;
 }
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function Field({ label, required, children }: { label: string; required?: boolean; children: ReactNode }) {
   return (
-    <label className="text-sm font-medium">
-      <span className="mb-1.5 block">{label}</span>
+    <label className="block text-sm font-medium">
+      <span className="mb-1.5 block">
+        {label}
+        {required && <span className="text-destructive"> *</span>}
+      </span>
       {children}
     </label>
   );
@@ -568,7 +494,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 function Message({ text, error = false }: { text: string; error?: boolean }) {
   return (
     <div
-      className={`mt-4 rounded-xl border p-3 text-sm ${error ? "border-red-200 bg-red-50 text-red-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}
+      className={"mt-4 border p-3 text-sm " + (error ? "border-destructive/25 bg-destructive/10 text-destructive" : "border-success/25 bg-success/10 text-success")}
     >
       {text}
     </div>
