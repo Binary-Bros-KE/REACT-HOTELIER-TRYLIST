@@ -24,6 +24,19 @@ type Order = ReceiptOrder & {
 }
 
 const formatKes = (value: number | string) => `KSh ${Number(value).toLocaleString()}`
+const employeeName = (employee?: { firstName: string; lastName: string } | null) => employee ? `${employee.firstName} ${employee.lastName}`.trim() : 'Reception'
+
+function roomBillSettlementText(order: ReceiptOrder) {
+  if (!order.roomBillSettledAt) return null
+  const parts = [
+    `Settled by ${employeeName(order.roomBillSettledByEmployee)}`,
+    order.roomBillSettlementMethod ? `via ${order.roomBillSettlementMethod}` : null,
+    order.roomBillSettlementLocation ? `at ${order.roomBillSettlementLocation}` : null,
+    `on ${new Date(order.roomBillSettledAt).toLocaleString('en-KE')}`,
+    order.roomBillSettlementReference ? `ref ${order.roomBillSettlementReference}` : null,
+  ].filter(Boolean)
+  return parts.join(' ')
+}
 
 // Mirrors the server's RETURN_WINDOW_MS (pos.routes.ts) purely for this
 // hint — the real cutoff is enforced server-side regardless of what the
@@ -101,6 +114,7 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
   const isCreditOverdue = !!order?.creditExpectedAt && remaining > 0.01 && new Date(order.creditExpectedAt).getTime() < Date.now()
   const canRequestReturn = !!order?.servedAt && ['SERVED', 'COMPLETED'].includes(order.status) && (isSuperAdmin || Date.now() - new Date(order.servedAt).getTime() <= RETURN_WINDOW_MS)
   const pendingReturnTotal = order?.items.reduce((sum, item) => sum + pendingReturnQty(item), 0) ?? 0
+  const roomBillSettlement = order ? roomBillSettlementText(order) : null
 
   async function loadOrder() {
     setLoading(true)
@@ -350,6 +364,12 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
                     ))}
                   </div>
                 )}
+                {roomBillSettlement && (
+                  <div className="mt-3 rounded-sm border border-success/30 bg-success/10 p-3 text-xs text-success">
+                    <p className="font-bold uppercase tracking-wide">Room bill settlement</p>
+                    <p className="mt-1 text-foreground">{roomBillSettlement}</p>
+                  </div>
+                )}
               </div>
 
               {pendingReturnTotal > 0 && (
@@ -570,7 +590,7 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
               )}
 
               {order.status === 'READY' && <p className="mt-5 text-sm text-warning">Waiting for the waiter to mark this order served before payment can be taken.</p>}
-              {order.status === 'COMPLETED' && remaining <= 0.01 && <p className="mt-5 text-sm font-semibold text-success">{isComplementary ? 'Completed.' : 'Paid in full.'}</p>}
+              {order.status === 'COMPLETED' && remaining <= 0.01 && <p className="mt-5 text-sm font-semibold text-success">{isComplementary ? 'Completed.' : roomBillSettlement ? 'Paid in full through room bill.' : 'Paid in full.'}</p>}
               {order.status === 'COMPLETED' && remaining > 0.01 && (
                 <div className={cn('mt-5 rounded-sm border p-3 text-sm', isCreditOverdue ? 'border-destructive/30 bg-destructive/10 text-destructive' : 'border-warning/30 bg-warning/10 text-warning')}>
                   <p className="font-semibold">{isCreditOverdue ? 'Overdue credit' : 'Completed on credit'}: {formatKes(remaining)} owing.</p>

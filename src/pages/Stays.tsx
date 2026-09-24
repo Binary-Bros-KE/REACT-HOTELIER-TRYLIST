@@ -241,7 +241,11 @@ function StayDetailModal({ stay, onClose, onChanged }: { stay: Stay; onClose: ()
   useEffect(() => {
     if (owing <= 0.01) return
     api<{ methods: { id: string; name: string; requiresReference: boolean; code: string }[] }>('/payment-methods?activeOnly=true')
-      .then((r) => { const list = r.methods.filter((m) => m.code !== 'ROOM_CHARGE'); setMethods(list); setMethodId((c) => c || list[0]?.id || '') })
+      .then((r) => {
+        const list = r.methods.filter((m) => m.code !== 'ROOM_CHARGE')
+        setMethods(list)
+        setMethodId((current) => list.some((m) => m.id === current) ? current : '')
+      })
       .catch(() => {})
   }, [owing])
   useEffect(() => { setAmount(owing > 0 ? String(owing) : '') }, [owing])
@@ -249,7 +253,8 @@ function StayDetailModal({ stay, onClose, onChanged }: { stay: Stay; onClose: ()
 
   async function receivePayment(event: FormEvent) {
     event.preventDefault()
-    if (!methodId || !(Number(amount) > 0)) return
+    if (!methodId) { toast.error('Choose a payment method'); return }
+    if (!(Number(amount) > 0)) return
     if (method?.requiresReference && !reference.trim()) { toast.error(`${method.name} requires a reference number`); return }
     setPaying(true)
     try {
@@ -349,6 +354,7 @@ function StayDetailModal({ stay, onClose, onChanged }: { stay: Stay; onClose: ()
                 {owing > 0.01 && (
                   <form onSubmit={receivePayment} className="grid gap-2 sm:grid-cols-[1fr_9rem_1fr_auto]">
                     <select className="input" value={methodId} onChange={(e) => setMethodId(e.target.value)}>
+                      <option value="">Choose payment method</option>
                       {methods.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
                     </select>
                     <input type="number" min="0" step="0.01" max={owing} className="input" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Amount" />

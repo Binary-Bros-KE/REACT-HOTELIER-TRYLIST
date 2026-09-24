@@ -71,6 +71,19 @@ export type ReceiptProfile = { businessName: string; address: string | null; cit
 import { receiptFooterText, receiptHeaderText, receiptItemName, receiptVariantSuffix, receiptPhone, servedByName, showsTaxAsAddedOn } from '@/lib/receiptFields'
 
 const formatKes = (value: number | string) => `KSh ${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+const employeeName = (employee?: { firstName: string; lastName: string } | null) => employee ? `${employee.firstName} ${employee.lastName}`.trim() : 'Reception'
+
+function roomBillSettlementText(order: ReceiptOrder) {
+  if (!order.roomBillSettledAt) return null
+  const parts = [
+    `Settled by ${employeeName(order.roomBillSettledByEmployee)}`,
+    order.roomBillSettlementMethod ? `via ${order.roomBillSettlementMethod}` : null,
+    order.roomBillSettlementLocation ? `at ${order.roomBillSettlementLocation}` : null,
+    `on ${new Date(order.roomBillSettledAt).toLocaleString('en-KE')}`,
+    order.roomBillSettlementReference ? `ref ${order.roomBillSettlementReference}` : null,
+  ].filter(Boolean)
+  return parts.join(' ')
+}
 
 export default function OrderReceipt({ order, profile }: { order: ReceiptOrder; profile: ReceiptProfile }) {
   const phone = receiptPhone(order, profile)
@@ -84,6 +97,7 @@ export default function OrderReceipt({ order, profile }: { order: ReceiptOrder; 
   const roomBilled = Boolean(order.billedToRoomAt)
   const statusText = isComplementary ? 'Complementary' : roomBilled && owed > 0.01 ? 'Billed to room' : creditOverdue ? 'Overdue credit' : owed > 0.01 ? 'On credit' : order.status
   const approvedReturns = (order.returnRequests ?? []).filter((request) => request.status === 'APPROVED')
+  const roomBillSettlement = roomBillSettlementText(order)
 
   return (
     <div className="receipt-print-area mx-auto max-w-xs bg-white p-6 text-[13px] text-black">
@@ -166,6 +180,12 @@ export default function OrderReceipt({ order, profile }: { order: ReceiptOrder; 
             <span>{formatKes(p.amount)}</span>
           </div>
         ))}
+        {roomBillSettlement && (
+          <div className="mt-2 border border-gray-300 bg-gray-50 p-2 text-[11px] text-gray-600">
+            <p className="font-semibold uppercase tracking-wide text-gray-500">Room bill settlement</p>
+            <p className="mt-0.5">{roomBillSettlement}</p>
+          </div>
+        )}
       </div>
 
       <div className="my-3 border-t border-dashed border-gray-400" />
@@ -190,15 +210,6 @@ export default function OrderReceipt({ order, profile }: { order: ReceiptOrder; 
       </div>
 
       <div className="my-3 border-t border-dashed border-gray-400" />
-
-      {order.roomBillSettledAt && (
-        <>
-          <p className="text-center text-[11px] text-gray-500">
-            Room bill settled by {order.roomBillSettledByEmployee ? `${order.roomBillSettledByEmployee.firstName} ${order.roomBillSettledByEmployee.lastName}` : 'Reception'} via {order.roomBillSettlementMethod ?? 'payment'}{order.roomBillSettlementLocation ? ` at ${order.roomBillSettlementLocation}` : ''} on {new Date(order.roomBillSettledAt).toLocaleString('en-KE')}{order.roomBillSettlementReference ? ` (${order.roomBillSettlementReference})` : ''}.
-          </p>
-          <div className="my-3 border-t border-dashed border-gray-400" />
-        </>
-      )}
 
       <p className="whitespace-pre-wrap text-center text-xs text-gray-500">{receiptFooterText(order)}</p>
     </div>
