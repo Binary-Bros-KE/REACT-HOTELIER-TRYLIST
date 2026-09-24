@@ -46,6 +46,7 @@ type Payment = {
 type Membership = {
   id: string;
   customerId: string;
+  planId: string | null;
   planName: string;
   planPrice: string | number;
   durationDays: number;
@@ -58,6 +59,7 @@ type Membership = {
   payments: Payment[];
   _count: { appointments: number };
 };
+type CatalogPlan = Plan & { description: string | null; _count?: { memberships: number } };
 type Summary = {
   total: number;
   active: number;
@@ -66,6 +68,7 @@ type Summary = {
 };
 type Form = {
   customerId: string;
+  planId: string;
   planName: string;
   planPrice: string;
   durationDays: string;
@@ -76,6 +79,7 @@ type Form = {
 };
 const blank: Form = {
   customerId: "",
+  planId: "",
   planName: "",
   planPrice: "0",
   durationDays: "30",
@@ -132,6 +136,8 @@ export default function ServiceMemberships() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [customizing, setCustomizing] = useState(false);
+  const [plans, setPlans] = useState<CatalogPlan[]>([]);
+  const [managingPlans, setManagingPlans] = useState(false);
   const [theme, setTheme] = useState<Theme>(
     () => (localStorage.getItem("membership-theme") as Theme) || "royal",
   );
@@ -145,14 +151,16 @@ export default function ServiceMemberships() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [list, options] = await Promise.all([
+      const [list, options, planList] = await Promise.all([
         api<{ memberships: Membership[]; summary: Summary }>(
           "/service-center/memberships",
         ),
         api<{ customers: Customer[] }>(
           "/service-center/membership-options",
         ),
+        api<{ plans: CatalogPlan[] }>("/service-center/membership-plans"),
       ]);
+      setPlans(planList.plans);
       setMemberships(list.memberships);
       setSummary(list.summary);
       setCustomers(options.customers);
@@ -204,6 +212,7 @@ export default function ServiceMemberships() {
     setEditing(item);
     setForm({
       customerId: item.customerId,
+      planId: item.planId ?? "",
       planName: item.planName,
       planPrice: String(item.planPrice ?? 0),
       durationDays: String(item.durationDays ?? 30),
@@ -228,6 +237,7 @@ export default function ServiceMemberships() {
           method: editing ? "PATCH" : "POST",
           body: JSON.stringify({
             ...form,
+            planId: form.planId || null,
             planPrice: Number(form.planPrice) || 0,
             durationDays: Number(form.durationDays) || 30,
             discountPercent: Number(form.discountPercent) || 0,
@@ -261,6 +271,22 @@ export default function ServiceMemberships() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not delete membership");
     }
+  }
+  async function renew(item: Membership) {
+    if (!confirm(`Renew ${item.customer.firstName} ${item.customer.lastName}'s ${item.planName} for another ${item.durationDays} days?`)) return;
+    try {
+      await api(`/service-center/memberships/${item.id}/renew`, { method: "POST" });
+      setNotice("Membership renewed.");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not renew");
+    }
+  }
+  function pickPlan(id: string) {
+    const plan = plans.find((p) => p.id === id);
+    setForm(plan
+      ? { ...form, planId: id, planName: plan.name, planPrice: String(plan.price), durationDays: String(plan.durationDays), discountPercent: String(plan.discountPercent), endsAt: "" }
+      : { ...form, planId: "" });
   }
   async function setStatus(item: Membership, status: Status) {
     try {
@@ -300,6 +326,12 @@ export default function ServiceMemberships() {
               className="flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-bold backdrop-blur"
             >
               <LuPalette /> Customize
+            </button>
+            <button
+              onClick={() => setManagingPlans(true)}
+              className="flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-bold backdrop-blur"
+            >
+              <LuBadgeCheck /> Plans
             </button>
             <Button onClick={create} className="shrink-0">
               <LuPlus /> New membership
@@ -435,6 +467,9 @@ export default function ServiceMemberships() {
                       <option key={s}>{s}</option>
                     ))}
                   </select>
+                  {m.status !== "CANCELLED" && (
+                    <button onClick={() => void renew(m)} className="rounded-full border px-2 py-1 text-[11px] font-bold hover:bg-muted">Renew</button>
+                  )}
                 </div>
                 <h3 className="mt-4 text-lg font-bold">
                   {m.customer.firstName} {m.customer.lastName}
@@ -587,6 +622,9 @@ export default function ServiceMemberships() {
           </div>
         )}
       </section>
+      {managingPlans && (
+        <PlansModal plans={plans} onClose={() => setManagingPlans(false)} onChanged={load} />
+      )}
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/60 p-4 backdrop-blur-sm">
           <form
@@ -611,6 +649,14 @@ export default function ServiceMemberships() {
                     <option key={c.id} value={c.id}>
                       {c.firstName} {c.lastName}
                     </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Plan">
+                <select className="input" value={form.planId} onChange={(e) => pickPlan(e.target.value)}>
+                  <option value="">Custom (one-off)</option>
+                  {plans.filter((p) => p.isActive || p.id === form.planId).map((p) => (
+                    <option key={p.id} value={p.id}>{p.name} · {money(Number(p.price))} · {p.durationDays}d · {Number(p.discountPercent)}% off</option>
                   ))}
                 </select>
               </Field>
@@ -734,6 +780,84 @@ function Metric({
   index?: number;
 }) {
   return <SharedStatCard index={index} icon={icon} label={label} value={value} />;
+}
+function PlansModal({ plans, onClose, onChanged }: { plans: CatalogPlan[]; onClose: () => void; onChanged: () => Promise<void> }) {
+  const empty = { name: "", price: "", durationDays: "30", discountPercent: "0", description: "" };
+  const [draft, setDraft] = useState(empty);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [err, setErr] = useState("");
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setErr("");
+    try {
+      await api(editingId ? `/service-center/membership-plans/${editingId}` : "/service-center/membership-plans", {
+        method: editingId ? "PATCH" : "POST",
+        body: JSON.stringify({ ...draft, price: Number(draft.price) || 0, durationDays: Number(draft.durationDays) || 30, discountPercent: Number(draft.discountPercent) || 0, description: draft.description || null }),
+      });
+      setDraft(empty);
+      setEditingId(null);
+      await onChanged();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not save plan");
+    }
+  }
+  async function toggle(plan: CatalogPlan) {
+    try {
+      await api(`/service-center/membership-plans/${plan.id}`, { method: "PATCH", body: JSON.stringify({ isActive: !plan.isActive }) });
+      await onChanged();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not update plan");
+    }
+  }
+  async function remove(plan: CatalogPlan) {
+    if (!confirm(`Delete the ${plan.name} plan?`)) return;
+    try {
+      await api(`/service-center/membership-plans/${plan.id}`, { method: "DELETE" });
+      await onChanged();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not delete plan");
+    }
+  }
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-primary/60 p-4 backdrop-blur-sm">
+      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-card p-6 shadow-2xl">
+        <div className="flex items-start justify-between">
+          <div>
+            <h2 className="text-2xl font-semibold">Membership plans</h2>
+            <p className="text-xs text-muted-foreground">Define a plan once, sell it repeatedly. Editing a plan never changes members already on it.</p>
+          </div>
+          <button onClick={onClose} className="rounded-lg border px-3 py-1.5 text-sm font-semibold">Close</button>
+        </div>
+        {err && <Message text={err} error />}
+        <form onSubmit={submit} className="mt-4 grid gap-3 sm:grid-cols-2">
+          <Field label="Plan name"><input required className="input" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="e.g. Gold monthly" /></Field>
+          <Field label="Price"><input required type="number" min="0" step="0.01" className="input" value={draft.price} onChange={(e) => setDraft({ ...draft, price: e.target.value })} /></Field>
+          <Field label="Duration (days)"><input required type="number" min="1" className="input" value={draft.durationDays} onChange={(e) => setDraft({ ...draft, durationDays: e.target.value })} /></Field>
+          <Field label="Discount on services (%)"><input required type="number" min="0" max="100" step="0.01" className="input" value={draft.discountPercent} onChange={(e) => setDraft({ ...draft, discountPercent: e.target.value })} /></Field>
+          <div className="flex gap-2 sm:col-span-2">
+            <Button type="submit">{editingId ? "Save plan" : "Add plan"}</Button>
+            {editingId && <button type="button" onClick={() => { setEditingId(null); setDraft(empty); }} className="rounded-lg border px-3 text-sm font-semibold">Cancel</button>}
+          </div>
+        </form>
+        <ul className="mt-5 divide-y rounded-xl border">
+          {plans.length === 0 && <li className="p-4 text-sm text-muted-foreground">No plans yet.</li>}
+          {plans.map((p) => (
+            <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm">
+              <div>
+                <p className={`font-semibold ${p.isActive ? "" : "text-muted-foreground line-through"}`}>{p.name}</p>
+                <p className="text-xs text-muted-foreground">{money(Number(p.price))} · {p.durationDays} days · {Number(p.discountPercent)}% off · {p._count?.memberships ?? 0} member(s)</p>
+              </div>
+              <div className="flex gap-1.5 text-xs font-semibold">
+                <button onClick={() => { setEditingId(p.id); setDraft({ name: p.name, price: String(p.price), durationDays: String(p.durationDays), discountPercent: String(p.discountPercent), description: p.description ?? "" }); }} className="rounded-lg border px-2 py-1">Edit</button>
+                <button onClick={() => void toggle(p)} className="rounded-lg border px-2 py-1">{p.isActive ? "Deactivate" : "Activate"}</button>
+                <button onClick={() => void remove(p)} className="rounded-lg border px-2 py-1 text-destructive">Delete</button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
 }
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
