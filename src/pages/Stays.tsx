@@ -8,6 +8,7 @@ import ModalShell from '@/components/ui/ModalShell'
 import StatusPill, { type PillTone } from '@/components/ui/StatusPill'
 import ActionButton from '@/components/ui/ActionButton'
 import { computeFinancialsFromRows } from '@/lib/orderTotals'
+import { useAppSelector } from '@/store/hooks'
 import type { BizTax } from '@/lib/taxChoices'
 
 const titleCase = (value: string) => value.charAt(0) + value.slice(1).toLowerCase().replaceAll('_', ' ')
@@ -225,6 +226,7 @@ function SectionTitle({ children }: { children: string }) {
 
 function StayDetailModal({ stay, onClose, onChanged }: { stay: Stay; onClose: () => void; onChanged: () => void }) {
   const toast = useToast()
+  const canCollectCredit = useAppSelector((s) => s.auth.user?.role?.name === 'Super Admin' || Boolean(s.auth.user?.role?.permissions.includes('CREDIT_COLLECT')))
   const [bizTax, setBizTax] = useState<BizTax | null>(null)
   useEffect(() => {
     api<{ profile: BizTax | null }>('/business-profile').then((r) => setBizTax(r.profile)).catch(() => {})
@@ -351,7 +353,8 @@ function StayDetailModal({ stay, onClose, onChanged }: { stay: Stay; onClose: ()
                   </div>
                   {owing > 0.01 && <p className="text-right text-lg font-bold tabular-nums text-warning">{formatKes(owing)}<span className="block text-[11px] font-normal text-muted-foreground">still owing</span></p>}
                 </div>
-                {owing > 0.01 && (
+                {owing > 0.01 && !canCollectCredit && <p className="text-xs font-semibold text-warning">Only an accountant or manager can clear debts - ask them to record this payment.</p>}
+                {owing > 0.01 && canCollectCredit && (
                   <form onSubmit={receivePayment} className="grid gap-2 sm:grid-cols-[1fr_9rem_1fr_auto]">
                     <select className="input" value={methodId} onChange={(e) => setMethodId(e.target.value)}>
                       <option value="">Choose payment method</option>

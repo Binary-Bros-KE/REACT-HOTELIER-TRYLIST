@@ -3,6 +3,7 @@ import { LuCircleAlert, LuFileText, LuLoaderCircle, LuPlus, LuX } from 'react-ic
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/Toast'
+import { useAppSelector } from '@/store/hooks'
 import ModalShell from '@/components/ui/ModalShell'
 import type { DocProfile } from '@/components/documents/pdf'
 import type { GroupInvoiceDocData } from '@/components/documents/pdf/GroupInvoiceDocument'
@@ -115,6 +116,7 @@ export default function GroupModal({ groupId, at, rooms, customers, onClose, onC
   onOpenStay: (reservationId: string) => void
 }) {
   const toast = useToast()
+  const canCollectCredit = useAppSelector((s) => s.auth.user?.role?.name === 'Super Admin' || Boolean(s.auth.user?.role?.permissions.includes('CREDIT_COLLECT')))
   const [group, setGroup] = useState<Group | null>(null)
   const [error, setError] = useState('')
   const [tab, setTab] = useState<'rooms' | 'add' | 'checkout' | 'credit'>('rooms')
@@ -434,7 +436,8 @@ export default function GroupModal({ groupId, at, rooms, customers, onClose, onC
                       </tbody>
                     </table>
                   </div>
-                  <div>
+                  {!canCollectCredit && <p className="border border-warning/40 bg-warning/5 p-3 text-sm font-semibold text-warning">Only an accountant or manager can clear debts - ask them to record this payment.</p>}
+                  {canCollectCredit && <><div>
                     <div className="mb-2 flex items-center justify-between">
                       <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Receive payment</p>
                       <button type="button" onClick={() => setCreditPayments((rows) => rows.map((r, i) => (i === 0 ? { ...r, amount: String(owing) } : { ...r, amount: '' })))} className="text-xs font-semibold text-secondary hover:underline">Pay it all ({kes(owing)})</button>
@@ -443,7 +446,7 @@ export default function GroupModal({ groupId, at, rooms, customers, onClose, onC
                   </div>
                   <button type="button" disabled={busy === 'credit' || creditPayTotal <= 0} onClick={() => void receiveCredit()} className="inline-flex items-center gap-2 bg-success px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-white disabled:opacity-50">
                     {busy === 'credit' && <LuLoaderCircle className="size-4 animate-spin" />} Receive {creditPayTotal > 0 ? kes(creditPayTotal) : 'payment'}
-                  </button>
+                  </button></>}
                 </>
               ) : (
                 <p className="border border-success/40 bg-success/5 p-6 text-center text-sm text-success">All credit for this group has been paid.</p>

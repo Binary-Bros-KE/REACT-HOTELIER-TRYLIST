@@ -78,6 +78,8 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
   // Super Admin may return a bill past the waiters' one-hour window (the
   // server enforces this; here it just stops the controls being hidden).
   const isSuperAdmin = useAppSelector((s) => s.auth.user?.role?.name) === 'Super Admin'
+  // Paying off a debt (an order already completed on credit) is a separate right from taking payment at the till.
+  const canCollectCredit = useAppSelector((s) => s.auth.user?.role?.name === 'Super Admin' || Boolean(s.auth.user?.role?.permissions.includes('CREDIT_COLLECT')))
   const [order, setOrder] = useState<Order | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -488,7 +490,7 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
                 )
               })()}
 
-              {pendingReturnTotal === 0 && (order.status === 'SERVED' || order.status === 'COMPLETED') && remaining > 0.01 && (
+              {pendingReturnTotal === 0 && (order.status === 'SERVED' || (order.status === 'COMPLETED' && canCollectCredit)) && remaining > 0.01 && (
                 <form onSubmit={settle} noValidate className="mt-5 space-y-3 border-t pt-5">
                   <div className="flex gap-1 rounded-sm bg-muted/50 p-1">
                     {(['PAY', 'ROOM'] as const).map((value) => (
@@ -596,6 +598,7 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
                   <p className="font-semibold">{isCreditOverdue ? 'Overdue credit' : 'Completed on credit'}: {formatKes(remaining)} owing.</p>
                   {order.creditReason && <p className="mt-1 text-xs">Reason: {order.creditReason}</p>}
                   {order.creditExpectedAt && <p className="mt-1 text-xs">Expected: {new Date(order.creditExpectedAt).toLocaleDateString()}</p>}
+                  {!canCollectCredit && <p className="mt-2 text-xs font-semibold">Only an accountant or manager can clear debts - ask them to record this payment.</p>}
                 </div>
               )}
             </>
