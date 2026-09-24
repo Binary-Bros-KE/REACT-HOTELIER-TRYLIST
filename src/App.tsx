@@ -53,7 +53,6 @@ import TaxReport from "@/pages/TaxReport";
 import ServiceAppointments from "@/pages/ServiceAppointments";
 import ServiceMembershipPayments from "@/pages/ServiceMembershipPayments";
 import ServiceMemberships from "@/pages/ServiceMemberships";
-import ServicePaymentMethods from "@/pages/ServicePaymentMethods";
 import ServiceProviders from "@/pages/ServiceProviders";
 import {
   navigation,
@@ -81,7 +80,6 @@ const moduleRoutes = navigation
         "/",
         "/service-center/appointments",
         "/service-center/memberships",
-        "/service-center/payment-methods",
         "/service-center/membership-payments",
         "/service-center/providers",
       ]).has(item.href),
@@ -250,10 +248,6 @@ function App() {
         <Route path="/reception/payment-methods" element={<PaymentMethods />} />
         <Route path="/sales/payment-methods" element={<PaymentMethods />} />
         <Route path="/sales/printer-settings" element={<PrinterSettings />} />
-        <Route
-          path="/service-center/payment-methods"
-          element={<ServicePaymentMethods />}
-        />
         <Route
           path="/service-center/appointments"
           element={<ServiceAppointments />}

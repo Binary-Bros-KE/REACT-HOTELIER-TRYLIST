@@ -177,7 +177,6 @@ export const navigation: NavGroup[] = [
       { label: 'Appointments', href: '/service-center/appointments', icon: LuCalendarCheck },
       { label: 'Memberships', href: '/service-center/memberships', icon: LuIdCard },
       { label: 'Products', href: '/service-center/products', icon: LuPackage },
-      { label: 'Payment Methods', href: '/service-center/payment-methods', icon: LuCreditCard },
       { label: 'Customers', href: '/service-center/customers', icon: LuUsers },
       { label: 'Membership Payments', href: '/service-center/membership-payments', icon: LuWallet },
       { label: 'Providers', href: '/service-center/providers', icon: LuBriefcase },
