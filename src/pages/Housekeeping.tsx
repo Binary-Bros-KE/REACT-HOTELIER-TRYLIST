@@ -219,7 +219,7 @@ function ReplenishModal({ task, onClose, onDone }: { task: Task; onClose: () => 
     if (!locationId) { setProducts([]); return }
     const timer = window.setTimeout(() => {
       setProductLoading(true)
-      const q = new URLSearchParams({ locationId, pageSize: '100' })
+      const q = new URLSearchParams({ locationId, pageSize: '100', inStockOnly: 'true' })
       if (search.trim()) q.set('search', search.trim())
       api<{ products: ConsumableProduct[] }>(`/room-consumables/products?${q}`)
         .then((r) => { setProducts(r.products); setError('') })
@@ -229,12 +229,10 @@ function ReplenishModal({ task, onClose, onDone }: { task: Task; onClose: () => 
     return () => window.clearTimeout(timer)
   }, [locationId, search])
 
-  const productMap = new Map<string, ConsumableProduct | Omit<ConsumableProduct, 'stockOnHand'>>([
-    ...standards.map((s) => [s.productId, s.product] as const),
-    ...products.map((p) => [p.id, p] as const),
-  ])
+  const productMap = new Map<string, ConsumableProduct>(products.map((p) => [p.id, p] as const))
   const chosen = Object.entries(quantities)
     .map(([productId, qty]) => ({ productId, quantity: Number(qty) }))
+    .filter((item) => productMap.has(item.productId))
     .filter((item) => Number.isFinite(item.quantity) && item.quantity > 0)
   const valid = Boolean(task.roomId && locationId && chosen.length > 0)
 
@@ -308,18 +306,18 @@ function ReplenishModal({ task, onClose, onDone }: { task: Task; onClose: () => 
                 <tbody className="divide-y">
                   {Array.from(productMap.entries()).map(([productId, product]) => {
                     const standard = standards.find((s) => s.productId === productId)
-                    const stock = 'stockOnHand' in product ? Number(product.stockOnHand) : null
+                    const stock = Number(product.stockOnHand)
                     return (
                       <tr key={productId} className="even:bg-muted/30">
                         <td className="px-4 py-3"><p className="font-semibold">{product.name}</p><p className="text-xs text-muted-foreground">{product.sku ?? product.unit}</p></td>
                         <td className="px-4 py-3 tabular-nums">{standard ? `${Number(standard.quantity)} ${product.unit}` : '-'}</td>
-                        <td className={cn('px-4 py-3 tabular-nums', stock !== null && stock <= 0 && 'text-destructive')}>{stock === null ? (productLoading ? 'Loading...' : '-') : `${stock} ${product.unit}`}</td>
+                        <td className={cn('px-4 py-3 tabular-nums', stock <= 0 && 'text-destructive')}>{`${stock} ${product.unit}`}</td>
                         <td className="px-4 py-3"><input type="number" min="0" step="0.001" className="input h-9" value={quantities[productId] ?? ''} onChange={(e) => setQty(productId, e.target.value)} /></td>
                         <td className="px-4 py-3 text-right"><ActionButton tone="neutral" icon={<LuTrash2 />} title="Clear item" onClick={() => setQty(productId, '')} /></td>
                       </tr>
                     )
                   })}
-                  {productMap.size === 0 && <tr><td colSpan={5} className="p-8 text-center text-sm text-muted-foreground">No room supply products found at this location.</td></tr>}
+                  {productMap.size === 0 && <tr><td colSpan={5} className="p-8 text-center text-sm text-muted-foreground">{productLoading ? 'Loading products...' : 'No in-stock room supply products found at this location.'}</td></tr>}
                 </tbody>
               </table>
             </div>

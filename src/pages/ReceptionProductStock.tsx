@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { LuBoxes, LuCircleAlert, LuLoaderCircle, LuMapPin, LuPackage, LuPackageX, LuSearch, LuShoppingCart, LuTriangleAlert } from 'react-icons/lu'
+import { LuBoxes, LuCircleAlert, LuLoaderCircle, LuMapPin, LuPackage, LuSearch, LuShoppingCart, LuTriangleAlert } from 'react-icons/lu'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/Toast'
@@ -12,7 +12,7 @@ import { useAppSelector } from '@/store/hooks'
 
 type LocationOption = { id: string; name: string; isActive?: boolean }
 type CategoryOption = { id: string; name: string }
-type StockFilter = 'ALL' | 'LOW' | 'OUT'
+type StockFilter = 'ALL' | 'LOW'
 type ProductStockRow = {
   id: string
   name: string
@@ -65,7 +65,7 @@ export default function ReceptionProductStock() {
     setLoading(true)
     setError('')
     try {
-      const query = new URLSearchParams({ stock })
+      const query = new URLSearchParams({ stock, inStockOnly: 'true' })
       if (effectiveId) query.set('locationId', effectiveId)
       if (search.trim()) query.set('search', search.trim())
       if (categoryId) query.set('categoryId', categoryId)
@@ -111,14 +111,14 @@ export default function ReceptionProductStock() {
         <StatCard index={0} icon={<LuPackage />} label="Products" value={(data?.summary.totalProducts ?? 0).toLocaleString()} />
         <StatCard index={1} icon={<LuBoxes />} label="Units on hand" value={(data?.summary.totalUnits ?? 0).toLocaleString('en-KE')} />
         <StatCard tone={(data?.summary.lowStock ?? 0) > 0 ? 'warn' : 'success'} icon={<LuTriangleAlert />} label="Low stock" value={(data?.summary.lowStock ?? 0).toLocaleString()} />
-        <StatCard tone={(data?.summary.outOfStock ?? 0) > 0 ? 'danger' : 'success'} icon={<LuPackageX />} label="Out of stock" value={(data?.summary.outOfStock ?? 0).toLocaleString()} />
+        <StatCard tone="success" icon={<LuPackage />} label="Visible stock" value="In stock only" />
       </section>
 
       <section className="mt-6 overflow-hidden border bg-card shadow-sm">
         <div className="border-b p-4">
           <div className="border-l-4 border-accent pl-3">
             <h2 className="font-display text-xl font-semibold leading-tight">Location product list</h2>
-            <p className="text-xs text-muted-foreground">Stock visibility for the working location. This is view-only for {sectionName.toLowerCase()} users.</p>
+            <p className="text-xs text-muted-foreground">In-stock products for the working location. This is view-only for {sectionName.toLowerCase()} users.</p>
           </div>
           <div className="mt-4 flex flex-wrap items-end gap-3">
             <label className="flex min-w-[240px] flex-1 flex-col gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
@@ -138,9 +138,8 @@ export default function ReceptionProductStock() {
             <label className="flex flex-col gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
               Stock
               <select value={stock} onChange={(e) => setStock(e.target.value as StockFilter)} className="input font-normal normal-case tracking-normal">
-                <option value="ALL">All products</option>
+                <option value="ALL">In-stock products</option>
                 <option value="LOW">Low stock</option>
-                <option value="OUT">Out of stock</option>
               </select>
             </label>
           </div>
