@@ -22,7 +22,8 @@ import ActionButton from "@/components/ui/ActionButton";
 import ModalShell from "@/components/ui/ModalShell";
 
 type Status = "PENDING" | "PAID" | "REFUNDED" | "FAILED";
-type Customer = { firstName: string; lastName: string; phone: string | null };
+type CustomerGroup = { id: string; name: string; isActive: boolean };
+type Customer = { firstName: string; lastName: string; phone: string | null; serviceGroup: CustomerGroup | null };
 type Plan = { name: string; price: string | number };
 type Appointment = {
   id: string;
@@ -79,11 +80,13 @@ export default function ServiceMembershipPayments() {
   const [payments, setPayments] = useState<Payment[]>([]),
     [memberships, setMemberships] = useState<Membership[]>([]),
     [methods, setMethods] = useState<Method[]>([]),
+    [groups, setGroups] = useState<CustomerGroup[]>([]),
     [form, setForm] = useState<Form>(blank),
     [editing, setEditing] = useState<Payment | null>(null),
     [open, setOpen] = useState(false),
     [query, setQuery] = useState(""),
     [filter, setFilter] = useState<"ALL" | Status>("ALL"),
+    [groupFilter, setGroupFilter] = useState(""),
     [view, setView] = useState<"cards" | "list">(
       () =>
         (localStorage.getItem("membership-payment-view") as "cards" | "list") ||
@@ -99,22 +102,23 @@ export default function ServiceMembershipPayments() {
     try {
       const [ledger, options] = await Promise.all([
         api<{ membershipPayments: Payment[] }>(
-          "/service-center/membership-payments",
+          `/service-center/membership-payments${groupFilter ? `?groupId=${groupFilter}` : ""}`,
         ),
-        api<{ memberships: Membership[]; paymentMethods: Method[] }>(
+        api<{ memberships: Membership[]; paymentMethods: Method[]; groups: CustomerGroup[] }>(
           "/service-center/membership-payment-options",
         ),
       ]);
       setPayments(ledger.membershipPayments);
       setMemberships(options.memberships);
       setMethods(options.paymentMethods);
+      setGroups(options.groups);
       setError("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load payments");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [groupFilter]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -127,6 +131,7 @@ export default function ServiceMembershipPayments() {
         (p) =>
           (filter === "ALL" || p.status === filter) &&
           `${p.membership.customer.firstName} ${p.membership.customer.lastName} ${p.membership.plan.name} ${p.reference ?? ""} ${p.paymentMethod.name}`
+            .concat(` ${p.membership.customer.serviceGroup?.name ?? ""}`)
             .toLowerCase()
             .includes(query.toLowerCase()),
       ),
@@ -259,6 +264,10 @@ export default function ServiceMembershipPayments() {
             ))}
           </div>
           <div className="flex gap-2">
+            <select value={groupFilter} onChange={(e) => setGroupFilter(e.target.value)} className="border bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring">
+              <option value="">All groups</option>
+              {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+            </select>
             <label className="relative flex-1">
               <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <input
@@ -419,6 +428,7 @@ function PaymentCard({
             <h3 className="mt-1 text-lg font-bold">
               {payment.membership.customer.firstName} {payment.membership.customer.lastName}
             </h3>
+            {payment.membership.customer.serviceGroup && <p className="mt-1 text-xs font-semibold text-secondary">{payment.membership.customer.serviceGroup.name}</p>}
           </div>
           {!compact && (
             <select

@@ -31,7 +31,9 @@ type Customer = {
   firstName: string;
   lastName: string;
   phone: string | null;
+  serviceGroup: CustomerGroup | null;
 };
+type CustomerGroup = { id: string; name: string; isActive: boolean };
 type ServiceVariant = {
   id: string;
   name: string;
@@ -141,6 +143,7 @@ export default function ServiceAppointments() {
     [memberships, setMemberships] = useState<Membership[]>([]),
     [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]),
     [locations, setLocations] = useState<Location[]>([]),
+    [groups, setGroups] = useState<CustomerGroup[]>([]),
     [profile, setProfile] = useState<ReceiptProfile | null>(null),
     [membershipPayments, setMembershipPayments] = useState<MembershipPayment[]>(
       [],
@@ -153,6 +156,7 @@ export default function ServiceAppointments() {
     }),
     [form, setForm] = useState<Form>(blank),
     [editing, setEditing] = useState<Appointment | null>(null),
+    [groupFilter, setGroupFilter] = useState(""),
     [open, setOpen] = useState(false),
     [loading, setLoading] = useState(true),
     [saving, setSaving] = useState(false),
@@ -165,7 +169,7 @@ export default function ServiceAppointments() {
     try {
       const [a, o, p] = await Promise.all([
         api<{ appointments: Appointment[]; summary: Summary }>(
-          "/service-center/appointments",
+          `/service-center/appointments${groupFilter ? `?groupId=${groupFilter}` : ""}`,
         ),
         api<{
           customers: Customer[];
@@ -175,6 +179,7 @@ export default function ServiceAppointments() {
           paymentMethods: PaymentMethod[];
           membershipPayments: MembershipPayment[];
           locations: Location[];
+          groups: CustomerGroup[];
         }>("/service-center/appointment-options"),
         api<{ profile: ReceiptProfile | null }>("/business-profile"),
       ]);
@@ -186,6 +191,7 @@ export default function ServiceAppointments() {
       setMemberships(o.memberships);
       setPaymentMethods(o.paymentMethods);
       setLocations(o.locations);
+      setGroups(o.groups);
       setMembershipPayments(o.membershipPayments);
       setProfile(p.profile);
       setError("");
@@ -194,7 +200,7 @@ export default function ServiceAppointments() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [groupFilter]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -344,7 +350,13 @@ export default function ServiceAppointments() {
               <h2 className="font-display text-xl font-semibold leading-tight">Bookings</h2>
               <p className="text-xs text-muted-foreground">Booked from the same catalogue the till sells from — completing one is a real, taxed sale with a receipt.</p>
             </div>
-            <ActionButton tone="primary" icon={<LuPlus />} onClick={create}>New appointment</ActionButton>
+            <div className="flex flex-wrap items-center gap-2">
+              <select value={groupFilter} onChange={(e) => setGroupFilter(e.target.value)} className="border bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring">
+                <option value="">All groups</option>
+                {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+              </select>
+              <ActionButton tone="primary" icon={<LuPlus />} onClick={create}>New appointment</ActionButton>
+            </div>
           </div>
           {loading ? (
             <div className="p-20 text-center">
@@ -373,6 +385,7 @@ export default function ServiceAppointments() {
                       <tr key={a.id}>
                         <td className={tdBase + " font-semibold"}>
                           {a.customer.firstName} {a.customer.lastName}
+                          {a.customer.serviceGroup && <p className="mt-1 text-xs font-semibold text-secondary">{a.customer.serviceGroup.name}</p>}
                         </td>
                         <td className={tdBase}>
                           <b>{a.service.name}{a.serviceVariant ? ` · ${a.serviceVariant.name}` : ""}</b>
@@ -494,7 +507,7 @@ export default function ServiceAppointments() {
               >
                 <option value="" disabled>Select customer</option>
                 {customers.map((c) => (
-                  <option key={c.id} value={c.id}>{c.firstName} {c.lastName}</option>
+                  <option key={c.id} value={c.id}>{c.firstName} {c.lastName}{c.serviceGroup ? ` - ${c.serviceGroup.name}` : ""}</option>
                 ))}
               </select>
             </Field>

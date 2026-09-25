@@ -74,7 +74,11 @@ type Customer = {
   updatedAt: string
   createdByEmployee: { id: string; firstName: string; lastName: string } | null
   updatedByEmployee: { id: string; firstName: string; lastName: string } | null
+  serviceGroupId: string | null
+  serviceGroup: CustomerGroup | null
 }
+
+type CustomerGroup = { id: string; name: string; isActive: boolean }
 
 type CustomerForm = {
   customerType: CustomerType
@@ -108,6 +112,7 @@ type CustomerForm = {
   emergencyContactName: string
   emergencyContactRelationship: string
   emergencyContactPhone: string
+  serviceGroupId: string
 }
 
 const emptyForm: CustomerForm = {
@@ -119,6 +124,7 @@ const emptyForm: CustomerForm = {
   businessName: '', registrationNumber: '', kraPin: '', contactPerson: '', billingPhone: '', billingEmail: '', website: '',
   preferredLanguage: '', preferredCurrency: '', contactMethod: '', marketingConsent: false, loyaltyPoints: '',
   emergencyContactName: '', emergencyContactRelationship: '', emergencyContactPhone: '',
+  serviceGroupId: '',
 }
 
 function formFromCustomer(customer: Customer): CustomerForm {
@@ -154,6 +160,7 @@ function formFromCustomer(customer: Customer): CustomerForm {
     emergencyContactName: customer.emergencyContactName ?? '',
     emergencyContactRelationship: customer.emergencyContactRelationship ?? '',
     emergencyContactPhone: customer.emergencyContactPhone ?? '',
+    serviceGroupId: customer.serviceGroupId ?? '',
   }
 }
 
@@ -177,10 +184,13 @@ function useSectionKicker() {
 export default function Customers() {
   const toast = useToast()
   const kicker = useSectionKicker()
+  const isServiceCenter = kicker === 'Service center'
   const [customers, setCustomers] = useState<Customer[]>([])
+  const [groups, setGroups] = useState<CustomerGroup[]>([])
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [groupFilter, setGroupFilter] = useState('')
   const [form, setForm] = useState<CustomerForm>(emptyForm)
   const [editing, setEditing] = useState<Customer | null>(null)
   const [showForm, setShowForm] = useState(false)
@@ -197,8 +207,13 @@ export default function Customers() {
       if (search.trim()) query.set('search', search.trim())
       if (typeFilter) query.set('customerType', typeFilter)
       if (statusFilter) query.set('status', statusFilter)
-      const response = await api<{ customers: Customer[] }>(`/customers${query.size ? `?${query}` : ''}`)
+      if (isServiceCenter && groupFilter) query.set('serviceGroupId', groupFilter)
+      const [response, groupResponse] = await Promise.all([
+        api<{ customers: Customer[] }>(`/customers${query.size ? `?${query}` : ''}`),
+        isServiceCenter ? api<{ groups: CustomerGroup[] }>('/service-center/customer-groups') : Promise.resolve({ groups: [] }),
+      ])
       setCustomers(response.customers)
+      setGroups(groupResponse.groups)
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Could not load customers'
       setError(message)
@@ -206,7 +221,7 @@ export default function Customers() {
     } finally {
       setLoading(false)
     }
-  }, [search, typeFilter, statusFilter, toast])
+  }, [search, typeFilter, statusFilter, groupFilter, isServiceCenter, toast])
 
   useEffect(() => {
     const timer = window.setTimeout(() => void load(), 250)
@@ -301,6 +316,12 @@ export default function Customers() {
             <option value="">All statuses</option>
             {customerStatuses.map((s) => <option key={s} value={s}>{titleCase(s)}</option>)}
           </select>
+          {isServiceCenter && (
+            <select value={groupFilter} onChange={(e) => setGroupFilter(e.target.value)} className="border bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring">
+              <option value="">All groups</option>
+              {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+            </select>
+          )}
           <ActionButton tone="primary" icon={<LuPlus />} onClick={openCreate}>Add customer</ActionButton>
         </div>
 
@@ -312,12 +333,13 @@ export default function Customers() {
           <div className="min-h-64 p-16 text-center text-sm text-muted-foreground">No customers match your search.</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] text-left text-sm">
+            <table className="w-full min-w-[980px] text-left text-sm">
               <thead className="bg-primary text-primary-foreground">
                 <tr>
                   <th className={TH}>Customer</th>
                   <th className={TH}>Type</th>
                   <th className={TH}>Contact</th>
+                  {isServiceCenter && <th className={TH}>Group</th>}
                   <th className={TH}>Status</th>
                   <th className={TH}>Loyalty</th>
                   <th className={cn(TH, 'text-right')}>Balance</th>
@@ -344,6 +366,11 @@ export default function Customers() {
                       <p>{customer.phone}</p>
                       {customer.email && <p className="text-xs">{customer.email}</p>}
                     </td>
+                    {isServiceCenter && (
+                      <td className="px-5 py-3.5">
+                        {customer.serviceGroup ? <StatusPill tone="secondary">{customer.serviceGroup.name}</StatusPill> : <span className="text-xs text-muted-foreground">No group</span>}
+                      </td>
+                    )}
                     <td className="px-5 py-3.5"><StatusPill tone={STATUS_TONE[customer.status]}>{titleCase(customer.status)}</StatusPill></td>
                     <td className="px-5 py-3.5 text-muted-foreground">{customer.loyaltyPoints} pts</td>
                     <td className="px-5 py-3.5 text-right tabular-nums">
@@ -406,6 +433,14 @@ export default function Customers() {
               <Field label="Phone" required><input required type="tel" placeholder="e.g. 0712 345 678" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="input" /></Field>
               <Field label="Email"><input type="email" placeholder="e.g. faith@example.com" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="input" /></Field>
               <Field label="Address" className="sm:col-span-2"><input placeholder="Physical address" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} className="input" /></Field>
+              {isServiceCenter && (
+                <Field label="Service group" className="sm:col-span-2">
+                  <select value={form.serviceGroupId} onChange={(e) => setForm({ ...form, serviceGroupId: e.target.value })} className="input">
+                    <option value="">No group</option>
+                    {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+                  </select>
+                </Field>
+              )}
             </FieldGroup>
 
             {form.customerType === 'BUSINESS' ? (

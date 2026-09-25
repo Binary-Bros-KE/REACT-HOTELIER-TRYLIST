@@ -5,6 +5,7 @@ import {
   LuCalendarClock,
   LuCircleDollarSign,
   LuGrid2X2,
+  LuLayers,
   LuLoaderCircle,
   LuPencil,
   LuPlus,
@@ -27,7 +28,9 @@ type Customer = {
   lastName: string;
   email: string | null;
   phone: string | null;
+  serviceGroup: CustomerGroup | null;
 };
+type CustomerGroup = { id: string; name: string; description: string | null; isActive: boolean; _count?: { customers: number } };
 type Plan = {
   id: string;
   visitLimit?: number | null;
@@ -108,6 +111,7 @@ type View = "table" | "cards";
 export default function ServiceMemberships() {
   const [memberships, setMemberships] = useState<Membership[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [groups, setGroups] = useState<CustomerGroup[]>([]);
   const [summary, setSummary] = useState<Summary>({
     total: 0,
     active: 0,
@@ -117,6 +121,7 @@ export default function ServiceMemberships() {
   const [form, setForm] = useState<Form>(blank);
   const [editing, setEditing] = useState<Membership | null>(null);
   const [query, setQuery] = useState("");
+  const [groupFilter, setGroupFilter] = useState("");
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -125,6 +130,7 @@ export default function ServiceMemberships() {
   const setNotice = (message: string) => { if (message) toast.success(message); };
   const [plans, setPlans] = useState<CatalogPlan[]>([]);
   const [managingPlans, setManagingPlans] = useState(false);
+  const [managingGroups, setManagingGroups] = useState(false);
   const [view, setView] = useState<View>(
     () => (localStorage.getItem("membership-view") as View) || "table",
   );
@@ -134,9 +140,9 @@ export default function ServiceMemberships() {
     try {
       const [list, options, planList] = await Promise.all([
         api<{ memberships: Membership[]; summary: Summary }>(
-          "/service-center/memberships",
+          `/service-center/memberships${groupFilter ? `?groupId=${groupFilter}` : ""}`,
         ),
-        api<{ customers: Customer[] }>(
+        api<{ customers: Customer[]; groups: CustomerGroup[] }>(
           "/service-center/membership-options",
         ),
         api<{ plans: CatalogPlan[] }>("/service-center/membership-plans"),
@@ -145,13 +151,14 @@ export default function ServiceMemberships() {
       setMemberships(list.memberships);
       setSummary(list.summary);
       setCustomers(options.customers);
+      setGroups(options.groups);
       setError("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load memberships");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [groupFilter]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -163,6 +170,7 @@ export default function ServiceMemberships() {
     const term = query.toLowerCase().trim();
     return memberships.filter((m) =>
       `${m.customer.firstName} ${m.customer.lastName} ${m.plan.name} ${m.status}`
+        .concat(` ${m.customer.serviceGroup?.name ?? ""}`)
         .toLowerCase()
         .includes(term),
     );
@@ -335,6 +343,10 @@ export default function ServiceMemberships() {
                 className="w-56 border bg-background py-2.5 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
               />
             </label>
+            <select value={groupFilter} onChange={(e) => setGroupFilter(e.target.value)} className="border bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring">
+              <option value="">All groups</option>
+              {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+            </select>
             <div className="flex border bg-background">
               <button onClick={() => setView("table")} aria-label="Table view" title="Table view" className={"p-2.5 " + (view === "table" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted")}>
                 <LuTable2 />
@@ -343,6 +355,7 @@ export default function ServiceMemberships() {
                 <LuGrid2X2 />
               </button>
             </div>
+            <ActionButton tone="neutral" icon={<LuLayers />} onClick={() => setManagingGroups(true)}>Groups</ActionButton>
             <ActionButton tone="neutral" icon={<LuBadgeCheck />} onClick={() => setManagingPlans(true)}>Plans</ActionButton>
             <ActionButton tone="primary" icon={<LuPlus />} onClick={create}>New membership</ActionButton>
           </div>
@@ -368,6 +381,7 @@ export default function ServiceMemberships() {
                   {m.customer.firstName} {m.customer.lastName}
                 </h3>
                 <p className="text-xs text-muted-foreground">{m.customer.phone ?? m.customer.email ?? "No contact details"}</p>
+                {m.customer.serviceGroup && <p className="mt-1 text-xs font-semibold text-secondary">{m.customer.serviceGroup.name}</p>}
                 <div className="mt-3 flex items-center justify-between gap-2 border p-2 text-xs">
                   <span className="font-semibold">{visitsText(m)}</span>
                   <span className="flex gap-1.5">
@@ -423,6 +437,7 @@ export default function ServiceMemberships() {
                         {m.customer.firstName} {m.customer.lastName}
                       </b>
                       <p className="text-xs text-muted-foreground">{m.customer.phone ?? m.customer.email ?? "No contact details"}</p>
+                      {m.customer.serviceGroup && <p className="mt-1 text-xs font-semibold text-secondary">{m.customer.serviceGroup.name}</p>}
                     </td>
                     <td className="px-5 py-4">
                       <b>{m.plan.name}</b>
@@ -462,6 +477,9 @@ export default function ServiceMemberships() {
       {managingPlans && (
         <PlansModal plans={plans} onClose={() => setManagingPlans(false)} onChanged={load} />
       )}
+      {managingGroups && (
+        <GroupsModal groups={groups} onClose={() => setManagingGroups(false)} onChanged={load} />
+      )}
       {open && (
         <ModalShell
           size="lg"
@@ -489,7 +507,7 @@ export default function ServiceMemberships() {
                 <option value="" disabled>Select customer</option>
                 {customers.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.firstName} {c.lastName}
+                    {c.firstName} {c.lastName}{c.serviceGroup ? ` - ${c.serviceGroup.name}` : ""}
                   </option>
                 ))}
               </select>
@@ -691,9 +709,77 @@ function PlansModal({ plans, onClose, onChanged }: { plans: CatalogPlan[]; onClo
     </ModalShell>
   );
 }
-function Field({ label, required, children }: { label: string; required?: boolean; children: ReactNode }) {
+function GroupsModal({ groups, onClose, onChanged }: { groups: CustomerGroup[]; onClose: () => void; onChanged: () => Promise<void> }) {
+  const empty = { name: "", description: "" };
+  const [draft, setDraft] = useState(empty);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [err, setErr] = useState("");
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setErr("");
+    try {
+      await api(editingId ? `/service-center/customer-groups/${editingId}` : "/service-center/customer-groups", {
+        method: editingId ? "PATCH" : "POST",
+        body: JSON.stringify({ name: draft.name, description: draft.description || null }),
+      });
+      setDraft(empty);
+      setEditingId(null);
+      await onChanged();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not save group");
+    }
+  }
+  async function toggle(group: CustomerGroup) {
+    try {
+      await api(`/service-center/customer-groups/${group.id}`, { method: "PATCH", body: JSON.stringify({ isActive: !group.isActive }) });
+      await onChanged();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not update group");
+    }
+  }
+  async function remove(group: CustomerGroup) {
+    if (!confirm(`Delete ${group.name}?`)) return;
+    try {
+      await api(`/service-center/customer-groups/${group.id}`, { method: "DELETE" });
+      await onChanged();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not delete group");
+    }
+  }
   return (
-    <label className="block text-sm font-medium">
+    <ModalShell size="md" kicker="Service centre" title="Customer groups" subtitle="Use groups to track corporate, gym or family memberships. Discounts still come from membership plans." onClose={onClose}>
+      <div className="p-5">
+        {err && <Message text={err} error />}
+        <form onSubmit={submit} className="grid gap-3 sm:grid-cols-[1fr_auto]">
+          <Field label="Group name" required><input required className="input" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="e.g. ABC Gym Group" /></Field>
+          <div className="flex items-end">
+            <button type="submit" className="h-10 bg-primary px-5 text-xs font-bold uppercase tracking-wider text-primary-foreground transition hover:brightness-110">{editingId ? "Save" : "Add"}</button>
+          </div>
+          <Field label="Notes" className="sm:col-span-2"><input className="input" value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} placeholder="Optional internal note" /></Field>
+        </form>
+        <ul className="mt-5 divide-y border">
+          {groups.length === 0 && <li className="p-4 text-sm text-muted-foreground">No groups yet.</li>}
+          {groups.map((g) => (
+            <li key={g.id} className="flex flex-wrap items-center justify-between gap-2 border-l-4 border-l-accent p-3 text-sm">
+              <div>
+                <p className={`font-semibold ${g.isActive ? "" : "text-muted-foreground line-through"}`}>{g.name}</p>
+                <p className="text-xs text-muted-foreground">{g._count?.customers ?? 0} customer{(g._count?.customers ?? 0) === 1 ? "" : "s"}{g.description ? ` - ${g.description}` : ""}</p>
+              </div>
+              <div className="flex gap-1.5">
+                <ActionButton tone="neutral" icon={<LuPencil />} title="Edit group" onClick={() => { setEditingId(g.id); setDraft({ name: g.name, description: g.description ?? "" }); }} />
+                <ActionButton tone="neutral" onClick={() => void toggle(g)}>{g.isActive ? "Deactivate" : "Activate"}</ActionButton>
+                <ActionButton tone="neutral" icon={<LuTrash2 />} title="Delete group" onClick={() => void remove(g)} />
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </ModalShell>
+  );
+}
+function Field({ label, required, children, className }: { label: string; required?: boolean; children: ReactNode; className?: string }) {
+  return (
+    <label className={`block text-sm font-medium ${className ?? ""}`}>
       <span className="mb-1.5 block">
         {label}
         {required && <span className="text-destructive"> *</span>}
