@@ -66,12 +66,27 @@ function StockMovementsPanel() {
   const [tab, setTab] = useState<'ALL' | MoveType>('ALL')
   const [search, setSearch] = useState('')
   const [year, setYear] = useState<string>(String(THIS_YEAR))
+  // How the period is chosen: a whole year, one business day (the property's shift hours, e.g. 09:00 to 09:00),
+  // or a custom date-and-time range.
+  const [mode, setMode] = useState<'year' | 'shift' | 'custom'>('year')
+  const [startHour, setStartHour] = useState(0)
+  const [shiftDate, setShiftDate] = useState('')
   const [from, setFrom] = useState('')
-  const [to, setTo] = useState('')
-  const [locationId, setLocationId] = useState('')
+  const [to, setTo] = useState('')  const [locationId, setLocationId] = useState('')
   const [page, setPage] = useState(1)
 
-  useEffect(() => { setPage(1) }, [tab, search, year, from, to, locationId])
+  useEffect(() => { setPage(1) }, [tab, search, year, from, to, shiftDate, mode, locationId])
+  useEffect(() => {
+    api<{ profile: { businessDayStartHour?: number } | null }>('/business-profile')
+      .then((r) => {
+        const h = r.profile?.businessDayStartHour ?? 0
+        setStartHour(h)
+        // The business day we are in right now: before the start hour it is still yesterday's.
+        const d = new Date(Date.now() - h * 3_600_000)
+        setShiftDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`)
+      })
+      .catch(() => {})
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -80,10 +95,9 @@ function StockMovementsPanel() {
       const q = new URLSearchParams()
       if (tab !== 'ALL') q.set('type', tab)
       if (search.trim()) q.set('search', search.trim())
-      if (from) q.set('from', from)
-      if (to) q.set('to', to)
-      if (!from && !to && year) q.set('year', year)
-      if (locationId) q.set('locationId', locationId)
+      if (mode === 'shift' && shiftDate) q.set('shiftDate', shiftDate)
+      if (mode === 'custom') { if (from) q.set('from', from); if (to) q.set('to', to) }
+      if (mode === 'year' || (mode === 'custom' && !from && !to)) q.set('year', year)      if (locationId) q.set('locationId', locationId)
       q.set('page', String(page))
       q.set('pageSize', '50')
       const res = await api<{ entries: Entry[]; pagination: Pagination }>(`/stock-ledger?${q}`)
@@ -96,7 +110,7 @@ function StockMovementsPanel() {
     } finally {
       setLoading(false)
     }
-  }, [tab, search, year, from, to, locationId, page, toast])
+  }, [tab, search, year, from, to, shiftDate, mode, locationId, page, toast])
 
   useEffect(() => { const t = window.setTimeout(() => void load(), 250); return () => window.clearTimeout(t) }, [load])
   useEffect(() => { api<{ locations: Location[] }>('/locations').then((r) => setLocations(r.locations)).catch(() => {}) }, [])
@@ -137,20 +151,34 @@ function StockMovementsPanel() {
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by product…" className="w-full rounded-sm border bg-background py-2.5 pl-9 pr-3 text-sm font-normal normal-case outline-none focus:ring-2 focus:ring-ring" />
           </span>
         </label>
-        <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Year
-          <select value={year} onChange={(e) => setYear(e.target.value)} disabled={Boolean(from || to)} className="mt-1.5 w-full rounded-sm border bg-background px-3 py-2.5 text-sm font-normal normal-case outline-none focus:ring-2 focus:ring-ring disabled:opacity-50">
-            {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
-          </select>
-        </label>
-        <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          From
-          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="mt-1.5 w-full rounded-sm border bg-background px-3 py-2.5 text-sm font-normal normal-case outline-none focus:ring-2 focus:ring-ring" />
-        </label>
-        <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          To
-          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="mt-1.5 w-full rounded-sm border bg-background px-3 py-2.5 text-sm font-normal normal-case outline-none focus:ring-2 focus:ring-ring" />
-        </label>
+        <div className="sm:col-span-2 lg:col-span-3">
+          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Period</span>
+          <div className="mt-1.5 flex flex-wrap items-center gap-2">
+            <div className="inline-flex rounded-sm border p-0.5">
+              {([['year', 'Year'], ['shift', `Shift (${String(startHour).padStart(2, '0')}:00 - ${String(startHour).padStart(2, '0')}:00)`], ['custom', 'Custom']] as const).map(([key, label]) => (
+                <button key={key} type="button" onClick={() => setMode(key)} className={cn('rounded-sm px-3 py-1.5 text-xs font-semibold uppercase tracking-wide', mode === key ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}>{label}</button>
+              ))}
+            </div>
+            {mode === 'year' && (
+              <select value={year} onChange={(e) => setYear(e.target.value)} className="rounded-sm border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring">
+                {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
+              </select>
+            )}
+            {mode === 'shift' && (
+              <>
+                <input type="date" value={shiftDate} onChange={(e) => setShiftDate(e.target.value)} className="rounded-sm border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
+                <span className="text-xs text-muted-foreground">{shiftDate ? `${shiftDate} ${String(startHour).padStart(2, '0')}:00 to the next day ${String(startHour).padStart(2, '0')}:00` : ''}</span>
+              </>
+            )}
+            {mode === 'custom' && (
+              <>
+                <input type="datetime-local" value={from} onChange={(e) => setFrom(e.target.value)} aria-label="From" className="rounded-sm border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
+                <span className="text-sm text-muted-foreground">to</span>
+                <input type="datetime-local" value={to} onChange={(e) => setTo(e.target.value)} aria-label="To" className="rounded-sm border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
+              </>
+            )}
+          </div>
+        </div>
         <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Storefront
           <select value={locationId} onChange={(e) => setLocationId(e.target.value)} className="mt-1.5 w-full rounded-sm border bg-background px-3 py-2.5 text-sm font-normal normal-case outline-none focus:ring-2 focus:ring-ring">
