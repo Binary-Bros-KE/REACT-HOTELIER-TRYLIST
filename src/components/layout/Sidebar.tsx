@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { NavLink, useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { LuChevronLeft, LuChevronRight, LuLogOut, LuRefreshCw, LuX } from 'react-icons/lu'
 import { IoPersonCircleSharp } from 'react-icons/io5'
@@ -7,11 +7,13 @@ import { navigation, navItemAllowed, navItemMatchesExactly, sectionModuleEnabled
 import { cn } from '@/lib/utils'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import { logout } from '@/store/authSlice'
-import { resolveLogoUrl } from '@/lib/api'
+import { api, resolveLogoUrl } from '@/lib/api'
+import { useToast } from '@/components/ui/Toast'
 
 const EXPANDED_WIDTH = 264
 const COLLAPSED_WIDTH = 80
 const DEFAULT_SECTIONS: PermissionSection[] = ['OVERVIEW']
+const HOUSEKEEPING_POLL_MS = 10_000
 
 type SidebarProps = {
   className?: string
@@ -23,9 +25,12 @@ type SidebarProps = {
 
 export default function Sidebar({ className, mobile = false, onNavigate }: SidebarProps) {
   const [collapsedState, setCollapsed] = useState(false)
+  const [housekeepingBadge, setHousekeepingBadge] = useState(0)
   const collapsed = mobile ? false : collapsedState
   const dispatch = useAppDispatch()
   const navigate = useNavigate()
+  const location = useLocation()
+  const toast = useToast()
   const user = useAppSelector((s) => s.auth.user)
   const logoUrl = useAppSelector((s) => s.tenant.logoUrl)
   const shortName = useAppSelector((s) => s.tenant.shortName)
@@ -36,6 +41,38 @@ export default function Sidebar({ className, mobile = false, onNavigate }: Sideb
     .filter((group) => sectionModuleEnabled(group.section, moduleKeys))
     .map((group) => ({ ...group, items: group.items.filter((item) => navItemAllowed(item, allowedSections.includes(group.section), permissions)) }))
     .filter((group) => group.items.length > 0)
+  const canSeeHousekeepingTasks = useMemo(() => visibleNavigation.some((group) => group.items.some((item) => item.href === '/housekeeping')), [visibleNavigation])
+  const lastHousekeepingBadge = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (!user || !canSeeHousekeepingTasks) {
+      setHousekeepingBadge(0)
+      lastHousekeepingBadge.current = null
+      return
+    }
+
+    let cancelled = false
+    async function loadCount(quiet = false) {
+      try {
+        const data = await api<{ badge: number }>('/housekeeping/tasks/count')
+        if (cancelled) return
+        const next = Number(data.badge) || 0
+        const previous = lastHousekeepingBadge.current
+        setHousekeepingBadge(next)
+        if (previous != null && next > previous && !location.pathname.startsWith('/housekeeping')) {
+          const added = next - previous
+          toast.info(added === 1 ? 'New housekeeping task' : `${added} new housekeeping tasks`)
+        }
+        lastHousekeepingBadge.current = next
+      } catch {
+        if (!cancelled && !quiet) setHousekeepingBadge(0)
+      }
+    }
+
+    void loadCount()
+    const timer = window.setInterval(() => { if (!document.hidden) void loadCount(true) }, HOUSEKEEPING_POLL_MS)
+    return () => { cancelled = true; window.clearInterval(timer) }
+  }, [canSeeHousekeepingTasks, location.pathname, toast, user])
 
   function handleLogout() {
     void dispatch(logout())
@@ -163,7 +200,14 @@ export default function Sidebar({ className, mobile = false, onNavigate }: Sideb
                             )}
                           />
                         )}
-                        <item.icon className="size-[18px] shrink-0" />
+                        <span className="relative shrink-0">
+                          <item.icon className="size-[18px]" />
+                          {item.href === '/housekeeping' && housekeepingBadge > 0 && collapsed && (
+                            <span className="absolute -right-2 -top-2 flex min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold leading-4 text-destructive-foreground shadow-sm">
+                              {housekeepingBadge > 9 ? '9+' : housekeepingBadge}
+                            </span>
+                          )}
+                        </span>
                         <AnimatePresence initial={false}>
                           {!collapsed && (
                             <motion.span
@@ -171,12 +215,17 @@ export default function Sidebar({ className, mobile = false, onNavigate }: Sideb
                               animate={{ opacity: 1, width: 'auto' }}
                               exit={{ opacity: 0, width: 0 }}
                               transition={{ duration: 0.15 }}
-                              className="overflow-hidden whitespace-nowrap"
+                              className="min-w-0 flex-1 overflow-hidden whitespace-nowrap"
                             >
                               {item.label}
                             </motion.span>
                           )}
                         </AnimatePresence>
+                        {item.href === '/housekeeping' && housekeepingBadge > 0 && !collapsed && (
+                          <span className="ml-auto flex min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 py-0.5 text-[10px] font-bold leading-none text-destructive-foreground shadow-sm">
+                            {housekeepingBadge > 99 ? '99+' : housekeepingBadge}
+                          </span>
+                        )}
                       </>
                     )}
                   </NavLink>
