@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { LuBan, LuCalendarClock, LuCircleAlert, LuLoaderCircle, LuPackageCheck, LuPlay, LuPlus, LuCheck, LuTrash2, LuUserRoundPlus } from 'react-icons/lu'
+import { LuBan, LuCalendarClock, LuCircleAlert, LuLoaderCircle, LuPackageCheck, LuPlay, LuPlus, LuCheck, LuUserRoundPlus } from 'react-icons/lu'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/Toast'
@@ -18,15 +18,6 @@ import { useAppSelector } from '@/store/hooks'
 type Summary = { pending: number; inProgress: number; unassigned: number; overdue: number }
 type RoomOption = { id: string; number: string; cleanliness: string; roomType: { name: string } }
 type LocationOption = { id: string; name: string; type?: string | null }
-type ConsumableProduct = {
-  id: string
-  name: string
-  sku: string | null
-  unit: string
-  packLabel: string | null
-  stockOnHand: string | number
-}
-type ConsumableStandard = { id: string; productId: string; quantity: string | number; product: Omit<ConsumableProduct, 'stockOnHand'> }
 type Tab = 'tasks' | 'history' | 'reports'
 
 const POLL_MS = 10_000
@@ -189,18 +180,22 @@ export default function Housekeeping() {
   )
 }
 
+type RoomConsumableRow = {
+  productId: string; name: string; unit: string; max: number | null; onHand: number
+  status: string; expiresAt: string | null; lastReplacedAt: string | null
+}
+
+// Record what the guest actually used (and anything expired), then replace only that - never above the room's maximum.
 function ReplenishModal({ task, onClose, onDone }: { task: Task; onClose: () => void; onDone: () => void }) {
   const toast = useToast()
   const currentUser = useAppSelector((s) => s.auth.user)
   const [locations, setLocations] = useState<LocationOption[]>([])
   const [locationId, setLocationId] = useState('')
-  const [standards, setStandards] = useState<ConsumableStandard[]>([])
-  const [products, setProducts] = useState<ConsumableProduct[]>([])
-  const [search, setSearch] = useState('')
-  const [quantities, setQuantities] = useState<Record<string, string>>({})
+  const [rows, setRows] = useState<RoomConsumableRow[]>([])
+  const [used, setUsed] = useState<Record<string, string>>({})
+  const [replace, setReplace] = useState<Record<string, string>>({})
   const [note, setNote] = useState('')
   const [loading, setLoading] = useState(true)
-  const [productLoading, setProductLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -208,8 +203,8 @@ function ReplenishModal({ task, onClose, onDone }: { task: Task; onClose: () => 
     let cancelled = false
     Promise.all([
       api<{ locations: LocationOption[] }>('/locations').catch(() => ({ locations: [] })),
-      task.roomId ? api<{ standards: ConsumableStandard[] }>(`/room-consumables/standards/for-room/${task.roomId}`).catch(() => ({ standards: [] })) : Promise.resolve({ standards: [] }),
-    ]).then(([locs, standardResponse]) => {
+      task.roomId ? api<{ consumables: RoomConsumableRow[] }>(`/assets/contents?roomId=${task.roomId}`).catch(() => ({ consumables: [] })) : Promise.resolve({ consumables: [] }),
+    ]).then(([locs, contents]) => {
       if (cancelled) return
       const assignedIds = new Set((currentUser?.locations ?? []).map((location) => location.id))
       const usableLocations = assignedIds.size > 0 ? locs.locations.filter((location) => assignedIds.has(location.id)) : locs.locations
@@ -218,51 +213,41 @@ function ReplenishModal({ task, onClose, onDone }: { task: Task; onClose: () => 
         ?? usableLocations.find((l) => l.type === 'HOUSEKEEPING')
         ?? usableLocations[0]
       if (preferred) setLocationId(preferred.id)
-      setStandards(standardResponse.standards)
-      setQuantities(Object.fromEntries(standardResponse.standards.map((s) => [s.productId, String(Number(s.quantity) || '')])))
-    }).catch((cause) => setError(cause instanceof Error ? cause.message : 'Could not load room supplies'))
+      setRows(contents.consumables.filter((c) => c.max != null))
+    }).catch((cause) => setError(cause instanceof Error ? cause.message : 'Could not load the room supplies'))
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [currentUser?.defaultLocation?.id, currentUser?.locations, task.roomId])
 
-  useEffect(() => {
-    if (!locationId) { setProducts([]); return }
-    const timer = window.setTimeout(() => {
-      setProductLoading(true)
-      const q = new URLSearchParams({ locationId, pageSize: '100', inStockOnly: 'true' })
-      if (search.trim()) q.set('search', search.trim())
-      api<{ products: ConsumableProduct[] }>(`/room-consumables/products?${q}`)
-        .then((r) => { setProducts(r.products); setError('') })
-        .catch((cause) => setError(cause instanceof Error ? cause.message : 'Could not load products at this location'))
-        .finally(() => setProductLoading(false))
-    }, 250)
-    return () => window.clearTimeout(timer)
-  }, [locationId, search])
-
-  const productMap = new Map<string, ConsumableProduct>(products.map((p) => [p.id, p] as const))
   const lockedLocation = locations.length === 1 ? locations[0] : null
-  const chosen = Object.entries(quantities)
-    .map(([productId, qty]) => ({ productId, quantity: Number(qty) }))
-    .filter((item) => productMap.has(item.productId))
-    .filter((item) => Number.isFinite(item.quantity) && item.quantity > 0)
-  const valid = Boolean(task.roomId && locationId && chosen.length > 0)
-
-  function setQty(productId: string, quantity: string) {
-    setQuantities((current) => ({ ...current, [productId]: quantity }))
+  const n = (v: string | undefined) => (v === undefined || v === '' ? 0 : Number(v))
+  // What replacing this row would do: the room's count after use and after replacing, and the room left to fill.
+  const calc = (r: RoomConsumableRow) => {
+    const u = n(used[r.productId])
+    const afterUse = Math.round((r.onHand - u) * 1000) / 1000
+    const allowed = Math.max(0, Math.round(((r.max ?? 0) - afterUse) * 1000) / 1000)
+    // Replacement follows what was used until the user overrides it.
+    const rep = replace[r.productId] !== undefined ? n(replace[r.productId]) : Math.min(u, allowed)
+    const problem = u > r.onHand + 0.0005 ? `Only ${r.onHand} recorded in the room` : rep > allowed + 0.0005 ? `Room can hold at most ${r.max} - replace at most ${allowed}` : rep < 0 || u < 0 ? 'Cannot be negative' : ''
+    return { u, rep, afterUse, after: Math.round((afterUse + rep) * 1000) / 1000, allowed, problem }
   }
+  const lines = rows.map((r) => ({ r, ...calc(r) }))
+  const chosen = lines.filter((l) => l.u > 0 || l.rep > 0)
+  const blocked = lines.some((l) => l.problem)
+  const valid = Boolean(task.roomId && locationId && chosen.length > 0 && !blocked)
 
   async function finish(skipSupplies = false) {
     setSaving(true); setError('')
     try {
       if (!skipSupplies) {
-        if (!valid) { setError('Choose at least one replenished item, or skip supplies.'); setSaving(false); return }
+        if (!valid) { setError(blocked ? 'Fix the highlighted rows first.' : 'Enter what was used, or choose "Nothing was used".'); setSaving(false); return }
         await api('/room-consumables/usages', {
           method: 'POST',
-          body: JSON.stringify({ roomId: task.roomId, taskId: task.id, locationId, note: note.trim() || undefined, items: chosen }),
+          body: JSON.stringify({ roomId: task.roomId, taskId: task.id, locationId, note: note.trim() || undefined, items: chosen.map((l) => ({ productId: l.r.productId, used: l.u, replaced: l.rep })) }),
         })
       }
       await api(`/housekeeping/tasks/${task.id}/complete`, { method: 'POST', body: JSON.stringify({}) })
-      toast.success(skipSupplies ? `${taskName(task)} completed` : `Supplies recorded and ${taskName(task)} completed`)
+      toast.success(skipSupplies ? `${taskName(task)} completed - nothing used` : `Supplies recorded and ${taskName(task)} completed`)
       onDone()
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not complete task')
@@ -275,13 +260,13 @@ function ReplenishModal({ task, onClose, onDone }: { task: Task; onClose: () => 
   return (
     <ModalShell
       kicker={task.taskNo ?? 'Task'}
-      title="Replenished items"
-      subtitle={task.roomNumber ? `Room ${task.roomNumber}` : undefined}
+      title="What was used in this room?"
+      subtitle={task.roomNumber ? `Room ${task.roomNumber} - record only what the guest used, then replace that (never above the maximum)` : undefined}
       onClose={onClose}
       size="xl"
       footer={(
         <>
-          <ActionButton tone="neutral" icon={<LuCheck />} loading={saving} onClick={() => void finish(true)}>Skip supplies</ActionButton>
+          <ActionButton tone="neutral" icon={<LuCheck />} loading={saving} onClick={() => void finish(true)}>Nothing was used</ActionButton>
           <ActionButton tone="success" icon={<LuPackageCheck />} loading={saving} disabled={!valid} onClick={() => void finish(false)}>Record and complete</ActionButton>
         </>
       )}
@@ -289,48 +274,47 @@ function ReplenishModal({ task, onClose, onDone }: { task: Task; onClose: () => 
       <div className="space-y-4 p-5">
         {loading ? <div className="p-10 text-center"><LuLoaderCircle className="mx-auto animate-spin" /></div> : (
           <>
-            <div className="grid gap-3 md:grid-cols-[minmax(220px,320px)_1fr]">
-              <div className="text-sm font-medium">Stock location
-                <div className="mt-1.5">
-                  <SearchableSelect
-                    value={locationId}
-                    onChange={setLocationId}
-                    placeholder="Choose source location"
-                    searchPlaceholder="Search locations..."
-                    emptyText="No locations"
-                    disabled={Boolean(lockedLocation)}
-                    options={locations.map((l) => ({ value: l.id, label: l.name, hint: l.type ?? undefined }))}
-                  />
-                  {lockedLocation && <p className="mt-1 text-xs text-muted-foreground">Locked to your assigned location.</p>}
-                </div>
+            <div className="text-sm font-medium md:max-w-sm">Take replacements from
+              <div className="mt-1.5">
+                <SearchableSelect
+                  value={locationId}
+                  onChange={setLocationId}
+                  placeholder="Choose source location"
+                  searchPlaceholder="Search locations..."
+                  emptyText="No locations"
+                  disabled={Boolean(lockedLocation)}
+                  options={locations.map((l) => ({ value: l.id, label: l.name, hint: l.type ?? undefined }))}
+                />
+                {lockedLocation && <p className="mt-1 text-xs text-muted-foreground">Locked to your assigned location.</p>}
               </div>
-              <label className="block text-sm font-medium">Find another product
-                <input className="input mt-1.5" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search soap, sugar, cocoa..." />
-              </label>
             </div>
 
             {error && <div className="flex items-center gap-2 border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert /> {error}</div>}
 
             <div className="overflow-x-auto border">
-              <table className="w-full min-w-[680px] text-left text-sm">
+              <table className="w-full min-w-[760px] text-left text-sm">
                 <thead className="bg-primary text-primary-foreground">
-                  <tr className="text-xs font-bold uppercase tracking-wider [&>th]:px-4 [&>th]:py-3"><th>Product</th><th>Suggested</th><th>In stock</th><th className="w-36">Used</th><th className="w-16"></th></tr>
+                  <tr className="text-xs font-bold uppercase tracking-wider [&>th]:px-4 [&>th]:py-3"><th>Item</th><th className="text-right">Max</th><th className="text-right">In room</th><th className="w-28">Used</th><th className="w-28">Replace</th><th className="text-right">Room will have</th></tr>
                 </thead>
                 <tbody className="divide-y">
-                  {Array.from(productMap.entries()).map(([productId, product]) => {
-                    const standard = standards.find((s) => s.productId === productId)
-                    const stock = Number(product.stockOnHand)
-                    return (
-                      <tr key={productId} className="even:bg-muted/30">
-                        <td className="px-4 py-3"><p className="font-semibold">{product.name}</p><p className="text-xs text-muted-foreground">{product.sku ?? product.unit}</p></td>
-                        <td className="px-4 py-3 tabular-nums">{standard ? `${Number(standard.quantity)} ${product.unit}` : '-'}</td>
-                        <td className={cn('px-4 py-3 tabular-nums', stock <= 0 && 'text-destructive')}>{`${stock} ${product.unit}`}</td>
-                        <td className="px-4 py-3"><input type="number" min="0" step="0.001" className="input h-9" value={quantities[productId] ?? ''} onChange={(e) => setQty(productId, e.target.value)} /></td>
-                        <td className="px-4 py-3 text-right"><ActionButton tone="neutral" icon={<LuTrash2 />} title="Clear item" onClick={() => setQty(productId, '')} /></td>
-                      </tr>
-                    )
-                  })}
-                  {productMap.size === 0 && <tr><td colSpan={5} className="p-8 text-center text-sm text-muted-foreground">{productLoading ? 'Loading products...' : 'No in-stock room supply products found at this location.'}</td></tr>}
+                  {lines.map(({ r, u, rep, after, allowed, problem }) => (
+                    <tr key={r.productId} className={cn('even:bg-muted/30', problem && 'bg-destructive/5')}>
+                      <td className="px-4 py-3"><p className="font-semibold">{r.name}</p><p className="text-xs text-muted-foreground">{r.unit}</p>
+                        {r.status === 'EXPIRED' && (
+                          <button type="button" className="mt-1 text-xs font-semibold text-destructive hover:underline" onClick={() => { setUsed((c) => ({ ...c, [r.productId]: String(r.onHand) })); setReplace((c) => { const { [r.productId]: _, ...rest } = c; return rest }) }}>Expired - remove all and replace</button>
+                        )}
+                        {r.status === 'EXPIRING_SOON' && <p className="mt-1 text-xs font-semibold text-warning">Expires soon</p>}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums">{r.max}</td>
+                      <td className="px-4 py-3 text-right tabular-nums">{r.onHand}</td>
+                      <td className="px-4 py-3"><input type="number" min="0" step="0.001" className="input h-9" value={used[r.productId] ?? ''} placeholder="0" onChange={(e) => { setUsed((c) => ({ ...c, [r.productId]: e.target.value })); setReplace((c) => { const { [r.productId]: _, ...rest } = c; return rest }) }} /></td>
+                      <td className="px-4 py-3"><input type="number" min="0" step="0.001" className="input h-9" value={replace[r.productId] ?? (rep > 0 ? String(rep) : '')} placeholder="0" onChange={(e) => setReplace((c) => ({ ...c, [r.productId]: e.target.value }))} />
+                        {problem ? <p className="mt-1 text-xs text-destructive">{problem}</p> : <p className="mt-1 text-[11px] text-muted-foreground">up to {allowed}</p>}
+                      </td>
+                      <td className={cn('px-4 py-3 text-right font-semibold tabular-nums', u > 0 || rep > 0 ? '' : 'text-muted-foreground')}>{after}</td>
+                    </tr>
+                  ))}
+                  {lines.length === 0 && <tr><td colSpan={6} className="p-8 text-center text-sm text-muted-foreground">No consumables with a maximum are set for this room type. Ask a supervisor to set them under Room Contents.</td></tr>}
                 </tbody>
               </table>
             </div>

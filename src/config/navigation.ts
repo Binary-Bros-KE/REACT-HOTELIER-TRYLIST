@@ -134,6 +134,7 @@ export const navigation: NavGroup[] = [
     items: [
       { label: 'Tasks', href: '/housekeeping', icon: LuListChecks, moduleKey: 'HOUSEKEEPING' },
       { label: 'Room Management', href: '/housekeeping/room-management', icon: LuBedDouble },
+      { label: 'Room Contents', href: '/housekeeping/room-contents', icon: LuArmchair },
       { label: 'Products Stock', href: '/housekeeping/product-stock', icon: LuBoxes, moduleKey: 'HOUSEKEEPING' },
       { label: 'Customers', href: '/housekeeping/customers', icon: LuUsers },
       { label: 'Lost and Found', href: '/housekeeping/lost-and-found', icon: LuSearch },
@@ -178,7 +179,6 @@ export const navigation: NavGroup[] = [
       { label: 'Memberships', href: '/service-center/memberships', icon: LuIdCard },
       { label: 'Products', href: '/service-center/products', icon: LuPackage },
       { label: 'Customers', href: '/service-center/customers', icon: LuUsers },
-      { label: 'Membership Payments', href: '/service-center/membership-payments', icon: LuWallet },
     ],
   },
   {

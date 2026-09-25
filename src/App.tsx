@@ -50,9 +50,9 @@ import InventoryOverview from "@/pages/InventoryOverview";
 import ProductsReport from "@/pages/ProductsReport";
 import RoomsReport from "@/pages/RoomsReport";
 import AssetsReport from "@/pages/AssetsReport";
+import RoomContents from "@/pages/RoomContents";
 import TaxReport from "@/pages/TaxReport";
 import ServiceAppointments from "@/pages/ServiceAppointments";
-import ServiceMembershipPayments from "@/pages/ServiceMembershipPayments";
 import ServiceMemberships from "@/pages/ServiceMemberships";
 import {
   navigation,
@@ -80,7 +80,6 @@ const moduleRoutes = navigation
         "/",
         "/service-center/appointments",
         "/service-center/memberships",
-        "/service-center/membership-payments",
       ]).has(item.href),
   );
 
@@ -199,6 +198,7 @@ function App() {
         <Route path="/reservations" element={<Reception />} />
         <Route path="/rooms" element={<Rooms />} />
         <Route path="/housekeeping/room-management" element={<Rooms />} />
+        <Route path="/housekeeping/room-contents" element={<RoomContents />} />
         <Route path="/housekeeping" element={<Housekeeping />} />
         <Route path="/store" element={<InventoryWorkspace />} />
         <Route path="/products" element={<Products />} />
@@ -255,10 +255,6 @@ function App() {
         <Route
           path="/service-center/memberships"
           element={<ServiceMemberships />}
-        />
-        <Route
-          path="/service-center/membership-payments"
-          element={<ServiceMembershipPayments />}
         />
         <Route path="/finance/transactions" element={<Transactions />} />
         <Route path="/finance/expenses" element={<Expenses />} />
