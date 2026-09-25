@@ -12,8 +12,8 @@
 // and looking up its brand colour lets each tenant's installed app get its
 // own correct status bar.
 
-const APP_DOMAIN = 'hoteliermanagement.app'
-const API_URL = 'https://server.hoteliermanagement.app/api'
+import { API_URL, resolveTenant, slugFromHost } from './_shared'
+
 const FALLBACK_COLOR = '#0b1e3d'
 
 type Hsl = { h: number; s: number; l: number }
@@ -78,17 +78,27 @@ function brandPrimary(baseColor: string): string {
   return hslToHex({ h: base.h, s: Math.min(100, Math.max(0, base.s - 8)), l: 14 })
 }
 
-// Same rule as src/lib/tenant.ts's slugFromHost().
-function slugFromHost(hostname: string): string | null {
-  if (hostname === APP_DOMAIN) return null
-  if (!hostname.endsWith(`.${APP_DOMAIN}`)) return null
-  return hostname.slice(0, -(APP_DOMAIN.length + 1))
-}
+const DEFAULT_ICONS = [
+  { src: '/android-chrome-192x192.png', sizes: '192x192', type: 'image/png' },
+  { src: '/android-chrome-512x512.png', sizes: '512x512', type: 'image/png' },
+]
 
-function manifestBody(themeColor: string): string {
+const ICON_TYPES: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp' }
+
+// The installed app is named after the tenant's slug (the subdomain the owner
+// signed up with) and wears the tenant's own logo, so several installs on one
+// home screen can be told apart at a glance. The stock HOTELIER name/icon
+// remain for the bare domain and for tenants without a usable logo.
+function manifestBody(themeColor: string, tenant?: { slug: string; logoUrl?: string | null } | null): string {
+  const ext = tenant?.logoUrl?.split('?')[0].split('.').pop()?.toLowerCase() ?? ''
+  const type = ICON_TYPES[ext]
+  const icons = tenant?.logoUrl && type
+    ? [192, 512].map((size) => ({ src: `/tenant-icon?v=${encodeURIComponent(tenant.logoUrl ?? '')}`, sizes: `${size}x${size}`, type }))
+    : DEFAULT_ICONS
+  const name = tenant?.slug ?? 'HOTELIER'
   return JSON.stringify({
-    name: 'HOTELIER',
-    short_name: 'HOTELIER',
+    name,
+    short_name: name,
     description: 'Modular, multi-tenant hotel management platform by TANZ.',
     start_url: '/',
     display: 'standalone',
@@ -96,10 +106,7 @@ function manifestBody(themeColor: string): string {
     theme_color: themeColor,
     lang: 'en',
     scope: '/',
-    icons: [
-      { src: '/android-chrome-192x192.png', sizes: '192x192', type: 'image/png' },
-      { src: '/android-chrome-512x512.png', sizes: '512x512', type: 'image/png' },
-    ],
+    icons,
   })
 }
 
@@ -111,11 +118,10 @@ export const onRequestGet = async (context: { request: Request; env: Record<stri
 
   try {
     const apiUrl = context.env.API_URL ?? API_URL
-    const res = await fetch(`${apiUrl}/tenant/resolve?slug=${encodeURIComponent(slug)}`)
-    const data = (await res.json()) as { tenant?: { themeBaseColor?: string } }
-    const baseColor = data.tenant?.themeBaseColor
+    const tenant = await resolveTenant(apiUrl, slug)
+    const baseColor = tenant?.themeBaseColor
     const themeColor = baseColor ? brandPrimary(baseColor) : FALLBACK_COLOR
-    return new Response(manifestBody(themeColor), { headers })
+    return new Response(manifestBody(themeColor, tenant ? { slug, logoUrl: tenant.logoUrl } : null), { headers })
   } catch {
     return new Response(manifestBody(FALLBACK_COLOR), { headers })
   }
