@@ -49,6 +49,7 @@ import DispatchRequests from "@/pages/DispatchRequests";
 import InventoryOverview from "@/pages/InventoryOverview";
 import ProductsReport from "@/pages/ProductsReport";
 import RoomsReport from "@/pages/RoomsReport";
+import AssetsReport from "@/pages/AssetsReport";
 import TaxReport from "@/pages/TaxReport";
 import ServiceAppointments from "@/pages/ServiceAppointments";
 import ServiceMembershipPayments from "@/pages/ServiceMembershipPayments";
@@ -228,6 +229,7 @@ function App() {
         <Route path="/reports/inventory-report" element={<InventoryOverview />} />
         <Route path="/reports/products-report" element={<ProductsReport />} />
         <Route path="/reports/rooms-report" element={<RoomsReport />} />
+        <Route path="/reports/assets-report" element={<AssetsReport />} />
         <Route path="/reports/tax-report" element={<TaxReport />} />
         <Route path="/business-information" element={<BusinessInformation />} />
         <Route path="/locations" element={<Locations />} />

@@ -68,15 +68,16 @@ type AssetForm = {
   unitCost: string
   locationId: string
   roomId: string
+  purchased: boolean
   paymentMethodId: string
   reference: string
   notes: string
   isActive: boolean
 }
-const emptyForm: AssetForm = { categoryId: '', name: '', description: '', unit: 'Each', quantity: '0', unitCost: '', locationId: '', roomId: '', paymentMethodId: '', reference: '', notes: '', isActive: true }
+const emptyForm: AssetForm = { categoryId: '', name: '', description: '', unit: 'Each', quantity: '0', unitCost: '', locationId: '', roomId: '', purchased: false, paymentMethodId: '', reference: '', notes: '', isActive: true }
 
-type MovementForm = { type: (typeof MOVEMENT_TYPES)[number]; quantity: string; unitCost: string; paymentMethodId: string; reference: string; note: string }
-const emptyMovement: MovementForm = { type: 'RECEIPT', quantity: '', unitCost: '', paymentMethodId: '', reference: '', note: '' }
+type MovementForm = { type: (typeof MOVEMENT_TYPES)[number]; quantity: string; unitCost: string; purchased: boolean; paymentMethodId: string; reference: string; note: string }
+const emptyMovement: MovementForm = { type: 'RECEIPT', quantity: '', unitCost: '', purchased: false, paymentMethodId: '', reference: '', note: '' }
 
 const formatKes = (value: number) => `KSh ${value.toLocaleString('en-KE', { maximumFractionDigits: 2 })}`
 
@@ -169,6 +170,7 @@ export default function Assets() {
       unitCost: asset.unitCost ?? '',
       locationId: asset.locationId ?? '',
       roomId: asset.roomId ?? '',
+      purchased: false,
       paymentMethodId: '',
       reference: '',
       notes: asset.notes ?? '',
@@ -186,7 +188,7 @@ export default function Assets() {
     try {
       const payload = editing
         ? { categoryId: form.categoryId || undefined, name: form.name, description: form.description || undefined, unit: form.unit, unitCost: form.unitCost || undefined, locationId: form.locationId || undefined, roomId: form.roomId || undefined, notes: form.notes || undefined, isActive: form.isActive }
-        : { ...form, categoryId: form.categoryId || undefined, locationId: form.locationId || undefined, roomId: form.roomId || undefined, paymentMethodId: form.paymentMethodId || undefined, reference: form.reference || undefined }
+        : { ...form, categoryId: form.categoryId || undefined, locationId: form.locationId || undefined, roomId: form.roomId || undefined, purchased: form.purchased, paymentMethodId: form.purchased ? form.paymentMethodId || undefined : undefined, reference: form.purchased ? form.reference || undefined : undefined }
       await api(editing ? `/assets/${editing.id}` : '/assets', { method: editing ? 'PATCH' : 'POST', body: JSON.stringify(payload) })
       setNotice(editing ? 'Asset updated.' : 'Asset registered.')
       toast.success(editing ? 'Asset updated.' : 'Asset registered.')
@@ -237,8 +239,9 @@ export default function Assets() {
           type: movementForm.type,
           quantity: signedQuantity,
           unitCost: movementForm.type === 'RECEIPT' ? movementForm.unitCost || undefined : undefined,
-          paymentMethodId: movementForm.type === 'RECEIPT' ? movementForm.paymentMethodId || undefined : undefined,
-          reference: movementForm.type === 'RECEIPT' ? movementForm.reference || undefined : undefined,
+          purchased: movementForm.type === 'RECEIPT' && movementForm.purchased,
+          paymentMethodId: movementForm.type === 'RECEIPT' && movementForm.purchased ? movementForm.paymentMethodId || undefined : undefined,
+          reference: movementForm.type === 'RECEIPT' && movementForm.purchased ? movementForm.reference || undefined : undefined,
           note: movementForm.note || undefined,
         }),
       })
@@ -385,7 +388,7 @@ export default function Assets() {
                   {rooms.map((room) => <option key={room.id} value={room.id}>Room {room.number} - {room.roomType.name}</option>)}
                 </select>
               </Field>
-              <Field label="Unit Cost (KES)"><input type="number" min="0" step="0.01" placeholder="e.g. 3500" value={form.unitCost} onChange={(e) => setForm({ ...form, unitCost: e.target.value })} className="input" /></Field>
+              <Field label="Unit value (KES)"><input type="number" min="0" step="0.01" placeholder="e.g. 3500 (what one is worth)" value={form.unitCost} onChange={(e) => setForm({ ...form, unitCost: e.target.value })} className="input" /></Field>
             </FieldGroup>
 
             {editing ? (
@@ -398,7 +401,13 @@ export default function Assets() {
             ) : (
               <FieldGroup title="Opening Quantity">
                 <Field label="Quantity" required><input required type="number" min="0" step="0.001" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} className="input" /></Field>
-                {Number(form.quantity) > 0 && Number(form.unitCost) > 0 && (
+                {Number(form.quantity) > 0 && (
+                  <label className="flex items-start gap-2 rounded-sm border bg-muted/30 p-3 text-sm sm:col-span-2">
+                    <input type="checkbox" className="mt-0.5" checked={form.purchased} onChange={(e) => setForm({ ...form, purchased: e.target.checked })} />
+                    <span><b>I am buying this now</b><span className="block text-xs text-muted-foreground">Leave unticked to just record what you already own. Ticking it pays for it: the money goes out through a payment method and is logged as capital invested (not an expense).</span></span>
+                  </label>
+                )}
+                {form.purchased && Number(form.quantity) > 0 && Number(form.unitCost) > 0 && (
                   <>
                     <Field label="Paid Via" required>
                       <select required className="input" value={form.paymentMethodId} onChange={(e) => setForm({ ...form, paymentMethodId: e.target.value })}>
@@ -409,7 +418,7 @@ export default function Assets() {
                     <Field label={selectedMethod?.requiresReference ? 'Reference' : 'Reference (optional)'} required={selectedMethod?.requiresReference}>
                       <input required={selectedMethod?.requiresReference} placeholder="e.g. Receipt no." value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} className="input" />
                     </Field>
-                    <p className="text-xs text-muted-foreground sm:col-span-2">This will be recorded as {formatKes(Number(form.quantity) * Number(form.unitCost))} spent, in the Transactions ledger.</p>
+                    <p className="text-xs text-muted-foreground sm:col-span-2">This will be recorded as {formatKes(Number(form.quantity) * Number(form.unitCost))} capital invested, in the Transactions ledger.</p>
                   </>
                 )}
               </FieldGroup>
@@ -499,8 +508,12 @@ export default function Assets() {
               </Field>
               {movementForm.type === 'RECEIPT' && (
                 <>
-                  <Field label="Unit Cost (KES)"><input type="number" min="0" step="0.01" value={movementForm.unitCost} onChange={(e) => setMovementForm({ ...movementForm, unitCost: e.target.value })} className="input" /></Field>
-                  {Number(movementForm.unitCost) > 0 && (
+                  <Field label="Unit value (KES)"><input type="number" min="0" step="0.01" value={movementForm.unitCost} onChange={(e) => setMovementForm({ ...movementForm, unitCost: e.target.value })} className="input" /></Field>
+                  <label className="flex items-start gap-2 rounded-sm border bg-muted/30 p-3 text-sm">
+                    <input type="checkbox" className="mt-0.5" checked={movementForm.purchased} onChange={(e) => setMovementForm({ ...movementForm, purchased: e.target.checked })} />
+                    <span><b>I am buying these now</b><span className="block text-xs text-muted-foreground">Untick to just record units you already own. Ticking logs the payment as capital invested.</span></span>
+                  </label>
+                  {movementForm.purchased && Number(movementForm.unitCost) > 0 && (
                     <>
                       <Field label="Paid Via" required>
                         <select required className="input" value={movementForm.paymentMethodId} onChange={(e) => setMovementForm({ ...movementForm, paymentMethodId: e.target.value })}>
