@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import {
+  LuWrench,
   LuBoxes,
   LuCircleAlert,
   LuCircleCheck,
@@ -29,6 +30,15 @@ type Category = { id: string; name: string; level: number }
 type Location = { id: string; name: string }
 type Room = { id: string; number: string; name: string | null; roomType: { name: string } }
 type PaymentMethod = { id: string; name: string; requiresReference: boolean }
+type Condition = 'WORKING' | 'NEEDS_REPAIR' | 'UNDER_REPAIR' | 'BROKEN' | 'MISSING'
+const CONDITIONS: { key: Condition; label: string }[] = [
+  { key: 'WORKING', label: 'Working' },
+  { key: 'NEEDS_REPAIR', label: 'Needs repair' },
+  { key: 'UNDER_REPAIR', label: 'Being repaired' },
+  { key: 'BROKEN', label: 'Broken' },
+  { key: 'MISSING', label: 'Missing' },
+]
+
 type Asset = {
   id: string
   assetNo: string
@@ -44,6 +54,10 @@ type Asset = {
   location: { id: string; name: string } | null
   roomId: string | null
   room: Room | null
+  condition: Condition
+  affectedQuantity: string | null
+  conditionNote: string | null
+  conditionUpdatedAt: string | null
   isActive: boolean
   notes: string | null
   createdAt: string
@@ -110,6 +124,8 @@ export default function Assets() {
   const [notice, setNotice] = useState('')
 
   const [movementFor, setMovementFor] = useState<Asset | null>(null)
+  const [conditionFor, setConditionFor] = useState<Asset | null>(null)
+  const [conditionFilter, setConditionFilter] = useState<'all' | 'issues' | Condition>('all')
   const [movementForm, setMovementForm] = useState<MovementForm>(emptyMovement)
   const [recording, setRecording] = useState(false)
   const [movementError, setMovementError] = useState('')
@@ -259,11 +275,14 @@ export default function Assets() {
 
   if (!hasApiTenant()) return <SetupMessage />
 
+  const notWorking = assets.filter((a) => a.condition !== 'WORKING').length
+  const shownAssets = assets.filter((a) => conditionFilter === 'all' ? true : conditionFilter === 'issues' ? a.condition !== 'WORKING' : a.condition === conditionFilter)
+
   return (
     <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
       <PageBanner kicker="Inventory" title="Assets" />
 
-      <section className="mt-7 grid gap-3 sm:grid-cols-3">
+      <section className="mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {([
           ['Total assets', summary.total, <LuBoxes key="a" />],
           ['Total value', formatKes(summary.totalValue), <LuClipboardList key="b" />],
@@ -271,6 +290,7 @@ export default function Assets() {
         ] as const).map(([label, value, icon], i) => (
           <StatCard key={label} index={i} label={label} value={value} icon={icon} />
         ))}
+        <StatCard index={3} label="Not working" value={notWorking} icon={<LuWrench />} tone={notWorking > 0 ? 'danger' : 'success'} hint={notWorking > 0 ? 'Broken, missing or needing repair' : 'Everything is working'} />
       </section>
 
       {error && (
@@ -298,6 +318,11 @@ export default function Assets() {
             <option value="locations">Location assets</option>
             <option value="unassigned">Unassigned</option>
           </select>
+          <select className="input h-10 w-full sm:w-44" value={conditionFilter} onChange={(e) => setConditionFilter(e.target.value as typeof conditionFilter)}>
+            <option value="all">Any condition</option>
+            <option value="issues">Needs attention</option>
+            {CONDITIONS.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+          </select>
           <select className="input h-10 w-full sm:w-48" value={roomFilter} onChange={(e) => { setRoomFilter(e.target.value); if (e.target.value) setAssignment('rooms') }}>
             <option value="">All rooms</option>
             {rooms.map((room) => <option key={room.id} value={room.id}>Room {room.number}</option>)}
@@ -307,7 +332,7 @@ export default function Assets() {
 
         {loading ? (
           <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><LuLoaderCircle className="animate-spin" /> Loading assets…</div>
-        ) : assets.length === 0 ? (
+        ) : shownAssets.length === 0 ? (
           <div className="min-h-64 p-16 text-center text-sm text-muted-foreground">No assets match your search.</div>
         ) : (
           <div className="overflow-x-auto">
@@ -318,12 +343,13 @@ export default function Assets() {
                   <th className="px-5 py-3">Category</th>
                   <th className="px-5 py-3">Assigned to</th>
                   <th className="px-5 py-3">Quantity</th>
+                  <th className="px-5 py-3">Condition</th>
                   <th className="px-5 py-3">Value</th>
                   <th className="px-5 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {assets.map((asset) => (
+                {shownAssets.map((asset) => (
                   <tr key={asset.id} className="border-t transition hover:bg-muted/30">
                     <td className="px-5 py-4">
                       <p className="font-semibold">{asset.name}</p>
@@ -335,9 +361,16 @@ export default function Assets() {
                       <span className="font-semibold">{Number(asset.quantity).toLocaleString()} {asset.unit}</span>
                       {!asset.isActive && <span className="ml-2 keep-round border border-dashed border-muted-foreground/50 px-2 py-0.5 text-xs font-semibold text-muted-foreground">Inactive</span>}
                     </td>
+                    <td className="px-5 py-4">
+                      <ConditionBadge condition={asset.condition} />
+                      {asset.condition !== 'WORKING' && asset.affectedQuantity != null && <span className="ml-2 text-xs text-muted-foreground">{Number(asset.affectedQuantity)} of {Number(asset.quantity)}</span>}
+                      {asset.condition !== 'WORKING' && asset.conditionNote && <span className="mt-1 block max-w-48 truncate text-xs text-muted-foreground" title={asset.conditionNote}>{asset.conditionNote}</span>}
+                      {asset.conditionUpdatedAt && <span className="block text-[11px] text-muted-foreground">as of {new Date(asset.conditionUpdatedAt).toLocaleDateString('en-KE', { day: '2-digit', month: 'short' })}</span>}
+                    </td>
                     <td className="px-5 py-4 text-muted-foreground">{asset.unitCost ? formatKes(Number(asset.quantity) * Number(asset.unitCost)) : '—'}</td>
                     <td className="px-5 py-4">
                       <div className="flex justify-end gap-1">
+                        <ActionButton tone="neutral" icon={<LuWrench />} title="Update condition" onClick={() => setConditionFor(asset)} />
                         <ActionButton tone="neutral" icon={<LuPackageSearch />} title="Record movement" onClick={() => openMovement(asset)} />
                         <ActionButton tone="neutral" icon={<LuPencil />} title="Edit asset" onClick={() => openEdit(asset)} />
                         <ActionButton tone="neutral" icon={<LuTrash2 />} title="Delete asset" onClick={() => void deleteAsset(asset)} />
@@ -350,6 +383,8 @@ export default function Assets() {
           </div>
         )}
       </section>
+
+      {conditionFor && <ConditionModal asset={conditionFor} onClose={() => setConditionFor(null)} onSaved={() => { setConditionFor(null); toast.success('Condition updated'); void load() }} />}
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
@@ -568,5 +603,60 @@ function Field({ label, required, className, children }: { label: string; requir
       {required && <span className="text-destructive"> *</span>}
       <span className="mt-1.5 block">{children}</span>
     </label>
+  )
+}
+
+function ConditionBadge({ condition }: { condition: Condition }) {
+  const label = CONDITIONS.find((c) => c.key === condition)?.label ?? condition
+  const tone = condition === 'WORKING' ? 'border-success/30 bg-success/10 text-success' : condition === 'BROKEN' || condition === 'MISSING' ? 'border-destructive/30 bg-destructive/10 text-destructive' : 'border-warning/30 bg-warning/10 text-warning'
+  return <span className={cn('inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide', tone)}>{label}</span>
+}
+
+function ConditionModal({ asset, onClose, onSaved }: { asset: Asset; onClose: () => void; onSaved: () => void }) {
+  const [condition, setCondition] = useState<Condition>(asset.condition)
+  const [affected, setAffected] = useState(asset.affectedQuantity != null ? String(Number(asset.affectedQuantity)) : '')
+  const [note, setNote] = useState(asset.conditionNote ?? '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  async function save(event: FormEvent) {
+    event.preventDefault()
+    setSaving(true); setError('')
+    try {
+      await api(`/assets/${asset.id}/condition`, { method: 'PATCH', body: JSON.stringify({ condition, affectedQuantity: condition !== 'WORKING' && affected ? Number(affected) : undefined, note: note.trim() || undefined }) })
+      onSaved()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not update condition')
+    } finally {
+      setSaving(false)
+    }
+  }
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <form onSubmit={save} className="w-full max-w-md border-2 border-foreground/25 bg-card p-6 shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Condition</p>
+        <h2 className="font-display text-xl font-semibold">{asset.name}</h2>
+        <p className="text-xs text-muted-foreground">{Number(asset.quantity).toLocaleString()} {asset.unit} on record</p>
+        {error && <div className="mt-4 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert />{error}</div>}
+        <div className="mt-5 space-y-4">
+          <label className="block text-sm font-medium">Condition
+            <select className="input mt-1.5" value={condition} onChange={(e) => setCondition(e.target.value as Condition)}>{CONDITIONS.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}</select>
+          </label>
+          {condition !== 'WORKING' && Number(asset.quantity) > 1 && (
+            <label className="block text-sm font-medium">How many are affected? <span className="font-normal text-muted-foreground">(blank = all)</span>
+              <input type="number" min="0" step="0.001" max={Number(asset.quantity)} className="input mt-1.5" value={affected} onChange={(e) => setAffected(e.target.value)} />
+            </label>
+          )}
+          {condition !== 'WORKING' && (
+            <label className="block text-sm font-medium">What is wrong?
+              <textarea rows={2} className="input mt-1.5" value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Screen cracked, remote missing" />
+            </label>
+          )}
+        </div>
+        <div className="mt-6 flex justify-end gap-2 border-t pt-5">
+          <button type="button" onClick={onClose} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Cancel</button>
+          <button disabled={saving} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">{saving && <LuLoaderCircle className="animate-spin" />} Save condition</button>
+        </div>
+      </form>
+    </div>
   )
 }
