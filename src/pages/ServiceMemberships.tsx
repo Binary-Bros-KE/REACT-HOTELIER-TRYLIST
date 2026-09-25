@@ -2,7 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import {
   LuBadgeCheck,
+  LuCalendarDays,
   LuCalendarClock,
+  LuChevronLeft,
+  LuChevronRight,
   LuCircleDollarSign,
   LuGrid2X2,
   LuLayers,
@@ -13,6 +16,7 @@ import {
   LuTable2,
   LuTrash2,
   LuUsers,
+  LuWallet,
 } from "react-icons/lu";
 import { api } from "@/lib/api";
 import SharedStatCard from "@/components/ui/StatCard";
@@ -49,6 +53,7 @@ type Payment = {
   paidAt: string | null;
   paymentMethod: { name: string };
 };
+type PaymentMethod = { id: string; name: string; requiresReference?: boolean };
 type Membership = {
   id: string;
   customerId: string;
@@ -107,11 +112,41 @@ const dateInput = (value: Date | string) =>
 const money = (value: number) =>
   `KSh ${value.toLocaleString("en-KE", { maximumFractionDigits: 2 })}`;
 type View = "table" | "cards";
+type WalletTab = "payment" | "plan" | "history";
+
+const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+function calendarWeeks(year: number, month: number): (number | null)[][] {
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const firstWeekday = (new Date(year, month - 1, 1).getDay() + 6) % 7;
+  const cells: (number | null)[] = [...Array(firstWeekday).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
+  while (cells.length % 7 !== 0) cells.push(null);
+  const weeks: (number | null)[][] = [];
+  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+  return weeks;
+}
+
+function dateKey(value: Date | string) {
+  return new Date(value).toISOString().slice(0, 10);
+}
+
+function addDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function daysRemaining(m: Membership) {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const end = new Date(m.endsAt); end.setHours(0, 0, 0, 0);
+  return Math.max(0, Math.ceil((end.getTime() - today.getTime()) / 86_400_000));
+}
 
 export default function ServiceMemberships() {
   const [memberships, setMemberships] = useState<Membership[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [groups, setGroups] = useState<CustomerGroup[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [summary, setSummary] = useState<Summary>({
     total: 0,
     active: 0,
@@ -123,6 +158,8 @@ export default function ServiceMemberships() {
   const [query, setQuery] = useState("");
   const [groupFilter, setGroupFilter] = useState("");
   const [open, setOpen] = useState(false);
+  const [attendanceFor, setAttendanceFor] = useState<Membership | null>(null);
+  const [walletFor, setWalletFor] = useState<Membership | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -142,7 +179,7 @@ export default function ServiceMemberships() {
         api<{ memberships: Membership[]; summary: Summary }>(
           `/service-center/memberships${groupFilter ? `?groupId=${groupFilter}` : ""}`,
         ),
-        api<{ customers: Customer[]; groups: CustomerGroup[] }>(
+        api<{ customers: Customer[]; groups: CustomerGroup[]; paymentMethods: PaymentMethod[] }>(
           "/service-center/membership-options",
         ),
         api<{ plans: CatalogPlan[] }>("/service-center/membership-plans"),
@@ -152,6 +189,7 @@ export default function ServiceMemberships() {
       setSummary(list.summary);
       setCustomers(options.customers);
       setGroups(options.groups);
+      setPaymentMethods(options.paymentMethods);
       setError("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load memberships");
@@ -257,42 +295,12 @@ export default function ServiceMemberships() {
       setError(e instanceof Error ? e.message : "Could not delete membership");
     }
   }
-  async function renew(item: Membership) {
-    if (!confirm(`Renew ${item.customer.firstName} ${item.customer.lastName}'s ${item.planName} for another ${item.durationDays} days?`)) return;
-    try {
-      await api(`/service-center/memberships/${item.id}/renew`, { method: "POST" });
-      setNotice("Membership renewed.");
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not renew");
-    }
-  }
   function pickPlan(id: string) {
     const plan = plans.find((p) => p.id === id);
     setForm(plan
       ? { ...form, planId: id, planName: plan.name, planPrice: String(plan.price), durationDays: String(plan.durationDays), discountPercent: String(plan.discountPercent), visitLimit: plan.visitLimit != null ? String(plan.visitLimit) : "", discountOnProducts: Boolean(plan.discountOnProducts), endsAt: "" }
       : { ...form, planId: "" });
   }
-  async function checkIn(item: Membership) {
-    try {
-      await api(`/service-center/memberships/${item.id}/visits`, { method: "POST", body: JSON.stringify({}) });
-      setNotice(`${item.customer.firstName} checked in.`);
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not check in");
-    }
-  }
-  async function undoVisit(item: Membership) {
-    const last = item.visits[0];
-    if (!last || !confirm("Remove the most recent visit?")) return;
-    try {
-      await api(`/service-center/memberships/${item.id}/visits/${last.id}`, { method: "DELETE" });
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not remove visit");
-    }
-  }
-  const visitsText = (m: Membership) => (m.visitLimit != null ? `${m.visitsUsed} / ${m.visitLimit} visits` : `${m.visitsUsed} visit${m.visitsUsed === 1 ? "" : "s"} this term`);
   async function setStatus(item: Membership, status: Status) {
     try {
       await api(`/service-center/memberships/${item.id}`, {
@@ -382,13 +390,6 @@ export default function ServiceMemberships() {
                 </h3>
                 <p className="text-xs text-muted-foreground">{m.customer.phone ?? m.customer.email ?? "No contact details"}</p>
                 {m.customer.serviceGroup && <p className="mt-1 text-xs font-semibold text-secondary">{m.customer.serviceGroup.name}</p>}
-                <div className="mt-3 flex items-center justify-between gap-2 border p-2 text-xs">
-                  <span className="font-semibold">{visitsText(m)}</span>
-                  <span className="flex gap-1.5">
-                    <ActionButton tone="secondary" onClick={() => void checkIn(m)}>Check in</ActionButton>
-                    {m.visits.length > 0 && <ActionButton tone="neutral" onClick={() => void undoVisit(m)}>Undo</ActionButton>}
-                  </span>
-                </div>
                 <div className="mt-4 bg-secondary/10 p-3 text-secondary">
                   <p className="text-xs font-bold uppercase tracking-wide">{m.plan.name}</p>
                   <p className="mt-1 text-sm">
@@ -401,14 +402,15 @@ export default function ServiceMemberships() {
                     <b className="mt-1 block">{new Date(m.endsAt).toLocaleDateString()}</b>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Activity</span>
-                    <b className="mt-1 block">{m._count.appointments} bookings</b>
+                    <span className="text-muted-foreground">Remaining</span>
+                    <b className="mt-1 block">{daysRemaining(m)} days</b>
                   </div>
                 </div>
                 <div className="mt-5 flex items-center justify-between border-t pt-3">
                   <b className="text-sm">{money(paidTotal(m))} paid</b>
                   <div className="flex gap-1.5">
-                    {m.status !== "CANCELLED" && <ActionButton tone="neutral" onClick={() => void renew(m)}>Renew</ActionButton>}
+                    <ActionButton tone="neutral" icon={<LuCalendarDays />} title="Attendance" onClick={() => setAttendanceFor(m)} />
+                    <ActionButton tone="neutral" icon={<LuWallet />} title="Payments and plan" onClick={() => setWalletFor(m)} />
                     <ActionButton tone="neutral" icon={<LuPencil />} title="Edit membership" onClick={() => edit(m)} />
                     <ActionButton tone="neutral" icon={<LuTrash2 />} title="Delete membership" onClick={() => void remove(m)} />
                   </div>
@@ -424,7 +426,6 @@ export default function ServiceMemberships() {
                   <th className="px-5 py-3 font-bold">Customer</th>
                   <th className="px-5 py-3 font-bold">Plan</th>
                   <th className="px-5 py-3 font-bold">Validity</th>
-                  <th className="px-5 py-3 font-bold">Activity</th>
                   <th className="px-5 py-3 font-bold">Status</th>
                   <th className="px-5 py-3 text-right font-bold">Actions</th>
                 </tr>
@@ -448,21 +449,15 @@ export default function ServiceMemberships() {
                     <td className="px-5 py-4 text-xs">
                       <b>{new Date(m.startsAt).toLocaleDateString()}</b>
                       <p className="text-muted-foreground">to {new Date(m.endsAt).toLocaleDateString()}</p>
-                    </td>
-                    <td className="px-5 py-4 text-xs">
-                      <b>{m._count.appointments} appointments</b>
-                      <p className="text-muted-foreground">
-                        {m.payments.length} payments · {money(paidTotal(m))}
-                      </p>
+                      <p className="mt-1 font-semibold text-secondary">{daysRemaining(m)} days remaining</p>
                     </td>
                     <td className="px-5 py-4">
                       {statusSelect(m)}
-                      <p className="mt-1.5 text-[11px] font-semibold">{visitsText(m)}</p>
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex flex-wrap justify-end gap-1.5">
-                        <ActionButton tone="secondary" onClick={() => void checkIn(m)}>Check in</ActionButton>
-                        {m.status !== "CANCELLED" && <ActionButton tone="neutral" onClick={() => void renew(m)}>Renew</ActionButton>}
+                        <ActionButton tone="neutral" icon={<LuCalendarDays />} title="Attendance" onClick={() => setAttendanceFor(m)} />
+                        <ActionButton tone="neutral" icon={<LuWallet />} title="Payments and plan" onClick={() => setWalletFor(m)} />
                         <ActionButton tone="neutral" icon={<LuPencil />} title="Edit membership" onClick={() => edit(m)} />
                         <ActionButton tone="neutral" icon={<LuTrash2 />} title="Delete membership" onClick={() => void remove(m)} />
                       </div>
@@ -479,6 +474,12 @@ export default function ServiceMemberships() {
       )}
       {managingGroups && (
         <GroupsModal groups={groups} onClose={() => setManagingGroups(false)} onChanged={load} />
+      )}
+      {attendanceFor && (
+        <MembershipAttendanceModal membership={attendanceFor} onClose={() => setAttendanceFor(null)} onChanged={load} />
+      )}
+      {walletFor && (
+        <MembershipWalletModal membership={walletFor} plans={plans} paymentMethods={paymentMethods} onClose={() => setWalletFor(null)} onChanged={load} />
       )}
       {open && (
         <ModalShell
@@ -614,6 +615,192 @@ export default function ServiceMemberships() {
   );
 }
 
+function MembershipAttendanceModal({ membership, onClose, onChanged }: { membership: Membership; onClose: () => void; onChanged: () => Promise<void> }) {
+  const toast = useToast();
+  const now = new Date();
+  const [year, setYear] = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [markDate, setMarkDate] = useState(dateInput(now));
+  const [saving, setSaving] = useState(false);
+  const weeks = useMemo(() => calendarWeeks(year, month), [year, month]);
+  const visitDays = useMemo(() => new Set(membership.visits.map((v) => dateKey(v.visitedAt))), [membership.visits]);
+  const start = new Date(membership.startsAt); start.setHours(0, 0, 0, 0);
+  const end = new Date(membership.endsAt); end.setHours(0, 0, 0, 0);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const monthLabel = new Date(year, month - 1, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  let eligiblePast = 0;
+  for (let d = new Date(Math.max(start.getTime(), new Date(year, month - 1, 1).getTime())); d <= today && d <= end && d.getMonth() === month - 1; d = addDays(d, 1)) eligiblePast += 1;
+  const attended = [...visitDays].filter((k) => k.startsWith(`${year}-${String(month).padStart(2, "0")}`)).length;
+  const missed = Math.max(0, eligiblePast - attended);
+  const attendance = eligiblePast ? Math.round((attended / eligiblePast) * 100) : 0;
+
+  function shiftMonth(delta: number) {
+    const next = new Date(year, month - 1 + delta, 1);
+    setYear(next.getFullYear());
+    setMonth(next.getMonth() + 1);
+  }
+
+  async function markAttendance(event: FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    try {
+      await api(`/service-center/memberships/${membership.id}/visits`, { method: "POST", body: JSON.stringify({ visitedAt: new Date(`${markDate}T12:00:00`) }) });
+      toast.success("Attendance marked.");
+      await onChanged();
+      onClose();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not mark attendance");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <ModalShell size="xl" kicker="Membership attendance" title={`${membership.customer.firstName} ${membership.customer.lastName}`} subtitle={`${membership.planName} - expires ${new Date(membership.endsAt).toLocaleDateString()}`} onClose={onClose}>
+      <div className="p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="font-display text-xl font-semibold">{monthLabel}</h3>
+            <p className="text-xs text-muted-foreground">Past unmarked eligible days count as missed. Future days are ignored.</p>
+          </div>
+          <div className="flex gap-2">
+            <ActionButton tone="neutral" icon={<LuChevronLeft />} title="Previous month" onClick={() => shiftMonth(-1)} />
+            <ActionButton tone="neutral" icon={<LuChevronRight />} title="Next month" onClick={() => shiftMonth(1)} />
+          </div>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          <Mini label="Attended days" value={String(attended)} />
+          <Mini label="Missed days" value={String(missed)} />
+          <Mini label="Attendance" value={`${attendance}%`} />
+        </div>
+        <div className="mt-5 grid grid-cols-7 gap-1.5 text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          {WEEKDAY_LABELS.map((label) => <div key={label}>{label}</div>)}
+        </div>
+        <div className="mt-1.5 space-y-1.5">
+          {weeks.map((week, i) => (
+            <div key={i} className="grid grid-cols-7 gap-1.5">
+              {week.map((day, j) => {
+                if (day === null) return <div key={j} />;
+                const date = new Date(year, month - 1, day);
+                const key = dateInput(date);
+                const inTerm = date >= start && date <= end;
+                const isFuture = date > today;
+                const present = visitDays.has(key);
+                const missedDay = inTerm && !isFuture && !present;
+                return (
+                  <div key={j} className={`min-h-20 border p-2 text-center text-sm ${present ? "border-success/50 bg-success/10 text-success" : missedDay ? "border-destructive/40 bg-destructive/5 text-destructive" : inTerm ? "bg-card" : "bg-muted/30 text-muted-foreground"}`}>
+                    <b>{day}</b>
+                    <p className="mt-2 text-[10px] font-bold uppercase tracking-wide">{present ? "Attended" : missedDay ? "Missed" : inTerm ? "Pending" : ""}</p>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+        <form onSubmit={markAttendance} className="mt-5 flex flex-wrap items-end gap-3 border-t pt-4">
+          <Field label="Mark attendance for">
+            <input type="date" className="input" value={markDate} max={dateInput(now)} onChange={(e) => setMarkDate(e.target.value)} />
+          </Field>
+          <button disabled={saving} className="h-10 bg-primary px-5 text-xs font-bold uppercase tracking-wider text-primary-foreground disabled:opacity-60">{saving ? "Saving..." : "Mark attended"}</button>
+        </form>
+      </div>
+    </ModalShell>
+  );
+}
+
+function MembershipWalletModal({ membership, plans, paymentMethods, onClose, onChanged }: { membership: Membership; plans: CatalogPlan[]; paymentMethods: PaymentMethod[]; onClose: () => void; onChanged: () => Promise<void> }) {
+  const toast = useToast();
+  const [tab, setTab] = useState<WalletTab>("payment");
+  const [paymentMethodId, setPaymentMethodId] = useState("");
+  const [reference, setReference] = useState("");
+  const [paidAt, setPaidAt] = useState(new Date().toISOString().slice(0, 16));
+  const [planId, setPlanId] = useState(membership.planId ?? "");
+  const [saving, setSaving] = useState(false);
+  const selectedPlan = plans.find((p) => p.id === (planId || membership.planId));
+  const amount = Number(membership.planPrice);
+
+  async function recordPayment(event: FormEvent) {
+    event.preventDefault();
+    if (!paymentMethodId) { toast.error("Choose a payment method"); return; }
+    setSaving(true);
+    try {
+      await api("/service-center/membership-payments", { method: "POST", body: JSON.stringify({ membershipId: membership.id, paymentMethodId, amount, paidAt: new Date(paidAt), reference: reference || null }) });
+      toast.success("Membership payment recorded.");
+      await onChanged();
+      onClose();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not record payment");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function switchPlan(event: FormEvent) {
+    event.preventDefault();
+    if (!planId) { toast.error("Choose a plan"); return; }
+    setSaving(true);
+    try {
+      await api(`/service-center/memberships/${membership.id}`, { method: "PATCH", body: JSON.stringify({ planId }) });
+      toast.success("Membership plan updated.");
+      await onChanged();
+      onClose();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not switch plan");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <ModalShell size="lg" kicker="Membership wallet" title={`${membership.customer.firstName} ${membership.customer.lastName}`} subtitle={`${membership.planName} - full payment only`} onClose={onClose}>
+      <div className="p-5">
+        <div className="flex border bg-background">
+          {(["payment", "plan", "history"] as WalletTab[]).map((item) => (
+            <button key={item} type="button" onClick={() => setTab(item)} className={`px-4 py-2 text-xs font-bold uppercase tracking-wider ${tab === item ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}>{item}</button>
+          ))}
+        </div>
+        {tab === "payment" && (
+          <form onSubmit={recordPayment} className="mt-5 grid gap-4 sm:grid-cols-2">
+            <Mini label="Locked amount" value={money(amount)} />
+            <Field label="Payment method" required>
+              <select required className="input" value={paymentMethodId} onChange={(e) => setPaymentMethodId(e.target.value)}>
+                <option value="">Choose method</option>
+                {paymentMethods.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+            </Field>
+            <Field label="Reference"><input className="input" value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Transaction code" /></Field>
+            <Field label="Paid at"><input type="datetime-local" className="input" value={paidAt} onChange={(e) => setPaidAt(e.target.value)} /></Field>
+            <div className="sm:col-span-2"><button disabled={saving} className="bg-primary px-5 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground disabled:opacity-60">{saving ? "Saving..." : "Record full payment"}</button></div>
+          </form>
+        )}
+        {tab === "plan" && (
+          <form onSubmit={switchPlan} className="mt-5 grid gap-4 sm:grid-cols-2">
+            <Field label="Current plan"><input className="input" value={membership.planName} disabled /></Field>
+            <Field label="Switch to" required>
+              <select required className="input" value={planId} onChange={(e) => setPlanId(e.target.value)}>
+                <option value="">Choose plan</option>
+                {plans.filter((p) => p.isActive || p.id === membership.planId).map((p) => <option key={p.id} value={p.id}>{p.name} - {money(Number(p.price))}</option>)}
+              </select>
+            </Field>
+            {selectedPlan && <div className="sm:col-span-2 border border-l-4 border-l-accent bg-muted/30 p-3 text-sm">{selectedPlan.durationDays} days - {Number(selectedPlan.discountPercent)}% discount - {money(Number(selectedPlan.price))}</div>}
+            <div className="sm:col-span-2"><button disabled={saving || !planId} className="bg-primary px-5 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground disabled:opacity-60">{saving ? "Saving..." : "Switch plan"}</button></div>
+          </form>
+        )}
+        {tab === "history" && (
+          <div className="mt-5 divide-y border">
+            {membership.payments.length === 0 ? <p className="p-8 text-center text-sm text-muted-foreground">No payments recorded.</p> : membership.payments.map((p) => (
+              <div key={p.id} className="flex items-center justify-between gap-3 p-3 text-sm">
+                <div><p className="font-semibold">{p.paymentMethod.name}</p><p className="text-xs text-muted-foreground">{p.paidAt ? new Date(p.paidAt).toLocaleString() : "No payment date"}{p.reference ? ` - ${p.reference}` : ""}</p></div>
+                <b>{money(Number(p.amount))}</b>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </ModalShell>
+  );
+}
+
 function Metric({
   icon,
   label,
@@ -626,6 +813,9 @@ function Metric({
   index?: number;
 }) {
   return <SharedStatCard index={index} icon={icon} label={label} value={value} />;
+}
+function Mini({ label, value }: { label: string; value: string }) {
+  return <div className="border bg-muted/30 p-3"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 font-semibold">{value}</p></div>;
 }
 function PlansModal({ plans, onClose, onChanged }: { plans: CatalogPlan[]; onClose: () => void; onChanged: () => Promise<void> }) {
   const empty = { name: "", price: "", durationDays: "", discountPercent: "", description: "", visitLimit: "", discountOnProducts: false };
