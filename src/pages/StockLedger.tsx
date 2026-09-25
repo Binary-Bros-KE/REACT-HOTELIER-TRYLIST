@@ -72,7 +72,8 @@ function StockMovementsPanel() {
   const [startHour, setStartHour] = useState(0)
   const [shiftDate, setShiftDate] = useState('')
   const [from, setFrom] = useState('')
-  const [to, setTo] = useState('')  const [locationId, setLocationId] = useState('')
+  const [to, setTo] = useState('')
+  const [locationId, setLocationId] = useState('')
   const [page, setPage] = useState(1)
 
   useEffect(() => { setPage(1) }, [tab, search, year, from, to, shiftDate, mode, locationId])
@@ -97,7 +98,8 @@ function StockMovementsPanel() {
       if (search.trim()) q.set('search', search.trim())
       if (mode === 'shift' && shiftDate) q.set('shiftDate', shiftDate)
       if (mode === 'custom') { if (from) q.set('from', from); if (to) q.set('to', to) }
-      if (mode === 'year' || (mode === 'custom' && !from && !to)) q.set('year', year)      if (locationId) q.set('locationId', locationId)
+      if (mode === 'year' || (mode === 'custom' && !from && !to)) q.set('year', year)
+      if (locationId) q.set('locationId', locationId)
       q.set('page', String(page))
       q.set('pageSize', '50')
       const res = await api<{ entries: Entry[]; pagination: Pagination }>(`/stock-ledger?${q}`)
