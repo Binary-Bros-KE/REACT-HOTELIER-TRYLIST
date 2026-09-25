@@ -20,10 +20,7 @@ import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
 import StatCard from '@/components/ui/StatCard'
 
-const UNITS_OF_MEASURE = [
-  'Each', 'Pieces', 'Kg', 'Grams', 'Litres', 'Millilitres', 'Box', 'Carton',
-  'Pack', 'Dozen', 'Roll', 'Bottle', 'Can', 'Bag', 'Set', 'Pair', 'Meter',
-] as const
+type UnitOption = { id: string; name: string; systemKey: string | null }
 
 const MOVEMENT_TYPES = ['RECEIPT', 'ADJUSTMENT', 'WRITE_OFF'] as const
 const movementLabels: Record<(typeof MOVEMENT_TYPES)[number], string> = { RECEIPT: 'Receipt (more acquired)', ADJUSTMENT: 'Adjustment (correction)', WRITE_OFF: 'Write-off (broken / lost / disposed)' }
@@ -40,6 +37,7 @@ type Asset = {
   name: string
   description: string | null
   unit: string
+  unitId: string
   quantity: string
   unitCost: string | null
   locationId: string | null
@@ -63,7 +61,7 @@ type AssetForm = {
   categoryId: string
   name: string
   description: string
-  unit: (typeof UNITS_OF_MEASURE)[number]
+  unitId: string
   quantity: string
   unitCost: string
   locationId: string
@@ -74,7 +72,7 @@ type AssetForm = {
   notes: string
   isActive: boolean
 }
-const emptyForm: AssetForm = { categoryId: '', name: '', description: '', unit: 'Each', quantity: '0', unitCost: '', locationId: '', roomId: '', purchased: false, paymentMethodId: '', reference: '', notes: '', isActive: true }
+const emptyForm: AssetForm = { categoryId: '', name: '', description: '', unitId: '', quantity: '0', unitCost: '', locationId: '', roomId: '', purchased: false, paymentMethodId: '', reference: '', notes: '', isActive: true }
 
 type MovementForm = { type: (typeof MOVEMENT_TYPES)[number]; quantity: string; unitCost: string; purchased: boolean; paymentMethodId: string; reference: string; note: string }
 const emptyMovement: MovementForm = { type: 'RECEIPT', quantity: '', unitCost: '', purchased: false, paymentMethodId: '', reference: '', note: '' }
@@ -95,6 +93,7 @@ export default function Assets() {
   const [summary, setSummary] = useState<Summary>({ total: 0, totalValue: 0 })
   const [categories, setCategories] = useState<Category[]>([])
   const [quickCategory, setQuickCategory] = useState(false)
+  const [units, setUnits] = useState<UnitOption[]>([])
   const [locations, setLocations] = useState<Location[]>([])
   const [rooms, setRooms] = useState<Room[]>([])
   const [roomReport, setRoomReport] = useState<RoomAssetReport | null>(null)
@@ -140,6 +139,7 @@ export default function Assets() {
   useEffect(() => {
     api<{ categories: Category[] }>('/categories?scope=ASSETS').then((r) => setCategories(r.categories)).catch(() => {})
     api<{ locations: Location[] }>('/locations').then((r) => setLocations(r.locations)).catch(() => {})
+    api<{ units: UnitOption[] }>('/units-of-measure').then((r) => setUnits(r.units)).catch(() => {})
     api<{ rooms: Room[] }>('/rooms/rooms').then((r) => setRooms(r.rooms)).catch(() => {})
     api<{ methods: PaymentMethod[] }>('/payment-methods?activeOnly=true').then((r) => setMethods(r.methods)).catch(() => {})
   }, [])
@@ -154,7 +154,7 @@ export default function Assets() {
 
   function openCreate() {
     setEditing(null)
-    setForm(emptyForm)
+    setForm({ ...emptyForm, unitId: units.find((u) => u.systemKey === 'EACH')?.id ?? '' })
     setError('')
     setShowForm(true)
   }
@@ -165,7 +165,7 @@ export default function Assets() {
       categoryId: asset.categoryId ?? '',
       name: asset.name,
       description: asset.description ?? '',
-      unit: asset.unit as (typeof UNITS_OF_MEASURE)[number],
+      unitId: asset.unitId,
       quantity: '0',
       unitCost: asset.unitCost ?? '',
       locationId: asset.locationId ?? '',
@@ -187,7 +187,7 @@ export default function Assets() {
     setNotice('')
     try {
       const payload = editing
-        ? { categoryId: form.categoryId || undefined, name: form.name, description: form.description || undefined, unit: form.unit, unitCost: form.unitCost || undefined, locationId: form.locationId || undefined, roomId: form.roomId || undefined, notes: form.notes || undefined, isActive: form.isActive }
+        ? { categoryId: form.categoryId || undefined, name: form.name, description: form.description || undefined, unitId: form.unitId || undefined, unitCost: form.unitCost || undefined, locationId: form.locationId || undefined, roomId: form.roomId || undefined, notes: form.notes || undefined, isActive: form.isActive }
         : { ...form, categoryId: form.categoryId || undefined, locationId: form.locationId || undefined, roomId: form.roomId || undefined, purchased: form.purchased, paymentMethodId: form.purchased ? form.paymentMethodId || undefined : undefined, reference: form.purchased ? form.reference || undefined : undefined }
       await api(editing ? `/assets/${editing.id}` : '/assets', { method: editing ? 'PATCH' : 'POST', body: JSON.stringify(payload) })
       setNotice(editing ? 'Asset updated.' : 'Asset registered.')
@@ -368,8 +368,9 @@ export default function Assets() {
                 </select><QuickNewButton onClick={() => setQuickCategory(true)} /></div>
               </Field>
               <Field label="Unit" required>
-                <select required className="input" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value as AssetForm['unit'] })}>
-                  {UNITS_OF_MEASURE.map((u) => <option key={u} value={u}>{u}</option>)}
+                <select required className="input" value={form.unitId} onChange={(e) => setForm({ ...form, unitId: e.target.value })}>
+                  <option value="" disabled>Select unit</option>
+                  {units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                 </select>
               </Field>
               <Field label="Description" className="sm:col-span-2"><input placeholder="e.g. Wooden dining chair, dark finish" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="input" /></Field>
