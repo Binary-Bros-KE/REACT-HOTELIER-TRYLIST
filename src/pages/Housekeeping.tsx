@@ -416,8 +416,8 @@ function AssignModal({ task, staff, onClose, onDone }: { task: Task; staff: Staf
     } catch (cause) { toast.error(cause instanceof Error ? cause.message : 'Could not assign task'); setSaving(false) }
   }
   return (
-    <ModalShell kicker={task.taskNo ?? 'Task'} title={`${task.assignedToId ? 'Reassign' : 'Assign'} ${taskName(task)}`} onClose={onClose} size="sm" footer={<ActionButton tone="primary" icon={<LuUserRoundPlus />} loading={saving} disabled={!employeeId || employeeId === task.assignedToId} onClick={() => void save()}>{saving ? 'Saving…' : 'Assign'}</ActionButton>}>
-      <div className="space-y-3 p-5">
+    <ModalShell kicker={task.taskNo ?? 'Task'} title={`${task.assignedToId ? 'Reassign' : 'Assign'} ${taskName(task)}`} onClose={onClose} size="md" footer={<ActionButton tone="primary" icon={<LuUserRoundPlus />} loading={saving} disabled={!employeeId || employeeId === task.assignedToId} onClick={() => void save()}>{saving ? 'Saving…' : 'Assign'}</ActionButton>}>
+      <div className="min-h-[22rem] space-y-3 p-5">
         <SearchableSelect value={employeeId} onChange={setEmployeeId} placeholder="Choose an employee" searchPlaceholder="Search staff…" emptyText="No housekeeping staff. Add employees to the Housekeeping department first." options={staff.map((s) => ({ value: s.id, label: s.name, hint: `${s.activeTasks} active` }))} />
         {task.status === 'IN_PROGRESS' && <p className="text-xs text-warning">This task is already in progress. Reassigning restarts the work for the new person.</p>}
       </div>
