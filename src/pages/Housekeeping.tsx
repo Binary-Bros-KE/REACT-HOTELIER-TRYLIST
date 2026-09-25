@@ -103,11 +103,11 @@ export default function Housekeeping() {
         {isManager && <ActionButton tone="primary" icon={<LuPlus />} onClick={() => setCreateOpen(true)}>New task</ActionButton>}
       </PageBanner>
 
-      <div className="mt-6 flex w-fit border bg-card">
+      {tab !== 'tasks' && <div className="mt-6 flex w-fit border bg-card">
         {tabs.map((t) => (
-          <button key={t.key} type="button" onClick={() => setTab(t.key)} className={cn('px-4 py-2 text-xs font-bold uppercase tracking-wider transition', tab === t.key ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}>{t.label}</button>
+          <button key={t.key} type="button" onClick={() => setTab(t.key)} className={cn('px-3 py-2 text-xs font-bold uppercase tracking-wider transition', tab === t.key ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}>{t.label}</button>
         ))}
-      </div>
+      </div>}
 
       {tab === 'history' && <div className="mt-5"><HistoryTab isManager={isManager} staff={staff} /></div>}
       {tab === 'reports' && <div className="mt-5"><ReportsTab isManager={isManager} /></div>}
@@ -121,15 +121,20 @@ export default function Housekeeping() {
             <StatCard tone={summary.overdue ? 'danger' : undefined} index={3} label="Overdue" value={summary.overdue} />
           </section>
 
-          <div className="mt-5 flex flex-wrap items-end gap-3">
+          <div className="mt-5 flex flex-wrap items-center gap-3">
+            <div className="flex border bg-card">
+              {tabs.map((t) => (
+                <button key={t.key} type="button" onClick={() => setTab(t.key)} className={cn('px-3 py-2 text-xs font-bold uppercase tracking-wider transition', tab === t.key ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}>{t.label}</button>
+              ))}
+            </div>
             <div className="flex border bg-card">
               {([['active', 'All active'], ['PENDING', 'Pending'], ['IN_PROGRESS', 'In progress']] as const).map(([value, label]) => (
                 <button key={value} type="button" onClick={() => setStatusFilter(value)} className={cn('px-3 py-2 text-xs font-bold uppercase tracking-wider', statusFilter === value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}>{label}</button>
               ))}
             </div>
-            <input className="input h-9 w-56 text-sm" placeholder="Search room, task, employee…" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <input className="input h-9 min-w-52 flex-1 text-sm lg:max-w-64" placeholder="Search room, task, employee…" value={search} onChange={(e) => setSearch(e.target.value)} />
             {isManager && (
-              <div className="w-52">
+              <div className="min-w-52 flex-1 lg:max-w-56">
                 <SearchableSelect value={assigneeFilter} onChange={setAssigneeFilter} placeholder="All employees" searchPlaceholder="Search…" emptyText="No match" options={[{ value: '', label: 'All employees' }, ...staff.map((s) => ({ value: s.id, label: s.name }))]} />
               </div>
             )}
