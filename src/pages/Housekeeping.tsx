@@ -13,6 +13,7 @@ import HistoryTab from '@/components/housekeeping/HistoryTab'
 import ReportsTab from '@/components/housekeeping/ReportsTab'
 import TaskDetailModal from '@/components/housekeeping/TaskDetailModal'
 import { PriorityBadge, SOURCE_LABEL, StatusBadge, TYPE_LABEL, fmtDateTime, taskName, type Staff, type Task, type TaskType } from '@/components/housekeeping/shared'
+import { useAppSelector } from '@/store/hooks'
 
 type Summary = { pending: number; inProgress: number; unassigned: number; overdue: number }
 type RoomOption = { id: string; number: string; cleanliness: string; roomType: { name: string } }
@@ -95,7 +96,11 @@ export default function Housekeeping() {
     else void act(task, 'complete')
   }
 
-  const tabs: { key: Tab; label: string }[] = [{ key: 'tasks', label: isManager ? 'Tasks' : 'My tasks' }, { key: 'history', label: 'History' }, { key: 'reports', label: isManager ? 'Reports' : 'My report' }]
+  const tabs: { key: Tab; label: string }[] = [
+    { key: 'tasks', label: isManager ? 'Tasks' : 'My tasks' },
+    { key: 'history', label: 'History' },
+    ...(isManager ? [{ key: 'reports' as const, label: 'Reports' }] : []),
+  ]
 
   return (
     <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
@@ -186,6 +191,7 @@ export default function Housekeeping() {
 
 function ReplenishModal({ task, onClose, onDone }: { task: Task; onClose: () => void; onDone: () => void }) {
   const toast = useToast()
+  const currentUser = useAppSelector((s) => s.auth.user)
   const [locations, setLocations] = useState<LocationOption[]>([])
   const [locationId, setLocationId] = useState('')
   const [standards, setStandards] = useState<ConsumableStandard[]>([])
@@ -205,15 +211,19 @@ function ReplenishModal({ task, onClose, onDone }: { task: Task; onClose: () => 
       task.roomId ? api<{ standards: ConsumableStandard[] }>(`/room-consumables/standards/for-room/${task.roomId}`).catch(() => ({ standards: [] })) : Promise.resolve({ standards: [] }),
     ]).then(([locs, standardResponse]) => {
       if (cancelled) return
-      setLocations(locs.locations)
-      const preferred = locs.locations.find((l) => l.type === 'HOUSEKEEPING') ?? locs.locations[0]
+      const assignedIds = new Set((currentUser?.locations ?? []).map((location) => location.id))
+      const usableLocations = assignedIds.size > 0 ? locs.locations.filter((location) => assignedIds.has(location.id)) : locs.locations
+      setLocations(usableLocations)
+      const preferred = usableLocations.find((location) => location.id === currentUser?.defaultLocation?.id)
+        ?? usableLocations.find((l) => l.type === 'HOUSEKEEPING')
+        ?? usableLocations[0]
       if (preferred) setLocationId(preferred.id)
       setStandards(standardResponse.standards)
       setQuantities(Object.fromEntries(standardResponse.standards.map((s) => [s.productId, String(Number(s.quantity) || '')])))
     }).catch((cause) => setError(cause instanceof Error ? cause.message : 'Could not load room supplies'))
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [task.roomId])
+  }, [currentUser?.defaultLocation?.id, currentUser?.locations, task.roomId])
 
   useEffect(() => {
     if (!locationId) { setProducts([]); return }
@@ -230,6 +240,7 @@ function ReplenishModal({ task, onClose, onDone }: { task: Task; onClose: () => 
   }, [locationId, search])
 
   const productMap = new Map<string, ConsumableProduct>(products.map((p) => [p.id, p] as const))
+  const lockedLocation = locations.length === 1 ? locations[0] : null
   const chosen = Object.entries(quantities)
     .map(([productId, qty]) => ({ productId, quantity: Number(qty) }))
     .filter((item) => productMap.has(item.productId))
@@ -287,8 +298,10 @@ function ReplenishModal({ task, onClose, onDone }: { task: Task; onClose: () => 
                     placeholder="Choose source location"
                     searchPlaceholder="Search locations..."
                     emptyText="No locations"
+                    disabled={Boolean(lockedLocation)}
                     options={locations.map((l) => ({ value: l.id, label: l.name, hint: l.type ?? undefined }))}
                   />
+                  {lockedLocation && <p className="mt-1 text-xs text-muted-foreground">Locked to your assigned location.</p>}
                 </div>
               </div>
               <label className="block text-sm font-medium">Find another product

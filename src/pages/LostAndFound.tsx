@@ -8,6 +8,7 @@ import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
 import StatCard from '@/components/ui/StatCard'
 import { useAppSelector } from '@/store/hooks'
+import SearchableSelect from '@/components/ui/SearchableSelect'
 
 const date = () => new Date().toISOString().slice(0, 10)
 
@@ -35,6 +36,7 @@ const emptyForm: ItemForm = { itemName: '', description: '', roomId: '', locatio
 export default function LostAndFound() {
   const toast = useToast()
   const currentUser = useAppSelector((s) => s.auth.user)
+  const canManage = currentUser?.role?.name === 'Super Admin' || Boolean(currentUser?.isSupervisor)
   const [items, setItems] = useState<LostFoundItem[]>([])
   const [rooms, setRooms] = useState<Room[]>([])
   const [unclaimedCount, setUnclaimedCount] = useState(0)
@@ -82,6 +84,7 @@ export default function LostAndFound() {
   }
 
   function openEdit(item: LostFoundItem) {
+    if (!canManage) return
     setEditing(item)
     setForm({
       itemName: item.itemName,
@@ -122,6 +125,7 @@ export default function LostAndFound() {
   }
 
   async function reopenItem(item: LostFoundItem) {
+    if (!canManage) return
     if (!window.confirm(`Mark "${item.itemName}" as unclaimed again?`)) return
     try {
       await api(`/lost-found/${item.id}/reopen`, { method: 'PATCH' })
@@ -133,6 +137,7 @@ export default function LostAndFound() {
   }
 
   async function deleteItem(item: LostFoundItem) {
+    if (!canManage) return
     if (!window.confirm(`Delete "${item.itemName}" from the log?`)) return
     try {
       await api(`/lost-found/${item.id}`, { method: 'DELETE' })
@@ -216,14 +221,16 @@ export default function LostAndFound() {
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex justify-end gap-1">
-                        {item.status === 'UNCLAIMED' ? (
+                        {canManage && item.status === 'UNCLAIMED' ? (
                           <>
                             <ActionButton tone="neutral" icon={<LuPencil />} title="Edit" onClick={() => openEdit(item)} />
                             <ActionButton tone="neutral" icon={<LuPackageCheck />} title="Mark as collected" onClick={() => setCollecting(item)} />
                             <ActionButton tone="neutral" icon={<LuTrash2 />} title="Delete" onClick={() => void deleteItem(item)} />
                           </>
-                        ) : (
+                        ) : canManage ? (
                           <ActionButton tone="neutral" icon={<LuRotateCcw />} title="Undo collection" onClick={() => void reopenItem(item)} />
+                        ) : (
+                          <span className="text-xs text-muted-foreground">View only</span>
                         )}
                       </div>
                     </td>
@@ -250,10 +257,14 @@ export default function LostAndFound() {
               <Field label="Item" required className="sm:col-span-2"><input required placeholder="e.g. Black leather wallet" value={form.itemName} onChange={(e) => setForm({ ...form, itemName: e.target.value })} className="input" /></Field>
               <Field label="Found on" required><input required type="date" value={form.foundAt} onChange={(e) => setForm({ ...form, foundAt: e.target.value })} className="input" /></Field>
               <Field label="Room (optional)">
-                <select className="input" value={form.roomId} onChange={(e) => setForm({ ...form, roomId: e.target.value })}>
-                  <option value="">Not room-specific</option>
-                  {rooms.map((r) => <option key={r.id} value={r.id}>Room {r.number}</option>)}
-                </select>
+                <SearchableSelect
+                  value={form.roomId}
+                  onChange={(roomId) => setForm({ ...form, roomId })}
+                  placeholder="Not room-specific"
+                  searchPlaceholder="Search rooms..."
+                  emptyText="No rooms match."
+                  options={[{ value: '', label: 'Not room-specific' }, ...rooms.map((r) => ({ value: r.id, label: `Room ${r.number}` }))]}
+                />
               </Field>
               <Field label="Where exactly (optional)" className="sm:col-span-2"><input placeholder="e.g. Under the bed, Lobby sofa" value={form.locationNote} onChange={(e) => setForm({ ...form, locationNote: e.target.value })} className="input" /></Field>
               <Field label="Description" className="sm:col-span-2"><textarea rows={2} placeholder="Distinguishing details" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="input" /></Field>
@@ -279,7 +290,7 @@ export default function LostAndFound() {
         </div>
       )}
 
-      {collecting && (
+      {canManage && collecting && (
         <CollectModal item={collecting} onClose={() => setCollecting(null)} onCollected={() => { setCollecting(null); void load(); }} />
       )}
     </div>
