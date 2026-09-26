@@ -23,6 +23,7 @@ import PageBanner from '@/components/ui/PageBanner'
 import ActionButton from '@/components/ui/ActionButton'
 import StatCard from '@/components/ui/StatCard'
 import { cn } from '@/lib/utils'
+import ShiftSummaryModal, { type ShiftSession, type ShiftSummary } from '@/components/shifts/ShiftSummaryModal'
 
 type Period = 'day' | 'week' | 'month' | 'custom'
 type Location = { id: string; name: string }
@@ -74,7 +75,7 @@ type LocationBucket = {
   profitPercent: number
 }
 type MethodBucket = { name: string; count: number; total: number; percentOfTotal: number }
-type EmployeeBucket = { name: string; branch: string; count: number; total: number; percentOfTotal: number }
+type EmployeeBucket = { employeeId: string | null; name: string; branch: string; count: number; total: number; percentOfTotal: number }
 type Debtors = {
   total: number
   customers: { total: number; top: { id: string; name: string; balance: number }[] }
@@ -154,6 +155,8 @@ export default function Reports() {
   const [report, setReport] = useState<SalesReport | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [employeeBreakdown, setEmployeeBreakdown] = useState<{ session: ShiftSession; summary: ShiftSummary } | null>(null)
+  const [loadingEmployeeId, setLoadingEmployeeId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -187,6 +190,35 @@ export default function Reports() {
   // Wait for the start hour so the first load already uses the right default day.
   useEffect(() => { if (startHour !== null) void load() }, [load, startHour])
   useEffect(() => { api<{ locations: Location[] }>('/locations').then((r) => setLocations(r.locations)).catch(() => {}) }, [])
+
+  async function openEmployeeBreakdown(bucket: EmployeeBucket) {
+    if (!bucket.employeeId || !report) return
+    setLoadingEmployeeId(bucket.employeeId)
+    try {
+      const query = new URLSearchParams({ from: report.range.start, to: report.range.end })
+      const { employee, summary } = await api<{ employee: { id: string; firstName: string; lastName: string }; summary: ShiftSummary }>(`/reports/employees/${bucket.employeeId}/breakdown?${query}`)
+      // No real ShiftSession backs a business-day breakdown (it can span
+      // several shifts, or none) — this shape just satisfies the modal's
+      // display needs; readOnly below hides the review/payroll panels that
+      // would otherwise edit a specific shift row.
+      const session: ShiftSession = {
+        id: `report:${employee.id}`,
+        status: 'ENDED',
+        requestedStartAt: summary.from,
+        approvedStartAt: summary.from,
+        requestedEndAt: summary.to,
+        approvedEndAt: summary.to,
+        rejectionReason: null,
+        cashVariance: null,
+        employee: { id: employee.id, firstName: employee.firstName, lastName: employee.lastName, jobTitle: rangeLabel(period, report.range.start, report.range.end, startHour ?? 0), supervisorId: null, isSupervisor: false },
+      }
+      setEmployeeBreakdown({ session, summary })
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Could not load this employee's sales")
+    } finally {
+      setLoadingEmployeeId(null)
+    }
+  }
 
   const cogsNote = report && report.revenueBreakdown.unresolvedCostLines > 0
     ? `Cost of goods sold could not be resolved for ${report.revenueBreakdown.unresolvedCostLines} sold line${report.revenueBreakdown.unresolvedCostLines === 1 ? '' : 's'} (a service, or a menu item with no product/recipe linked) — those count as zero cost here.`
@@ -441,7 +473,16 @@ export default function Reports() {
             <table className="w-full text-left text-sm">
               <thead className="bg-primary text-xs uppercase text-primary-foreground"><tr><th className="px-4 py-2.5">Employee</th><th className="px-4 py-2.5">Branch</th><th className="px-4 py-2.5 text-right">Transactions</th><th className="px-4 py-2.5 text-right">Revenue</th><th className="px-4 py-2.5 text-right">Avg Sale</th><th className="px-4 py-2.5 text-right">% of Total</th></tr></thead>
               <tbody>{report.byEmployee.map((e) => (
-                <tr key={e.name} className="border-t"><td className="px-4 py-2.5 font-medium">{e.name}</td><td className="px-4 py-2.5 text-muted-foreground">{e.branch}</td><td className="px-4 py-2.5 text-right tabular-nums">{e.count}</td><td className="px-4 py-2.5 text-right tabular-nums font-semibold">{formatKes(e.total)}</td><td className="px-4 py-2.5 text-right tabular-nums">{formatKes(e.count ? e.total / e.count : 0)}</td><td className="px-4 py-2.5 text-right tabular-nums">{e.percentOfTotal.toFixed(1)}%</td></tr>
+                <tr key={e.name} className={cn('border-t', e.employeeId && 'cursor-pointer hover:bg-muted/40')} onClick={() => void openEmployeeBreakdown(e)}>
+                  <td className="px-4 py-2.5 font-medium">{e.name}</td>
+                  <td className="px-4 py-2.5 text-muted-foreground">{e.branch}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">{e.count}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums font-semibold">
+                    {loadingEmployeeId === e.employeeId ? <LuLoaderCircle className="ml-auto size-4 animate-spin" /> : formatKes(e.total)}
+                  </td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">{formatKes(e.count ? e.total / e.count : 0)}</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">{e.percentOfTotal.toFixed(1)}%</td>
+                </tr>
               ))}</tbody>
             </table>
           </BreakdownSection>
@@ -523,6 +564,15 @@ export default function Reports() {
             </section>
           )}
         </>
+      )}
+      {employeeBreakdown && (
+        <ShiftSummaryModal
+          title="Sales breakdown"
+          session={employeeBreakdown.session}
+          summary={employeeBreakdown.summary}
+          readOnly
+          onClose={() => setEmployeeBreakdown(null)}
+        />
       )}
     </div>
   )

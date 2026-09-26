@@ -87,13 +87,17 @@ const nairobiMonth = (iso: string) => new Date(new Date(iso).getTime() + 3 * 360
  * wherever it's opened from.
  */
 export default function ShiftSummaryModal({
-  session, summary, approval, busyKey, onClose, onApprove, onReject, onChanged,
+  session, summary, approval, busyKey, readOnly, onClose, onApprove, onReject, onChanged,
 }: {
   title: string
   session: ShiftSession
   summary: ShiftSummary
   approval?: boolean
   busyKey?: string
+  /** No real ShiftSession backs this data (e.g. a Sales Report employee
+   * breakdown spanning a business day, possibly several shifts, or none) —
+   * suppress the review/payroll panels, which edit a specific shift row. */
+  readOnly?: boolean
   onClose: () => void
   onApprove?: (decision: ShiftDecision) => void
   onReject?: (decision: ShiftDecision) => void
@@ -203,7 +207,7 @@ export default function ShiftSummaryModal({
             })}
           </ShiftSummaryTable>
         </div>
-        {!approval && decided && (canReview || canSalary) && (
+        {!approval && !readOnly && decided && (canReview || canSalary) && (
           <div className="space-y-3 border-t-2 border-foreground/15 bg-muted/30 p-5">
             <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Adjustments</p>
             {!approval && decided && canReview && <ReviewPanel session={live} onSaved={(next) => { setLive(next); onChanged?.() }} />}
