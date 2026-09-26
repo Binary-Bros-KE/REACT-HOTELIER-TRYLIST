@@ -24,7 +24,8 @@ export function receiptToText(order: ReceiptOrder, profile: ReceiptProfile, shar
   lines.push(RULE)
 
   lines.push(`Receipt: ${order.orderNumber}`)
-  lines.push(`Date: ${new Date(order.updatedAt).toLocaleString()}`)
+  lines.push(`Date: ${new Date(order.createdAt).toLocaleString()}`)
+  if (order.completedAt) lines.push(`Paid: ${new Date(order.completedAt).toLocaleString()}`)
   const served = servedByName(order)
   if (served) lines.push(`Served by: ${served}`)
   lines.push(`Status: ${statusText}`)

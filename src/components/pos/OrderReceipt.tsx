@@ -44,6 +44,7 @@ export type ReceiptOrder = {
   createdAt: string
   servedAt: string | null
   updatedAt: string
+  completedAt?: string | null
   table: { label: string } | null
   location: ReceiptLocation | null
   servedBy: { firstName: string; lastName: string } | null
@@ -113,7 +114,8 @@ export default function OrderReceipt({ order, profile }: { order: ReceiptOrder; 
 
       <div className="space-y-0.5 text-xs">
         <div className="flex justify-between"><span>Receipt</span><span>#{order.orderNumber}</span></div>
-        <div className="flex justify-between"><span>Date</span><span>{new Date(order.updatedAt).toLocaleString()}</span></div>
+        <div className="flex justify-between"><span>Date</span><span>{new Date(order.createdAt).toLocaleString()}</span></div>
+        {order.completedAt && <div className="flex justify-between"><span>Paid</span><span>{new Date(order.completedAt).toLocaleString()}</span></div>}
         {served && <div className="flex justify-between"><span>Served by</span><span>{served}</span></div>}
         <div className="flex justify-between text-gray-600"><span>{order.table ? `Table: ${order.table.label}` : 'Takeaway'}</span><span>Status: {statusText}</span></div>
         {isComplementary && <div className="flex justify-between text-gray-600"><span>Recipient</span><span>{order.complimentaryRecipientName || (order.customer ? `${order.customer.firstName} ${order.customer.lastName ?? ''}`.trim() : 'Walk-in')}</span></div>}

@@ -335,7 +335,9 @@ export function buildReceiptBytes(order: ReceiptOrder, profile: ReceiptProfile, 
 
   // -------- receipt / date / served by (left-aligned) --------
   e.line(`Receipt: ${order.orderNumber}`)
-  e.line(`Date: ${new Date(order.updatedAt).toLocaleString('en-KE', compact ? { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' } : undefined)}`)
+  const dateFmt = compact ? { day: '2-digit' as const, month: '2-digit' as const, year: '2-digit' as const, hour: '2-digit' as const, minute: '2-digit' as const } : undefined
+  e.line(`Date: ${new Date(order.createdAt).toLocaleString('en-KE', dateFmt)}`)
+  if (order.completedAt) e.line(`Paid: ${new Date(order.completedAt).toLocaleString('en-KE', dateFmt)}`)
   const served = servedByName(order)
   if (served) e.line(`Served by: ${served}`)
   e.line(`Status: ${statusText}`)
