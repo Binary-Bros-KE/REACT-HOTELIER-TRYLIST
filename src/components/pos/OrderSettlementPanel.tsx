@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { LuCircleAlert, LuLoaderCircle, LuUserPlus, LuX } from 'react-icons/lu'
 import { api } from '@/lib/api'
@@ -9,7 +9,7 @@ import CustomerSelectModal, { type SaleParty } from '@/components/pos/CustomerSe
 import type { ReceiptOrder } from './OrderReceipt'
 import { receiptItemName, receiptVariantSuffix } from '@/lib/receiptFields'
 
-type PaymentMethod = { id: string; name: string; requiresReference: boolean }
+type PaymentMethod = { id: string; name: string; requiresReference: boolean; code?: string }
 type CheckedInStay = { id: string; reservationNo: string; customer: { firstName: string; lastName: string | null }; room: { number: string } }
 type Order = ReceiptOrder & {
   id: string
@@ -17,7 +17,7 @@ type Order = ReceiptOrder & {
   total: number
   paid: number
   paymentStatus?: 'UNPAID' | 'PARTIAL' | 'PAID'
-  customer: { id: string; firstName: string; lastName: string | null; balance?: string | number | null } | null
+  customer: { id: string; firstName: string; lastName: string | null; phone?: string | null; balance?: string | number | null } | null
   // Present when the tab was rung up "bill to Room X" — settlement then
   // defaults to charging that folio (staff can still switch to cash).
   reservation: CheckedInStay | null
@@ -108,8 +108,15 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
   const [custModalOpen, setCustModalOpen] = useState(false)
   const [creditReason, setCreditReason] = useState('')
   const [creditExpectedAt, setCreditExpectedAt] = useState('')
+  // M-Pesa STK push, when the selected method is MPESA: an alternative to typing in the code by hand.
+  const [payWay, setPayWay] = useState<'MANUAL' | 'STK'>('MANUAL')
+  const [stkPhone, setStkPhone] = useState('')
+  const [stkStatus, setStkStatus] = useState<'IDLE' | 'SENDING' | 'WAITING' | 'ERROR'>('IDLE')
+  const [stkMessage, setStkMessage] = useState('')
+  const stkPollRef = useRef<{ timer: number | null; tries: number }>({ timer: null, tries: 0 })
 
   const selectedMethod = paymentMethods.find((m) => m.id === paymentMethodId)
+  const isMpesaSelected = selectedMethod?.code === 'MPESA'
   const selectedStay = stays.find((s) => s.id === reservationId)
   const remaining = order ? Math.max(0, order.total - order.paid) : 0
   const isComplementary = order?.saleType === 'COMPLIMENTARY'
@@ -117,6 +124,54 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
   const canRequestReturn = !!order?.servedAt && ['SERVED', 'COMPLETED'].includes(order.status) && (isSuperAdmin || Date.now() - new Date(order.servedAt).getTime() <= RETURN_WINDOW_MS)
   const pendingReturnTotal = order?.items.reduce((sum, item) => sum + pendingReturnQty(item), 0) ?? 0
   const roomBillSettlement = order ? roomBillSettlementText(order) : null
+
+  function stopStkPoll() {
+    if (stkPollRef.current.timer) window.clearTimeout(stkPollRef.current.timer)
+    stkPollRef.current = { timer: null, tries: 0 }
+  }
+  useEffect(() => stopStkPoll, [])
+  // Prefill from the customer on the sale, if there is one; still editable (a friend might be paying instead).
+  useEffect(() => { if (order?.customer?.phone) setStkPhone(order.customer.phone) }, [order?.customer?.phone])
+  useEffect(() => { if (!isMpesaSelected) { setPayWay('MANUAL'); stopStkPoll(); setStkStatus('IDLE') } }, [isMpesaSelected])
+
+  async function sendStkPush() {
+    if (!order) return
+    setStkStatus('SENDING')
+    setStkMessage('')
+    try {
+      const { requestId } = await api<{ requestId: string }>(`/mpesa/stk/orders/${order.id}`, { method: 'POST', body: JSON.stringify({ phone: stkPhone, amount: Number(amount) || remaining }) })
+      setStkStatus('WAITING')
+      setStkMessage('Ask the customer to check their phone…')
+      pollStk(requestId)
+    } catch (cause) {
+      setStkStatus('ERROR')
+      setStkMessage(cause instanceof Error ? cause.message : 'Could not send the STK push')
+    }
+  }
+
+  function pollStk(requestId: string) {
+    stkPollRef.current.tries += 1
+    if (stkPollRef.current.tries > 30) { setStkStatus('ERROR'); setStkMessage('No response after 90 seconds — try again or ask for the code instead.'); return }
+    stkPollRef.current.timer = window.setTimeout(async () => {
+      try {
+        const result = await api<{ status: string; resultDesc: string | null }>(`/mpesa/stk/${requestId}`)
+        if (result.status === 'SUCCESS') {
+          setStkStatus('IDLE')
+          setStkMessage('')
+          setPayWay('MANUAL')
+          await loadOrder()
+          toast.success('M-Pesa payment received.')
+          onChanged()
+          return
+        }
+        if (result.status === 'PENDING') { pollStk(requestId); return }
+        setStkStatus('ERROR')
+        setStkMessage(result.resultDesc ?? 'The payment could not be completed')
+      } catch {
+        pollStk(requestId)
+      }
+    }, 3000)
+  }
 
   async function loadOrder() {
     setLoading(true)
@@ -515,11 +570,40 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
                           <input required type="number" min="0" step="0.01" max={remaining} className="input mt-1.5" value={amount} onChange={(e) => setAmount(e.target.value)} />
                         </label>
                       </div>
-                      <label className="block text-sm font-medium">
-                        {selectedMethod?.requiresReference ? 'Reference code required' : 'Reference (optional)'}
-                        <input placeholder="e.g. M-Pesa code" className={cn('input mt-1.5', selectedMethod?.requiresReference && !reference.trim() && 'border-warning focus:ring-warning')} value={reference} onChange={(e) => setReference(e.target.value)} />
-                        {selectedMethod?.requiresReference && <p className="mt-1 text-xs font-semibold text-warning">{selectedMethod.name} needs a transaction/reference code.</p>}
-                      </label>
+                      {isMpesaSelected && (
+                        <div className="flex gap-1 rounded-sm bg-muted/50 p-1">
+                          {(['STK', 'MANUAL'] as const).map((value) => (
+                            <button key={value} type="button" onClick={() => setPayWay(value)} className={cn('flex-1 rounded-sm py-1.5 text-xs font-semibold', payWay === value ? 'bg-card text-secondary shadow-sm' : 'text-muted-foreground')}>
+                              {value === 'STK' ? 'Send STK push' : 'I already have the code'}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {isMpesaSelected && payWay === 'STK' ? (
+                        <div className="space-y-2 rounded-sm border p-3">
+                          <label className="block text-sm font-medium">
+                            Customer's phone number
+                            <input required placeholder="e.g. 0712345678" disabled={stkStatus === 'SENDING' || stkStatus === 'WAITING'} className="input mt-1.5" value={stkPhone} onChange={(e) => setStkPhone(e.target.value)} />
+                          </label>
+                          {stkStatus === 'WAITING' && <p className="flex items-center gap-2 text-sm font-semibold text-secondary"><LuLoaderCircle className="animate-spin" /> {stkMessage}</p>}
+                          {stkStatus === 'ERROR' && <p className="text-sm font-semibold text-destructive">{stkMessage}</p>}
+                          <button
+                            type="button"
+                            disabled={!stkPhone.trim() || stkStatus === 'SENDING' || stkStatus === 'WAITING'}
+                            onClick={() => void sendStkPush()}
+                            className="inline-flex w-full items-center justify-center gap-2 rounded-sm bg-secondary py-2.5 text-sm font-semibold text-secondary-foreground disabled:opacity-60"
+                          >
+                            {(stkStatus === 'SENDING' || stkStatus === 'WAITING') && <LuLoaderCircle className="animate-spin" />}
+                            {stkStatus === 'ERROR' ? 'Send again' : stkStatus === 'WAITING' ? 'Waiting for the customer…' : 'Send STK push'}
+                          </button>
+                        </div>
+                      ) : (
+                        <label className="block text-sm font-medium">
+                          {selectedMethod?.requiresReference ? 'Reference code required' : 'Reference (optional)'}
+                          <input placeholder="e.g. M-Pesa code" className={cn('input mt-1.5', selectedMethod?.requiresReference && !reference.trim() && 'border-warning focus:ring-warning')} value={reference} onChange={(e) => setReference(e.target.value)} />
+                          {selectedMethod?.requiresReference && <p className="mt-1 text-xs font-semibold text-warning">{selectedMethod.name} needs a transaction/reference code.</p>}
+                        </label>
+                      )}
                     </>
                   ) : (
                     <div className="space-y-2">
@@ -549,10 +633,12 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
                     </div>
                   )}
 
-                  <button disabled={paying || (mode === 'PAY' ? !paymentMethodId : !reservationId)} className="inline-flex w-full items-center justify-center gap-2 rounded-sm bg-primary py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
-                    {paying && <LuLoaderCircle className="animate-spin" />}
-                    {mode === 'PAY' ? 'Record payment' : 'Charge to room'}
-                  </button>
+                  {!(mode === 'PAY' && isMpesaSelected && payWay === 'STK') && (
+                    <button disabled={paying || (mode === 'PAY' ? !paymentMethodId : !reservationId)} className="inline-flex w-full items-center justify-center gap-2 rounded-sm bg-primary py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+                      {paying && <LuLoaderCircle className="animate-spin" />}
+                      {mode === 'PAY' ? 'Record payment' : 'Charge to room'}
+                    </button>
+                  )}
                 </form>
               )}
 

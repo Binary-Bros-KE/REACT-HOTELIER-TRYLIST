@@ -10,6 +10,7 @@ import {
   LuPencil,
   LuPlus,
   LuPower,
+  LuSmartphone,
   LuStore,
   LuTrash2,
   LuUtensils,
@@ -18,6 +19,7 @@ import { api } from '@/lib/api'
 import PageBanner from '@/components/ui/PageBanner'
 import ActionButton from '@/components/ui/ActionButton'
 import { useToast } from '@/components/ui/Toast'
+import { useAppSelector } from '@/store/hooks'
 import { cn } from '@/lib/utils'
 
 const LOCATION_TYPES = ['RECEPTION', 'RESTAURANT', 'CAFE', 'BAKERY', 'BAR', 'GYM', 'SPA', 'STORE', 'SHOP', 'HOUSEKEEPING'] as const
@@ -130,6 +132,8 @@ export default function Locations() {
   const [editing, setEditing] = useState<LocationRow | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [mpesaFor, setMpesaFor] = useState<LocationRow | null>(null)
+  const isSupervisor = useAppSelector((s) => Boolean(s.auth.user?.isSupervisor) || s.auth.user?.role?.name === 'Super Admin')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -328,6 +332,7 @@ export default function Locations() {
                       <div className="flex items-center justify-end gap-1">
                         <ActionButton tone="neutral" icon={<LuPencil />} title="Edit" onClick={() => openEdit(location)} />
                         <ActionButton tone={location.isActive ? 'neutral' : 'success'} icon={<LuPower />} title={location.isActive ? 'Deactivate' : 'Activate'} onClick={() => void toggleActive(location)} />
+                        {isSupervisor && <ActionButton tone="neutral" icon={<LuSmartphone />} title="M-Pesa settings" onClick={() => setMpesaFor(location)} />}
                         <ActionButton tone="neutral" icon={<LuTrash2 />} title="Delete" onClick={() => void deleteLocation(location)} />
                       </div>
                     </td>
@@ -338,6 +343,8 @@ export default function Locations() {
           </div>
         )}
       </section>
+
+      {mpesaFor && <MpesaConfigModal location={mpesaFor} onClose={() => setMpesaFor(null)} />}
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
@@ -498,6 +505,133 @@ export default function Locations() {
           </form>
         </div>
       )}
+    </div>
+  )
+}
+
+type MpesaConfig = {
+  accountType: 'PAYBILL' | 'TILL'
+  shortcode: string
+  tillNumber: string | null
+  environment: 'SANDBOX' | 'PRODUCTION'
+  isActive: boolean
+  passkeyMasked: string
+  consumerKeyMasked: string
+  consumerSecretMasked: string
+}
+type MpesaForm = { accountType: 'PAYBILL' | 'TILL'; shortcode: string; tillNumber: string; passkey: string; consumerKey: string; consumerSecret: string; environment: 'SANDBOX' | 'PRODUCTION'; isActive: boolean }
+const emptyMpesaForm: MpesaForm = { accountType: 'PAYBILL', shortcode: '', tillNumber: '', passkey: '', consumerKey: '', consumerSecret: '', environment: 'SANDBOX', isActive: true }
+
+/** Per-location Safaricom Daraja credentials for STK push — each outlet has
+ * its own Paybill/Till and its own Daraja app, so this is scoped to one
+ * `Location`, never tenant-wide. Secrets are write-only from here: the read
+ * endpoint only ever returns a masked form, and a blank field on save means
+ * "leave the stored value alone" so a shortcode edit doesn't force retyping
+ * the consumer secret. */
+function MpesaConfigModal({ location, onClose }: { location: LocationRow; onClose: () => void }) {
+  const toast = useToast()
+  const [existing, setExisting] = useState<MpesaConfig | null>(null)
+  const [form, setForm] = useState<MpesaForm>(emptyMpesaForm)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    api<{ config: MpesaConfig | null }>(`/locations/${location.id}/mpesa-config`)
+      .then((r) => {
+        setExisting(r.config)
+        if (r.config) setForm({ accountType: r.config.accountType, shortcode: r.config.shortcode, tillNumber: r.config.tillNumber ?? '', passkey: '', consumerKey: '', consumerSecret: '', environment: r.config.environment, isActive: r.config.isActive })
+      })
+      .catch((cause) => setError(cause instanceof Error ? cause.message : 'Could not load M-Pesa settings'))
+      .finally(() => setLoading(false))
+  }, [location.id])
+
+  async function save(event: FormEvent) {
+    event.preventDefault()
+    setSaving(true)
+    setError('')
+    try {
+      const { config } = await api<{ config: MpesaConfig }>(`/locations/${location.id}/mpesa-config`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          ...form,
+          tillNumber: form.tillNumber || undefined,
+          passkey: form.passkey || undefined,
+          consumerKey: form.consumerKey || undefined,
+          consumerSecret: form.consumerSecret || undefined,
+        }),
+      })
+      setExisting(config)
+      setForm((f) => ({ ...f, passkey: '', consumerKey: '', consumerSecret: '' }))
+      toast.success('M-Pesa settings saved.')
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'Could not save M-Pesa settings'
+      setError(message)
+      toast.error(message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <form onSubmit={save} className="max-h-[88vh] w-full max-w-lg overflow-y-auto border-2 border-foreground/25 bg-card p-6 shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+        <div className="-mx-6 -mt-6 mb-5 border-b-4 border-accent bg-muted/60 px-6 py-4">
+          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">M-Pesa (STK push)</p>
+          <h2 className="text-lg font-bold">{location.name}</h2>
+        </div>
+
+        {loading ? (
+          <div className="flex justify-center py-10"><LuLoaderCircle className="animate-spin" /></div>
+        ) : (
+          <>
+            {error && <div className="mb-4 flex items-center gap-2 border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert />{error}</div>}
+            {!existing && !error && <p className="mb-4 text-sm text-muted-foreground">Not set up yet — this location can't send STK push prompts until these are filled in.</p>}
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Account type" required>
+                <select required className="input" value={form.accountType} onChange={(e) => setForm({ ...form, accountType: e.target.value as MpesaForm['accountType'] })}>
+                  <option value="PAYBILL">Paybill</option>
+                  <option value="TILL">Till (Buy Goods)</option>
+                </select>
+              </Field>
+              <Field label="Environment" required>
+                <select required className="input" value={form.environment} onChange={(e) => setForm({ ...form, environment: e.target.value as MpesaForm['environment'] })}>
+                  <option value="SANDBOX">Sandbox (testing)</option>
+                  <option value="PRODUCTION">Production (real money)</option>
+                </select>
+              </Field>
+              <Field label={form.accountType === 'TILL' ? 'API shortcode' : 'Paybill number'} required className="sm:col-span-2">
+                <input required value={form.shortcode} onChange={(e) => setForm({ ...form, shortcode: e.target.value })} placeholder="e.g. 174379" className="input" />
+              </Field>
+              {form.accountType === 'TILL' && (
+                <Field label="Till number (if different from the shortcode above)" className="sm:col-span-2">
+                  <input value={form.tillNumber} onChange={(e) => setForm({ ...form, tillNumber: e.target.value })} placeholder="Leave blank if the same as the shortcode" className="input" />
+                </Field>
+              )}
+              <Field label="Passkey" required={!existing} className="sm:col-span-2">
+                <input type="password" value={form.passkey} onChange={(e) => setForm({ ...form, passkey: e.target.value })} placeholder={existing ? `Set (${existing.passkeyMasked}) — leave blank to keep it` : 'From the Daraja app'} className="input" />
+              </Field>
+              <Field label="Consumer key" required={!existing}>
+                <input type="password" value={form.consumerKey} onChange={(e) => setForm({ ...form, consumerKey: e.target.value })} placeholder={existing ? `Set (${existing.consumerKeyMasked})` : 'From the Daraja app'} className="input" />
+              </Field>
+              <Field label="Consumer secret" required={!existing}>
+                <input type="password" value={form.consumerSecret} onChange={(e) => setForm({ ...form, consumerSecret: e.target.value })} placeholder={existing ? `Set (${existing.consumerSecretMasked})` : 'From the Daraja app'} className="input" />
+              </Field>
+              <label className="flex items-center gap-2 text-sm font-medium sm:col-span-2">
+                <input type="checkbox" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} /> Active — the till can send STK push here
+              </label>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2 border-t pt-5">
+              <button type="button" onClick={onClose} className="border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Cancel</button>
+              <button disabled={saving} className="inline-flex items-center gap-2 bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+                {saving && <LuLoaderCircle className="animate-spin" />} Save
+              </button>
+            </div>
+          </>
+        )}
+      </form>
     </div>
   )
 }
