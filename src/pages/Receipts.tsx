@@ -68,6 +68,12 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
   const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>('ALL')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL')
   const [employeeFilter, setEmployeeFilter] = useState('')
+  // How the period is chosen: a custom date-and-time range, or one business
+  // day (the property's shift hours, e.g. 09:00 to 09:00) — same convention
+  // as the Stock Ledger's period filter.
+  const [periodMode, setPeriodMode] = useState<'custom' | 'shift'>('custom')
+  const [startHour, setStartHour] = useState(0)
+  const [shiftDate, setShiftDate] = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [overridesOnly, setOverridesOnly] = useState(false)
@@ -84,6 +90,18 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
     if (!fixedLocation && assignedLocationCount > 0 && !selectedLocationId && pickableLocations[0]) setLocation(pickableLocations[0].id)
   }, [assignedLocationCount, fixedLocation, pickableLocations, selectedLocationId, setLocation])
 
+  useEffect(() => {
+    api<{ profile: { businessDayStartHour?: number } | null }>('/business-profile')
+      .then((r) => {
+        const h = r.profile?.businessDayStartHour ?? 0
+        setStartHour(h)
+        // The business day we are in right now: before the start hour it is still yesterday's.
+        const d = new Date(Date.now() - h * 3_600_000)
+        setShiftDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`)
+      })
+      .catch(() => {})
+  }, [])
+
   const load = useCallback(async () => {
     setLoading(true)
     setError('')
@@ -92,8 +110,11 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
       if (channel) query += `&channel=${channel}`
       if (overridesOnly) query += '&overridden=true'
       if (employeeFilter) query += `&employeeId=${employeeFilter}`
-      if (dateFrom) query += `&from=${dateFrom}`
-      if (dateTo) query += `&to=${dateTo}`
+      if (periodMode === 'shift' && shiftDate) query += `&shiftDate=${shiftDate}`
+      else if (periodMode === 'custom') {
+        if (dateFrom) query += `&from=${dateFrom}`
+        if (dateTo) query += `&to=${dateTo}`
+      }
       // Only pull the statuses actually needed — narrowing the Status filter
       // to Completed or Cancelled halves the payload instead of fetching
       // both and throwing one half away client-side.
@@ -106,7 +127,7 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
         api<{ methods: (PaymentMethod & { code: string })[] }>('/payment-methods?activeOnly=true'),
       ])
       const merged = orderResponses.flatMap((r) => r.orders).sort(
-        (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
       )
       setOrders(merged)
       setProfile(profileResponse.profile)
@@ -120,7 +141,7 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
     } finally {
       setLoading(false)
     }
-  }, [effectiveLocationId, channel, overridesOnly, statusFilter, employeeFilter, dateFrom, dateTo, toast])
+  }, [effectiveLocationId, channel, overridesOnly, statusFilter, employeeFilter, periodMode, shiftDate, dateFrom, dateTo, toast])
 
   useEffect(() => { void load() }, [load])
 
@@ -243,27 +264,42 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
               </label>
             )}
 
-            <label className="flex flex-col gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              From
-              <span className="relative">
-                <LuCalendarDays className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <input type="date" value={dateFrom} max={dateTo || undefined} onChange={(e) => setDateFrom(e.target.value)} className="input pl-9 font-normal normal-case tracking-normal" />
-              </span>
-            </label>
-            <label className="flex flex-col gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              To
-              <span className="relative">
-                <LuCalendarDays className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <input type="date" value={dateTo} min={dateFrom || undefined} onChange={(e) => setDateTo(e.target.value)} className="input pl-9 font-normal normal-case tracking-normal" />
-              </span>
-            </label>
+            <div className="flex flex-col gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              Period
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="inline-flex border">
+                  {([['custom', 'Custom'], ['shift', `Shift (${String(startHour).padStart(2, '0')}:00 - ${String(startHour).padStart(2, '0')}:00)`]] as const).map(([key, label]) => (
+                    <button key={key} type="button" onClick={() => setPeriodMode(key)} className={cn('px-3 py-2 text-xs font-bold uppercase tracking-wide', periodMode === key ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}>{label}</button>
+                  ))}
+                </div>
+                {periodMode === 'shift' && (
+                  <>
+                    <input type="date" value={shiftDate} onChange={(e) => setShiftDate(e.target.value)} className="input font-normal normal-case tracking-normal" />
+                    <span className="text-xs font-normal normal-case tracking-normal text-muted-foreground">{shiftDate ? `${shiftDate} ${String(startHour).padStart(2, '0')}:00 to the next day ${String(startHour).padStart(2, '0')}:00` : ''}</span>
+                  </>
+                )}
+                {periodMode === 'custom' && (
+                  <>
+                    <span className="relative">
+                      <LuCalendarDays className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                      <input type="datetime-local" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} aria-label="From" className="input pl-9 font-normal normal-case tracking-normal" />
+                    </span>
+                    <span className="text-xs font-normal normal-case tracking-normal text-muted-foreground">to</span>
+                    <span className="relative">
+                      <LuCalendarDays className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                      <input type="datetime-local" value={dateTo} onChange={(e) => setDateTo(e.target.value)} aria-label="To" className="input pl-9 font-normal normal-case tracking-normal" />
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
         </div>
 
         {loading ? (
           <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><LuLoaderCircle className="animate-spin" /> Loading receipts…</div>
         ) : visible.length === 0 ? (
-          <div className="min-h-64 p-16 text-center text-sm text-muted-foreground">No sales {search.trim() || paymentFilter !== 'ALL' || statusFilter !== 'ALL' || employeeFilter || dateFrom || dateTo ? 'match this view' : 'yet'}.</div>
+          <div className="min-h-64 p-16 text-center text-sm text-muted-foreground">No sales {search.trim() || paymentFilter !== 'ALL' || statusFilter !== 'ALL' || employeeFilter || dateFrom || dateTo || periodMode === 'shift' ? 'match this view' : 'yet'}.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[960px] text-left text-sm">
@@ -300,7 +336,7 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
                           </>
                         ) : '—'}
                       </td>
-                      <td className="whitespace-nowrap px-5 py-3.5 text-muted-foreground">{new Date(order.updatedAt).toLocaleString()}</td>
+                      <td className="whitespace-nowrap px-5 py-3.5 text-muted-foreground">{new Date(order.createdAt).toLocaleString()}</td>
                       <td className="px-5 py-3.5">
                         <StatusPill tone={badge.tone}>{badge.label}</StatusPill>
                         <span className="ml-2 text-xs text-muted-foreground">{order.saleType === 'COMPLIMENTARY' ? (order.complimentaryRecipientName || order.complimentarySession?.title || 'No payment') : [...new Set(order.payments.map((p) => p.paymentMethod.name))].join(', ') || '—'}</span>

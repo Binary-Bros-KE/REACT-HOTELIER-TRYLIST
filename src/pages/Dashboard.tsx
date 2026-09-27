@@ -1548,7 +1548,11 @@ function ShiftControl() {
 
   const session = state?.session
   const approvedAt = session?.approvedStartAt ? new Date(session.approvedStartAt) : null
-  const elapsed = approvedAt ? Math.max(0, now.getTime() - approvedAt.getTime()) : 0
+  // The clock stops the instant an end is requested — it's waiting on a
+  // supervisor now, not still being worked — rather than ticking on with
+  // `now` until the request is actually approved.
+  const elapsedAt = session?.status === 'REQUESTED_END' && session.requestedEndAt ? new Date(session.requestedEndAt) : now
+  const elapsed = approvedAt ? Math.max(0, elapsedAt.getTime() - approvedAt.getTime()) : 0
   const hours = Math.floor(elapsed / 36e5)
   const minutes = Math.floor((elapsed % 36e5) / 6e4)
   const seconds = Math.floor((elapsed % 6e4) / 1000)
