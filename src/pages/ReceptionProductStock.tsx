@@ -46,7 +46,11 @@ export default function ReceptionProductStock() {
   const toast = useToast()
   const location = useLocation()
   const user = useAppSelector((s) => s.auth.user)
-  const sectionName = location.pathname.startsWith('/housekeeping') ? 'Housekeeping' : 'Reception'
+  const sectionName = location.pathname.startsWith('/housekeeping')
+    ? 'Housekeeping'
+    : location.pathname.startsWith('/service-center')
+      ? 'Service center'
+      : 'Reception'
   const [locations, setLocations] = useState<LocationOption[]>([])
   const { fixed: fixedLocation, options: pickableLocations, selectedId, setLocation, effectiveId } = useWorkingLocation(locations, { persist: false })
   const assignedLocationCount = user?.locations.length ?? 0

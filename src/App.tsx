@@ -204,7 +204,7 @@ function App() {
         <Route path="/housekeeping" element={<Housekeeping />} />
         <Route path="/store" element={<InventoryWorkspace />} />
         <Route path="/products" element={<Products />} />
-        <Route path="/service-center/products" element={<Products />} />
+        <Route path="/service-center/products" element={<ReceptionProductStock />} />
         <Route path="/inventory/assets" element={<Assets />} />
         <Route path="/inventory/stock-ledger" element={<StockLedger />} />
         <Route path="/inventory/suppliers" element={<Suppliers />} />
