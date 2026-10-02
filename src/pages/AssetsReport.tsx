@@ -20,6 +20,8 @@ import PageBanner from '@/components/ui/PageBanner'
 import StatCard from '@/components/ui/StatCard'
 import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
+import PrintReportButton from '@/components/documents/PrintReportButton'
+import type { ReportDocData } from '@/components/documents/pdf'
 
 type Period = 'day' | 'week' | 'month' | 'custom'
 type Location = { id: string; name: string }
@@ -58,6 +60,53 @@ const num = (value: number) => value.toLocaleString('en-KE', { maximumFractionDi
 const toLocalIso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 const todayIso = () => toLocalIso(new Date())
 const dateTime = (iso: string) => new Date(iso).toLocaleString('en-KE', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+
+function rangeLabel(period: Period, startIso: string, endIso: string) {
+  const s = new Date(startIso)
+  const e = new Date(endIso)
+  if (period === 'day') return s.toLocaleDateString('en-KE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+  return `${s.toLocaleDateString('en-KE', { day: 'numeric', month: 'short' })} - ${e.toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric' })}`
+}
+
+function buildReportDoc(report: AssetsReportData): ReportDocData {
+  const c = report.cards
+  return {
+    reportTitle: 'Assets Report',
+    kicker: 'Reports',
+    rangeLabel: rangeLabel(report.range.period, report.range.start, report.range.end),
+    generatedAt: new Date().toISOString(),
+    cards: [
+      { label: 'Book Value', value: formatKes(c.bookValue), hint: `${c.assets} assets - ${num(c.totalUnits)} units` },
+      { label: 'Capital Invested', value: formatKes(c.capitalInvested), hint: `${c.purchaseCount} purchase(s) - not an expense` },
+      { label: 'Added This Period', value: formatKes(c.valueAdded), hint: `${num(c.unitsAdded)} units` },
+      { label: 'Written Off', value: formatKes(c.valueWrittenOff), hint: `${num(c.unitsWrittenOff)} units - ${c.writeOffRate.toFixed(1)}% loss rate` },
+      { label: 'Rooms With Assets', value: `${c.roomsWithAssets}`, hint: `${c.roomsWithoutAssets} with none` },
+    ],
+    sections: [
+      {
+        title: 'Period Reconciliation',
+        columns: [{ label: 'Step' }, { label: 'Units', align: 'right' }, { label: 'Value', align: 'right' }],
+        rows: [
+          ['Opening', num(report.reconciliation.openingUnits), formatKes(report.reconciliation.openingValue)],
+          ['+ Added', num(report.reconciliation.added), formatKes(report.reconciliation.addedValue)],
+          ['- Written off', num(-report.reconciliation.writtenOff), formatKes(-report.reconciliation.writtenOffValue)],
+          ['+/- Adjustments', num(report.reconciliation.adjustments), formatKes(report.reconciliation.adjustmentValue)],
+          ['Closing (today)', num(report.reconciliation.closingUnits), formatKes(report.reconciliation.closingValue)],
+        ],
+      },
+      { title: 'Value by Category', columns: [{ label: 'Category' }, { label: 'Assets', align: 'right' }, { label: 'Units', align: 'right' }, { label: '% of Value', align: 'right' }, { label: 'Value', align: 'right' }], rows: report.byCategory.map((b) => [b.name, b.assets, num(b.units), `${b.percentOfValue.toFixed(1)}%`, formatKes(b.value)]) },
+      { title: 'Value by Placement', columns: [{ label: 'Placement' }, { label: 'Assets', align: 'right' }, { label: 'Units', align: 'right' }, { label: '% of Value', align: 'right' }, { label: 'Value', align: 'right' }], rows: report.byPlacement.map((b) => [b.name, b.assets, num(b.units), `${b.percentOfValue.toFixed(1)}%`, formatKes(b.value)]) },
+      {
+        title: 'Most Valuable Assets',
+        columns: [{ label: 'Asset' }, { label: 'Category' }, { label: 'Placement' }, { label: 'On Hand', align: 'right' }, { label: 'Value', align: 'right' }],
+        rows: report.topAssets.map((a) => [a.name, a.category ?? '-', a.placement ?? '-', `${num(a.quantity)} ${a.unit}`, formatKes(a.value)]),
+      },
+      { title: 'Capital Invested by Method', columns: [{ label: 'Method' }, { label: 'Payments', align: 'right' }, { label: '% of Total', align: 'right' }, { label: 'Total', align: 'right' }], rows: report.capitalByMethod.map((m) => [m.name, m.count, `${m.percentOfTotal.toFixed(1)}%`, formatKes(m.total)]) },
+      { title: 'Losses by Category', columns: [{ label: 'Category' }, { label: 'Events', align: 'right' }, { label: 'Units', align: 'right' }, { label: 'Value', align: 'right' }], rows: report.lossesByCategory.map((l) => [l.name, l.events, num(l.units), formatKes(l.value)]) },
+      { title: 'Activity by Employee', columns: [{ label: 'Employee' }, { label: 'Movements', align: 'right' }, { label: 'Added', align: 'right' }, { label: 'Written Off', align: 'right' }], rows: report.byEmployee.map((e) => [e.name, e.movements, num(e.added), num(e.writtenOff)]) },
+    ],
+  }
+}
 
 function stepAnchor(period: Exclude<Period, 'custom'>, iso: string, dir: 1 | -1) {
   const d = new Date(`${iso}T00:00:00`)
@@ -137,6 +186,7 @@ export default function AssetsReport() {
             <option value="">All Locations</option>
             {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
+          <PrintReportButton data={report ? buildReportDoc(report) : null} disabled={loading} />
         </div>
         <p className="text-[11px] text-muted-foreground">The register (what you own and its worth) is a live snapshot. Additions, purchases, write-offs and the reconciliation cover the selected period. Values use each asset's current unit value.</p>
       </div>

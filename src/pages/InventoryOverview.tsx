@@ -7,6 +7,8 @@ import StatCard from '@/components/ui/StatCard'
 import { cn } from '@/lib/utils'
 import { packAndUnit } from '@/components/ui/PackQtyInput'
 import SearchableSelect from '@/components/ui/SearchableSelect'
+import PrintReportButton from '@/components/documents/PrintReportButton'
+import type { ReportDocData, ReportSection } from '@/components/documents/pdf'
 
 type Location = { id: string; name: string }
 type CategoryBucket = { category: string; units: number; value: number; percent: number }
@@ -34,6 +36,37 @@ const stockQty = (product: StockProduct) => packAndUnit(product.quantity, Number
 const toLocalIso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
 const CHART_COLORS = ['#2563eb', '#16a34a', '#db2777', '#d97706', '#0891b2', '#7c3aed', '#dc2626', '#65a30d']
+
+const TOP_PRODUCTS_PER_LOCATION = 25
+
+function buildReportDoc(overview: Overview): ReportDocData {
+  const o = overview.overall
+  return {
+    reportTitle: 'Inventory Report',
+    kicker: 'Reports',
+    rangeLabel: overview.mode === 'live' ? 'Live stock snapshot' : `As of ${new Date(overview.asOfDate).toLocaleDateString('en-KE', { day: 'numeric', month: 'long', year: 'numeric' })}`,
+    generatedAt: new Date().toISOString(),
+    cards: [
+      { label: 'Total Products', value: o.totalProducts.toLocaleString() },
+      { label: 'Total Units On Hand', value: o.totalUnits.toLocaleString() },
+      { label: 'Low Stock', value: o.lowStockCount.toLocaleString(), hint: 'At or below reorder level' },
+      { label: 'Out of Stock', value: o.outOfStockCount.toLocaleString() },
+      { label: 'Stock Value', value: formatKes(o.stockValue) },
+    ],
+    sections: [
+      { title: 'Stock Value by Category', columns: [{ label: 'Category' }, { label: 'Units', align: 'right' }, { label: 'Value', align: 'right' }, { label: '% of Total', align: 'right' }], rows: o.byCategory.map((c) => [c.category, c.units.toLocaleString(), formatKes(c.value), `${c.percent}%`]) },
+      ...overview.locations.map((loc): ReportSection => {
+        const top = [...loc.products].sort((a, b) => b.value - a.value).slice(0, TOP_PRODUCTS_PER_LOCATION)
+        return {
+          title: `${loc.name} - ${loc.lowStockCount} low, ${loc.outOfStockCount} out, ${formatKes(loc.stockValue)} total`,
+          note: loc.products.length > TOP_PRODUCTS_PER_LOCATION ? `Top ${TOP_PRODUCTS_PER_LOCATION} of ${loc.products.length} products by value.` : undefined,
+          columns: [{ label: 'Product' }, { label: 'SKU' }, { label: 'Category' }, { label: 'Qty', align: 'right' }, { label: 'Unit Cost', align: 'right' }, { label: 'Value', align: 'right' }],
+          rows: top.map((p) => [p.name, p.sku ?? '-', p.category ?? '-', stockQty(p), formatKes(p.unitCost), formatKes(p.value)]),
+        }
+      }),
+    ],
+  }
+}
 
 function SetupMessage() {
   return <div className="mx-auto max-w-7xl px-6 py-16 text-center"><p className="text-sm text-muted-foreground">Workspace not resolved yet.</p></div>
@@ -109,6 +142,7 @@ export default function InventoryOverview() {
           <option value="">All locations</option>
           {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
         </select>
+        <PrintReportButton data={overview ? buildReportDoc(overview) : null} disabled={loading} />
       </div>
 
       {error && <div className="mt-5 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert />{error}</div>}

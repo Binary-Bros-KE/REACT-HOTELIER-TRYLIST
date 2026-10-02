@@ -5,6 +5,8 @@ import PageBanner from '@/components/ui/PageBanner'
 import ActionButton from '@/components/ui/ActionButton'
 import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
+import PrintReportButton from '@/components/documents/PrintReportButton'
+import type { ReportDocData } from '@/components/documents/pdf'
 
 type Location = { id: string; name: string }
 type ProductRow = { productId: string; name: string; sku: string | null; category: string | null; qty: number; revenue: number; profit: number; margin: number; lastSoldAt: string | null }
@@ -50,6 +52,33 @@ function shiftAnchor(period: Period, anchor: Date, delta: number): Date {
   else if (period === 'year') next.setFullYear(next.getFullYear() + delta)
   else next.setMonth(next.getMonth() + delta)
   return next
+}
+
+function buildReportDoc(overview: ProductsOverview, label: string, bestSelling: ProductRow[], sortBy: SortBy): ReportDocData {
+  const sortLabel = sortBy === 'qty' ? 'By Quantity' : sortBy === 'revenue' ? 'By Revenue' : 'By Profit'
+  const row = (p: ProductRow, i?: number) => [
+    ...(i == null ? [] : [i + 1]), p.name, p.sku ?? '-', p.category ?? '-', p.qty.toLocaleString(), formatKes(p.revenue), formatKes(p.profit), `${p.margin}%`,
+  ]
+  return {
+    reportTitle: 'Products Report',
+    kicker: 'Reports',
+    rangeLabel: label,
+    generatedAt: new Date().toISOString(),
+    cards: [],
+    sections: [
+      {
+        title: `Best Selling Products (${sortLabel})`,
+        columns: [{ label: '#' }, { label: 'Product' }, { label: 'SKU' }, { label: 'Category' }, { label: 'Qty Sold', align: 'right' }, { label: 'Revenue', align: 'right' }, { label: 'Profit', align: 'right' }, { label: 'Margin', align: 'right' }],
+        rows: bestSelling.map((p, i) => row(p, i)),
+      },
+      {
+        title: 'Slowest Moving Products',
+        note: 'Fewest units sold first - includes products with zero sales entirely.',
+        columns: [{ label: 'Product' }, { label: 'SKU' }, { label: 'Category' }, { label: 'Qty Sold', align: 'right' }, { label: 'Revenue', align: 'right' }, { label: 'Last Sold' }],
+        rows: overview.slowest.map((p) => [p.name, p.sku ?? '-', p.category ?? '-', p.qty.toLocaleString(), formatKes(p.revenue), p.lastSoldAt ? new Date(p.lastSoldAt).toLocaleDateString() : 'Never sold']),
+      },
+    ],
+  }
 }
 
 function SetupMessage() {
@@ -126,6 +155,7 @@ export default function ProductsReport() {
           <option value="">All locations</option>
           {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
         </select>
+        <PrintReportButton data={overview ? buildReportDoc(overview, label, bestSelling, sortBy) : null} disabled={loading} />
       </div>
 
       {error && <div className="mt-5 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert />{error}</div>}

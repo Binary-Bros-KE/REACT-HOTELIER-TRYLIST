@@ -5,6 +5,8 @@ import PageBanner from '@/components/ui/PageBanner'
 import ActionButton from '@/components/ui/ActionButton'
 import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
+import PrintReportButton from '@/components/documents/PrintReportButton'
+import type { ReportDocData } from '@/components/documents/pdf'
 
 type Period = 'day' | 'week' | 'month' | 'custom'
 type Location = { id: string; name: string }
@@ -55,6 +57,33 @@ function downloadCsv(report: TaxReportData) {
   a.download = `tax-report-${new Date().toISOString().slice(0, 10)}.csv`
   a.click()
   URL.revokeObjectURL(url)
+}
+
+function buildReportDoc(report: TaxReportData): ReportDocData {
+  return {
+    reportTitle: 'Tax Report',
+    kicker: 'Reports',
+    rangeLabel: rangeLabel(report.range.period, report.range.start, report.range.end),
+    generatedAt: new Date().toISOString(),
+    cards: [
+      { label: 'Net', value: formatKes(report.summary.net) },
+      { label: 'Tax', value: formatKes(report.summary.tax) },
+      { label: 'Gross', value: formatKes(report.summary.gross) },
+      { label: 'Records', value: `${report.summary.orders}`, hint: `${report.summary.lines} taxable line(s)` },
+    ],
+    sections: [
+      {
+        title: 'Breakdown by Tax Category',
+        columns: [{ label: 'Category' }, { label: 'Lines', align: 'right' }, { label: 'Net', align: 'right' }, { label: 'Tax', align: 'right' }, { label: 'Gross', align: 'right' }],
+        rows: report.breakdown.map((b) => [b.label, b.lines, formatKes(b.net), formatKes(b.tax), formatKes(b.gross)]),
+      },
+      {
+        title: 'Top 10 Most-Taxed Items',
+        columns: [{ label: 'Product' }, { label: 'Category' }, { label: 'Qty', align: 'right' }, { label: 'Net', align: 'right' }, { label: 'Tax', align: 'right' }, { label: 'Gross', align: 'right' }],
+        rows: report.topItems.map((i) => [i.name, i.taxCategory ?? '-', i.quantity, formatKes(i.net), formatKes(i.tax), formatKes(i.gross)]),
+      },
+    ],
+  }
 }
 
 function SetupMessage() {
@@ -135,6 +164,7 @@ export default function TaxReport() {
             {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
           <ActionButton tone="primary" icon={<LuDownload />} disabled={!report || loading} onClick={() => report && downloadCsv(report)}>Export Report</ActionButton>
+          <PrintReportButton data={report ? buildReportDoc(report) : null} disabled={loading} />
         </div>
       </div>
 

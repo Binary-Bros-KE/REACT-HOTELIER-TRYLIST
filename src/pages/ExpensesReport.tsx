@@ -21,6 +21,8 @@ import PageBanner from '@/components/ui/PageBanner'
 import StatCard from '@/components/ui/StatCard'
 import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
+import PrintReportButton from '@/components/documents/PrintReportButton'
+import type { ReportDocData } from '@/components/documents/pdf'
 
 type Period = 'day' | 'week' | 'month' | 'custom'
 type Location = { id: string; name: string }
@@ -58,6 +60,40 @@ const formatKes = (value: number) => `KSh ${value.toLocaleString('en-KE', { mini
 const toLocalIso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 const todayIso = () => toLocalIso(new Date())
 const dateTime = (iso: string) => new Date(iso).toLocaleString('en-KE', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+
+function rangeLabel(period: Period, startIso: string, endIso: string) {
+  const s = new Date(startIso)
+  const e = new Date(endIso)
+  if (period === 'day') return s.toLocaleDateString('en-KE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+  return `${s.toLocaleDateString('en-KE', { day: 'numeric', month: 'short' })} - ${e.toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric' })}`
+}
+
+function buildReportDoc(report: ExpensesReportData): ReportDocData {
+  const c = report.cards
+  const bucketRows = (rows: NameBucket[]) => rows.map((r) => [r.name, r.count, `${r.percentOfTotal.toFixed(1)}%`, formatKes(r.total)])
+  return {
+    reportTitle: 'Expenses Report',
+    kicker: 'Reports',
+    rangeLabel: rangeLabel(report.range.period, report.range.start, report.range.end),
+    generatedAt: new Date().toISOString(),
+    cards: [
+      { label: 'Total Cash Out', value: formatKes(c.totalCashOut) },
+      { label: 'Operating Expenses', value: formatKes(c.operatingExpenses), hint: 'Expenses + Salaries' },
+      { label: 'Capital Outflows', value: formatKes(c.capitalOutflows), hint: 'Supplier payments + Asset purchases' },
+      { label: 'Expenses', value: formatKes(c.expensesTotal), hint: `${c.expensesCount} record${c.expensesCount === 1 ? '' : 's'}` },
+      { label: 'Salaries Paid', value: formatKes(c.salariesTotal), hint: `${c.salariesCount} payslip${c.salariesCount === 1 ? '' : 's'}` },
+      { label: 'Supplier Payments', value: formatKes(c.supplierPaymentsTotal), hint: `${c.supplierPaymentsCount} payment${c.supplierPaymentsCount === 1 ? '' : 's'}` },
+      { label: 'Asset Purchases', value: formatKes(c.assetPurchasesTotal), hint: `${c.assetPurchasesCount} purchase${c.assetPurchasesCount === 1 ? '' : 's'}` },
+    ],
+    sections: [
+      { title: 'Expenses by Category', columns: [{ label: 'Category' }, { label: 'Records', align: 'right' }, { label: '% of Total', align: 'right' }, { label: 'Total', align: 'right' }], rows: bucketRows(report.expensesByCategory) },
+      { title: 'Salaries by Department', columns: [{ label: 'Department' }, { label: 'Payslips', align: 'right' }, { label: '% of Total', align: 'right' }, { label: 'Total', align: 'right' }], rows: bucketRows(report.salariesByDepartment) },
+      { title: 'Supplier Payments by Supplier', columns: [{ label: 'Supplier' }, { label: 'Payments', align: 'right' }, { label: '% of Total', align: 'right' }, { label: 'Total', align: 'right' }], rows: bucketRows(report.supplierPaymentsBySupplier) },
+      { title: 'Asset Purchases by Category', columns: [{ label: 'Category' }, { label: 'Purchases', align: 'right' }, { label: '% of Total', align: 'right' }, { label: 'Total', align: 'right' }], rows: bucketRows(report.assetPurchasesByCategory) },
+      { title: 'All Cash Out by Payment Method', columns: [{ label: 'Method' }, { label: 'Payments', align: 'right' }, { label: '% of Total', align: 'right' }, { label: 'Total', align: 'right' }], rows: bucketRows(report.byPaymentMethod) },
+    ],
+  }
+}
 
 function stepAnchor(period: Exclude<Period, 'custom'>, iso: string, dir: 1 | -1) {
   const d = new Date(`${iso}T00:00:00`)
@@ -165,6 +201,7 @@ export default function ExpensesReport() {
             {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
           <ActionButton tone="primary" icon={<LuDownload />} disabled={!report || loading} onClick={() => report && downloadCsv(report)}>Export Report</ActionButton>
+          <PrintReportButton data={report ? buildReportDoc(report) : null} disabled={loading} />
         </div>
         <p className="text-[11px] text-muted-foreground">Every real cash outflow across the business for the selected period. Operating costs (Expenses, Salaries) reduce Net Profit on the Sales Report; capital outflows (Supplier Payments, Asset Purchases) don't — stock becomes cost of goods when sold, equipment stays on the books as an asset.</p>
       </div>

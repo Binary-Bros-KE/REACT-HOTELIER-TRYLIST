@@ -25,6 +25,8 @@ import ActionButton from '@/components/ui/ActionButton'
 import StatCard from '@/components/ui/StatCard'
 import { cn } from '@/lib/utils'
 import ShiftSummaryModal, { type ShiftSession, type ShiftSummary } from '@/components/shifts/ShiftSummaryModal'
+import PrintReportButton from '@/components/documents/PrintReportButton'
+import type { ReportDocData } from '@/components/documents/pdf'
 
 type Period = 'day' | 'week' | 'month' | 'custom'
 type Location = { id: string; name: string }
@@ -147,6 +149,68 @@ function rangeLabel(period: Period, startIso: string, endIso: string, startHour:
   return `${s.toLocaleDateString('en-KE', { day: 'numeric', month: 'short' })} – ${e.toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric' })}`
 }
 
+function buildReportDoc(report: SalesReport, startHour: number): ReportDocData {
+  const c = report.cards
+  const countBucketRows = (rows: CountBucket[], total: number) => rows.map((r) => [r.name, r.count, total ? `${((r.total / total) * 100).toFixed(1)}%` : '0.0%', formatKes(r.total)])
+  return {
+    reportTitle: 'Sales Report',
+    kicker: 'Reports',
+    rangeLabel: rangeLabel(report.range.period, report.range.start, report.range.end, startHour),
+    generatedAt: new Date().toISOString(),
+    cards: [
+      { label: 'Total Revenue', value: formatKes(c.totalRevenue), hint: 'Cash received + credit sales' },
+      { label: 'Net Revenue', value: formatKes(c.netRevenue), hint: 'Sold - cost of goods' },
+      { label: 'Total Expenses', value: formatKes(c.totalExpenses), hint: 'Expenses + Salaries' },
+      { label: 'Net Profit', value: formatKes(c.netProfit), hint: 'Net revenue - expenses' },
+      { label: 'Capital Invested', value: formatKes(c.capitalInvested), hint: 'Supplier payments - not an expense' },
+      { label: 'POS Transactions', value: String(c.transactions) },
+      { label: 'Average POS Sale', value: formatKes(c.averageSale) },
+      { label: 'POS Items Sold', value: String(c.itemsSold) },
+      { label: 'Debtors', value: formatKes(report.debtors.total), hint: 'Owed to you - live' },
+      { label: 'Creditors', value: formatKes(report.creditors.total), hint: 'Owed to suppliers - live' },
+      { label: 'Expected Profit', value: formatKes(report.expectedProfit), hint: 'Net profit + debtors - creditors' },
+    ],
+    sections: [
+      {
+        title: 'Top 10 Selling Menu Items',
+        columns: [{ label: 'Item' }, { label: 'Qty', align: 'right' }, { label: 'Revenue', align: 'right' }],
+        rows: report.topItems.map((i) => [i.name, i.qty, formatKes(i.revenue)]),
+      },
+      {
+        title: 'Sales by Location',
+        columns: [{ label: 'Location' }, { label: 'Transactions', align: 'right' }, { label: '% of Total', align: 'right' }, { label: 'Revenue', align: 'right' }, { label: 'Expenses', align: 'right' }, { label: 'Net Profit', align: 'right' }],
+        rows: report.salesByLocation.map((l) => [l.name, l.transactions, `${l.percentOfTotal.toFixed(1)}%`, formatKes(l.revenue), formatKes(l.expenses), formatKes(l.netProfit)]),
+      },
+      {
+        title: 'Sales by Payment Method',
+        columns: [{ label: 'Method' }, { label: 'Count', align: 'right' }, { label: '% of Total', align: 'right' }, { label: 'Total', align: 'right' }],
+        rows: report.byPaymentMethod.map((m) => [m.name, m.count, `${m.percentOfTotal.toFixed(1)}%`, formatKes(m.total)]),
+      },
+      {
+        title: 'Sales by Employee',
+        columns: [{ label: 'Employee' }, { label: 'Branch' }, { label: 'Count', align: 'right' }, { label: '% of Total', align: 'right' }, { label: 'Total', align: 'right' }],
+        rows: report.byEmployee.map((e) => [e.name, e.branch, e.count, `${e.percentOfTotal.toFixed(1)}%`, formatKes(e.total)]),
+      },
+      {
+        title: 'Tax Breakdown',
+        columns: [{ label: 'Treatment' }, { label: 'Net', align: 'right' }, { label: 'Tax', align: 'right' }, { label: 'Gross', align: 'right' }],
+        rows: report.taxBreakdown.map((t) => [t.label, formatKes(t.net), formatKes(t.tax), formatKes(t.gross)]),
+      },
+      { title: 'Expenses by Category', columns: [{ label: 'Category' }, { label: 'Times Paid', align: 'right' }, { label: '% of Total', align: 'right' }, { label: 'Total', align: 'right' }], rows: countBucketRows(report.expensesByCategory, report.revenueBreakdown.expensesOnly ?? c.totalExpenses) },
+      { title: 'Purchases by Supplier', columns: [{ label: 'Supplier' }, { label: 'Deliveries', align: 'right' }, { label: '% of Total', align: 'right' }, { label: 'Value', align: 'right' }], rows: countBucketRows(report.purchasesBySupplier, c.capitalInvested) },
+      {
+        title: 'Who Owes You',
+        columns: [{ label: 'Customer / Guest' }, { label: 'Balance', align: 'right' }],
+        rows: [
+          ...report.debtors.customers.top.map((d) => [d.name, formatKes(d.balance)]),
+          ...report.debtors.unsettledFolios.top.map((f) => [`${f.guestName} (${f.reservationNo})`, formatKes(f.balance)]),
+        ],
+      },
+      { title: 'Who You Owe', columns: [{ label: 'Supplier' }, { label: 'Balance', align: 'right' }], rows: report.creditors.top.map((s) => [s.name, formatKes(s.balance)]) },
+    ],
+  }
+}
+
 export default function Reports() {
   const toast = useToast()
   const [period, setPeriod] = useState<Period>('day')
@@ -266,6 +330,7 @@ export default function Reports() {
             <option value="">All Locations</option>
             {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
+          <PrintReportButton data={report ? buildReportDoc(report, startHour ?? 0) : null} disabled={loading} />
         </div>
       </div>
 

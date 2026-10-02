@@ -23,6 +23,8 @@ import StatCard from '@/components/ui/StatCard'
 import { useToast } from '@/components/ui/Toast'
 import { packAndUnit } from '@/components/ui/PackQtyInput'
 import { cn } from '@/lib/utils'
+import PrintReportButton from '@/components/documents/PrintReportButton'
+import type { ReportDocData } from '@/components/documents/pdf'
 
 type Period = 'day' | 'week' | 'month' | 'custom'
 type Location = { id: string; name: string }
@@ -57,6 +59,46 @@ const dateTime = (iso: string) => new Date(iso).toLocaleString('en-KE', { day: '
 const dateOnly = (iso: string) => new Date(iso).toLocaleDateString('en-KE', { day: '2-digit', month: 'short', year: 'numeric' })
 const qty = (quantity: number, p: { packSize: number | null; packLabel: string | null; unit: string }) => packAndUnit(quantity, p.packSize ?? 0, p.packLabel ?? '', p.unit)
 const paymentStatusLabel: Record<string, string> = { UNPAID: 'Unpaid', PARTIAL: 'Partially Paid', PAID: 'Paid' }
+
+function rangeLabel(period: Period, startIso: string, endIso: string) {
+  const s = new Date(startIso)
+  const e = new Date(endIso)
+  if (period === 'day') return s.toLocaleDateString('en-KE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+  return `${s.toLocaleDateString('en-KE', { day: 'numeric', month: 'short' })} - ${e.toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric' })}`
+}
+
+function buildReportDoc(report: PurchasesReportData): ReportDocData {
+  const c = report.cards
+  const bucketRows = (rows: NameBucket[]) => rows.map((r) => [r.name, r.count, `${r.percentOfTotal.toFixed(1)}%`, formatKes(r.value)])
+  return {
+    reportTitle: 'Purchases Report',
+    kicker: 'Reports',
+    rangeLabel: rangeLabel(report.range.period, report.range.start, report.range.end),
+    generatedAt: new Date().toISOString(),
+    cards: [
+      { label: 'Total Purchased', value: formatKes(c.totalPurchased), hint: `${c.receiptsCount} delivery/ies` },
+      { label: 'Suppliers', value: String(c.suppliersCount) },
+      { label: 'Products Bought', value: String(c.productsCount), hint: `Avg ${formatKes(c.avgReceiptValue)}/delivery` },
+      { label: 'Outstanding to Suppliers', value: formatKes(c.outstandingToSuppliers), hint: 'Live balance' },
+      { label: 'Awaiting Delivery', value: formatKes(c.awaitingDeliveryValue), hint: `${c.awaitingDeliveryCount} order${c.awaitingDeliveryCount === 1 ? '' : 's'} open` },
+    ],
+    sections: [
+      { title: 'Purchases by Supplier', columns: [{ label: 'Supplier' }, { label: 'Lines', align: 'right' }, { label: '% of Total', align: 'right' }, { label: 'Value', align: 'right' }], rows: bucketRows(report.bySupplier) },
+      {
+        title: 'Purchases by Product', note: 'How much of each product was bought this period.',
+        columns: [{ label: 'Product' }, { label: 'Category' }, { label: 'Quantity', align: 'right' }, { label: 'Avg Unit Cost', align: 'right' }, { label: '% of Total', align: 'right' }, { label: 'Value', align: 'right' }],
+        rows: report.byProduct.map((p) => [p.name, p.category ?? '-', qty(p.quantity, p), formatKes(p.avgUnitCost), `${p.percentOfTotal.toFixed(1)}%`, formatKes(p.value)]),
+      },
+      { title: 'Purchases by Category', columns: [{ label: 'Category' }, { label: 'Lines', align: 'right' }, { label: '% of Total', align: 'right' }, { label: 'Value', align: 'right' }], rows: bucketRows(report.byCategory) },
+      { title: 'Purchases by Location', columns: [{ label: 'Location' }, { label: 'Lines', align: 'right' }, { label: '% of Total', align: 'right' }, { label: 'Value', align: 'right' }], rows: bucketRows(report.byLocation) },
+      {
+        title: 'Purchases by Payment Status',
+        columns: [{ label: 'Status' }, { label: 'Orders', align: 'right' }, { label: '% of Total', align: 'right' }, { label: 'Value', align: 'right' }],
+        rows: report.byPaymentStatus.map((s) => [paymentStatusLabel[s.status] ?? s.status, s.count, `${s.percentOfTotal.toFixed(1)}%`, formatKes(s.value)]),
+      },
+    ],
+  }
+}
 
 function stepAnchor(period: Exclude<Period, 'custom'>, iso: string, dir: 1 | -1) {
   const d = new Date(`${iso}T00:00:00`)
@@ -164,6 +206,7 @@ export default function PurchasesReport() {
             {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
           <ActionButton tone="primary" icon={<LuDownload />} disabled={!report || loading} onClick={() => report && downloadCsv(report)}>Export Report</ActionButton>
+          <PrintReportButton data={report ? buildReportDoc(report) : null} disabled={loading} />
         </div>
         <p className="text-[11px] text-muted-foreground">Based on goods actually received (not just ordered) — stock and supplier balances only move once a delivery is recorded. Orders still waiting on delivery show separately, below, as a live snapshot.</p>
       </div>

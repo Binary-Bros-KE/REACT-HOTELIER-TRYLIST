@@ -19,6 +19,8 @@ import PageBanner from '@/components/ui/PageBanner'
 import StatCard from '@/components/ui/StatCard'
 import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
+import PrintReportButton from '@/components/documents/PrintReportButton'
+import type { ReportDocData } from '@/components/documents/pdf'
 
 type Period = 'day' | 'week' | 'month' | 'custom'
 type Location = { id: string; name: string }
@@ -73,6 +75,42 @@ function stepAnchor(period: Exclude<Period, 'custom'>, iso: string, dir: 1 | -1)
   else if (period === 'week') d.setDate(d.getDate() + dir * 7)
   else d.setMonth(d.getMonth() + dir)
   return toLocalIso(d)
+}
+
+function rangeLabel(period: Period, startIso: string, endIso: string) {
+  const s = new Date(startIso)
+  const e = new Date(endIso)
+  if (period === 'day') return s.toLocaleDateString('en-KE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+  return `${s.toLocaleDateString('en-KE', { day: 'numeric', month: 'short' })} - ${e.toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric' })}`
+}
+
+function buildReportDoc(report: RoomReport): ReportDocData {
+  const c = report.cards
+  return {
+    reportTitle: 'Rooms Report',
+    kicker: 'Reports',
+    rangeLabel: rangeLabel(report.range.period, report.range.start, report.range.end),
+    generatedAt: new Date().toISOString(),
+    cards: [
+      { label: 'Room Charges', value: formatKes(c.roomRevenue), hint: `${formatKes(c.roomDiscounts)} discounted` },
+      { label: 'Room Payments', value: formatKes(c.roomPayments), hint: `${formatKes(c.deposits)} deposits, ${formatKes(c.settlements)} settlements` },
+      { label: 'Occupancy', value: `${c.occupancyRate.toFixed(1)}%`, hint: `${c.occupiedRoomNights} occupied room-nights` },
+      { label: 'In-House Balance', value: formatKes(c.inHouseBalance), hint: `${c.owingGuests} owing, ${c.paidGuests} cleared` },
+      { label: 'Total Rooms', value: `${c.totalRooms}`, hint: `${c.vacantRooms} vacant, ${c.occupiedRooms} occupied, ${c.outOfServiceRooms} out of service` },
+    ],
+    sections: [
+      {
+        title: 'Guests In House',
+        columns: [{ label: 'Guest' }, { label: 'Room' }, { label: 'Charges', align: 'right' }, { label: 'Paid', align: 'right' }, { label: 'Balance', align: 'right' }, { label: 'Status' }],
+        rows: report.currentGuests.map((g) => [g.guestName, `#${g.roomNumber} (${g.roomType})`, formatKes(g.charges), formatKes(g.paid), formatKes(Math.max(0, g.balance)), g.paymentStatus]),
+      },
+      { title: 'Top Selling Rooms', columns: [{ label: 'Room' }, { label: 'Type' }, { label: 'Stays', align: 'right' }, { label: 'Nights', align: 'right' }, { label: 'Revenue', align: 'right' }], rows: report.topRooms.map((r) => [`#${r.roomNumber} ${r.roomName ?? ''}`.trim(), r.roomType, r.stays, r.nights, formatKes(r.revenue)]) },
+      { title: 'Sales by Room Type', columns: [{ label: 'Room Type' }, { label: 'Rooms', align: 'right' }, { label: 'Stays', align: 'right' }, { label: 'Nights', align: 'right' }, { label: 'Revenue', align: 'right' }, { label: 'Avg Stay', align: 'right' }], rows: report.salesByRoomType.map((r) => [r.roomType, r.rooms, r.stays, r.nights, formatKes(r.revenue), formatKes(r.averageStayValue)]) },
+      { title: 'Room Payments by Method', columns: [{ label: 'Method' }, { label: 'Payments', align: 'right' }, { label: '% of Total', align: 'right' }, { label: 'Total', align: 'right' }], rows: report.byPaymentMethod.map((m) => [m.name, m.count, `${m.percentOfTotal.toFixed(1)}%`, formatKes(m.total)]) },
+      { title: 'Out of Service Rooms', columns: [{ label: 'Room' }, { label: 'Type' }, { label: 'Cleanliness' }, { label: 'Notes' }], rows: report.outOfService.map((r) => [`#${r.roomNumber} ${r.roomName ?? ''}`.trim(), r.roomType, r.cleanliness, r.notes ?? '-']) },
+      { title: 'Upcoming Reservations', columns: [{ label: 'Guest' }, { label: 'Room' }, { label: 'Arrival' }, { label: 'Departure' }, { label: 'Status' }], rows: report.upcoming.map((r) => [r.guestName, `#${r.roomNumber}`, dateOnly(r.checkIn), dateOnly(r.checkOut), r.status]) },
+    ],
+  }
 }
 
 function SetupMessage() {
@@ -147,6 +185,7 @@ export default function RoomsReport() {
             <option value="">All Locations</option>
             {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
+          <PrintReportButton data={report ? buildReportDoc(report) : null} disabled={loading} />
         </div>
       </div>
 

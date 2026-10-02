@@ -7,16 +7,19 @@ import StockReceiptDocument from './StockReceiptDocument'
 import StockTransferDocument from './StockTransferDocument'
 import GroupInvoiceDocument from './GroupInvoiceDocument'
 import CommercialDocument from './CommercialDocument'
+import ReportDocument from './ReportDocument'
 import type { RequisitionDocData } from './RequisitionDocument'
 import type { PurchaseOrderDocData } from './PurchaseOrderDocument'
 import type { StockReceiptDocData } from './StockReceiptDocument'
 import type { StockTransferDocData } from './StockTransferDocument'
 import type { GroupInvoiceDocData } from './GroupInvoiceDocument'
 import type { CommercialDocData } from './CommercialDocument'
+import type { ReportDocData } from './ReportDocument'
 
 export type { DocProfile }
-export type DocKind = 'requisition' | 'purchase' | 'stock-transfer' | 'stock-receipt' | 'group-invoice' | 'commercial-document'
-export type DocData = RequisitionDocData | PurchaseOrderDocData | StockTransferDocData | StockReceiptDocData | GroupInvoiceDocData | CommercialDocData
+export type { ReportDocData, ReportCard, ReportColumn, ReportSection } from './ReportDocument'
+export type DocKind = 'requisition' | 'purchase' | 'stock-transfer' | 'stock-receipt' | 'group-invoice' | 'commercial-document' | 'report'
+export type DocData = RequisitionDocData | PurchaseOrderDocData | StockTransferDocData | StockReceiptDocData | GroupInvoiceDocData | CommercialDocData | ReportDocData
 
 export function buildDocument(kind: DocKind, data: DocData, profile: DocProfile): ReactElement<DocumentProps> {
   if (kind === 'requisition') return <RequisitionDocument data={data as RequisitionDocData} profile={profile} />
@@ -24,10 +27,16 @@ export function buildDocument(kind: DocKind, data: DocData, profile: DocProfile)
   if (kind === 'group-invoice') return <GroupInvoiceDocument data={data as GroupInvoiceDocData} profile={profile} />
   if (kind === 'commercial-document') return <CommercialDocument data={data as CommercialDocData} profile={profile} />
   if (kind === 'stock-transfer') return <StockTransferDocument data={data as StockTransferDocData} profile={profile} />
+  if (kind === 'report') return <ReportDocument data={data as ReportDocData} profile={profile} />
   return <PurchaseOrderDocument data={data as PurchaseOrderDocData} profile={profile} />
 }
 
 export function documentMeta(kind: DocKind, data: DocData): { title: string; fileName: string } {
+  if (kind === 'report') {
+    const d = data as ReportDocData
+    const slug = d.reportTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+    return { title: d.reportTitle, fileName: `${slug}-${new Date().toISOString().slice(0, 10)}.pdf` }
+  }
   if (kind === 'requisition') {
     const d = data as RequisitionDocData
     return { title: `Requisition ${d.requisitionNo}`, fileName: `${d.requisitionNo}.pdf` }
