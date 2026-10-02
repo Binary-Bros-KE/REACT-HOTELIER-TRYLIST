@@ -683,7 +683,7 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
                 <div className={cn('mt-5 rounded-sm border p-3 text-sm', isCreditOverdue ? 'border-destructive/30 bg-destructive/10 text-destructive' : 'border-warning/30 bg-warning/10 text-warning')}>
                   <p className="font-semibold">{isCreditOverdue ? 'Overdue credit' : 'Completed on credit'}: {formatKes(remaining)} owing.</p>
                   {order.creditReason && <p className="mt-1 text-xs">Reason: {order.creditReason}</p>}
-                  {order.creditExpectedAt && <p className="mt-1 text-xs">Expected: {new Date(order.creditExpectedAt).toLocaleDateString()}</p>}
+                  {order.creditExpectedAt && <p className="mt-1 text-xs">Expected: {new Date(order.creditExpectedAt).toLocaleDateString('en-KE')}</p>}
                   {!canCollectCredit && <p className="mt-2 text-xs font-semibold">Only an accountant or manager can clear debts - ask them to record this payment.</p>}
                 </div>
               )}

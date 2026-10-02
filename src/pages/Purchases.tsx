@@ -494,7 +494,7 @@ export default function Purchases() {
                     <td className="px-5 py-4">
                       <button onClick={() => setDetail(p)} className="font-semibold text-secondary hover:underline">{p.purchaseNo}</button>
                       <p className="text-xs text-muted-foreground">
-                        {new Date(p.orderDate).toLocaleDateString()}
+                        {new Date(p.orderDate).toLocaleDateString('en-KE')}
                         {p.requisition && <> · from {p.requisition.requisitionNo}</>}
                       </p>
                     </td>
@@ -760,7 +760,7 @@ export default function Purchases() {
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">Purchase</p>
                 <h2 className="mt-1 font-display text-2xl font-semibold">{detail.purchaseNo}</h2>
-                <p className="mt-1 text-xs text-muted-foreground">{detail.supplier.name} · ordered {new Date(detail.orderDate).toLocaleDateString()}{detail.requisition && <> · from requisition {detail.requisition.requisitionNo}</>}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{detail.supplier.name} · ordered {new Date(detail.orderDate).toLocaleDateString('en-KE')}{detail.requisition && <> · from requisition {detail.requisition.requisitionNo}</>}</p>
               </div>
               <div className="flex flex-wrap justify-end gap-1">
                 <span className={cn('keep-round border border-dashed px-2 py-0.5 text-xs font-semibold', STATUS_META[detail.status].className)}>{STATUS_META[detail.status].label}</span>
@@ -811,7 +811,7 @@ export default function Purchases() {
                     <div key={r.id} className="rounded-sm border bg-muted/30 p-3 text-sm">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <span className="font-semibold">{r.receiptNo}</span>
-                        <span className="text-xs text-muted-foreground">{r.location.name} · {new Date(r.receivedAt).toLocaleDateString()}{r.createdByEmployee && <> · {r.createdByEmployee.firstName} {r.createdByEmployee.lastName}</>}</span>
+                        <span className="text-xs text-muted-foreground">{r.location.name} · {new Date(r.receivedAt).toLocaleDateString('en-KE')}{r.createdByEmployee && <> · {r.createdByEmployee.firstName} {r.createdByEmployee.lastName}</>}</span>
                       </div>
                       <ul className="mt-1.5 space-y-0.5 text-xs text-muted-foreground">
                         {r.items.map((it) => (
@@ -837,7 +837,7 @@ export default function Purchases() {
                       </div>
                       <div className="text-right">
                         <p className="font-semibold tabular-nums">{formatKes(Number(payment.amount))}</p>
-                        <p className="text-xs text-muted-foreground">{new Date(payment.paidAt).toLocaleDateString()}</p>
+                        <p className="text-xs text-muted-foreground">{new Date(payment.paidAt).toLocaleDateString('en-KE')}</p>
                       </div>
                     </div>
                   ))}
@@ -846,9 +846,9 @@ export default function Purchases() {
             )}
 
             <p className="mt-4 border-t pt-3 text-xs text-muted-foreground">
-              {detail.createdByEmployee && <>Created by {detail.createdByEmployee.firstName} {detail.createdByEmployee.lastName} on {new Date(detail.createdAt).toLocaleDateString()}</>}
-              {detail.orderedAt && <> · ordered {new Date(detail.orderedAt).toLocaleDateString()}</>}
-              {detail.receivedAt && <> · received {new Date(detail.receivedAt).toLocaleDateString()}</>}
+              {detail.createdByEmployee && <>Created by {detail.createdByEmployee.firstName} {detail.createdByEmployee.lastName} on {new Date(detail.createdAt).toLocaleDateString('en-KE')}</>}
+              {detail.orderedAt && <> · ordered {new Date(detail.orderedAt).toLocaleDateString('en-KE')}</>}
+              {detail.receivedAt && <> · received {new Date(detail.receivedAt).toLocaleDateString('en-KE')}</>}
             </p>
 
             <div className="mt-6 flex flex-wrap justify-end gap-2 border-t pt-5">

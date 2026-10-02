@@ -138,7 +138,7 @@ export default function Transactions() {
                     <td className="px-5 py-4">
                       <p className="font-semibold">{t.paymentMethod?.name ?? '—'}</p>
                       <p className="text-xs text-muted-foreground">{t.transactionNo}{t.reference ? ` · ${t.reference}` : ''}</p>
-                      <p className="text-xs text-muted-foreground">{new Date(t.createdAt).toLocaleString()}</p>
+                      <p className="text-xs text-muted-foreground">{new Date(t.createdAt).toLocaleString('en-KE')}</p>
                     </td>
                     <td className="px-5 py-4">
                       {t.customer ? <p className="font-medium">Customer: {t.customer.firstName} {t.customer.lastName ?? ''}</p> : <p className="font-medium">{t.description ?? titleCase(t.source)}</p>}

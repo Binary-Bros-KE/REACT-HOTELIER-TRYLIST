@@ -128,15 +128,15 @@ export default function OrderReceipt({ order, profile }: { order: ReceiptOrder; 
 
       <div className="space-y-0.5 text-xs">
         <div className="flex justify-between"><span>Receipt</span><span>#{order.orderNumber}</span></div>
-        <div className="flex justify-between"><span>Date</span><span>{new Date(order.createdAt).toLocaleString()}</span></div>
-        {order.completedAt && <div className="flex justify-between"><span>Paid</span><span>{new Date(order.completedAt).toLocaleString()}</span></div>}
+        <div className="flex justify-between"><span>Date</span><span>{new Date(order.createdAt).toLocaleString('en-KE')}</span></div>
+        {order.completedAt && <div className="flex justify-between"><span>Paid</span><span>{new Date(order.completedAt).toLocaleString('en-KE')}</span></div>}
         {served && <div className="flex justify-between"><span>Served by</span><span>{served}</span></div>}
         <div className="flex justify-between text-gray-600"><span>{order.table ? `Table: ${order.table.label}` : 'Takeaway'}</span><span>Status: {statusText}</span></div>
         {isComplementary && <div className="flex justify-between text-gray-600"><span>Recipient</span><span>{order.complimentaryRecipientName || (order.customer ? `${order.customer.firstName} ${order.customer.lastName ?? ''}`.trim() : 'Walk-in')}</span></div>}
         {order.complimentarySession && <div className="flex justify-between text-gray-600"><span>Host/Event</span><span>{order.complimentarySession.title}</span></div>}
         {roomBilled && <div className="flex justify-between text-gray-600"><span>Room bill</span><span>{order.reservation?.room?.number ? `Room ${order.reservation.room.number}` : 'Billed to room'}</span></div>}
         {order.creditReason && <div className="flex justify-between gap-3 text-gray-600"><span>Credit reason</span><span className="text-right">{order.creditReason}</span></div>}
-        {order.creditExpectedAt && <div className="flex justify-between text-gray-600"><span>Expected pay date</span><span>{new Date(order.creditExpectedAt).toLocaleDateString()}</span></div>}
+        {order.creditExpectedAt && <div className="flex justify-between text-gray-600"><span>Expected pay date</span><span>{new Date(order.creditExpectedAt).toLocaleDateString('en-KE')}</span></div>}
       </div>
 
       <div className="my-3 border-t border-dashed border-gray-400" />

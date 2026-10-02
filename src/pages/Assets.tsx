@@ -473,9 +473,9 @@ export default function Assets() {
 
             {editing && (editing.createdByEmployee || editing.updatedByEmployee) && (
               <p className="mt-5 border-t pt-3 text-xs text-muted-foreground">
-                {editing.createdByEmployee && <>Created by {editing.createdByEmployee.firstName} {editing.createdByEmployee.lastName} on {new Date(editing.createdAt).toLocaleDateString()}</>}
+                {editing.createdByEmployee && <>Created by {editing.createdByEmployee.firstName} {editing.createdByEmployee.lastName} on {new Date(editing.createdAt).toLocaleDateString('en-KE')}</>}
                 {editing.createdByEmployee && editing.updatedByEmployee && ' · '}
-                {editing.updatedByEmployee && <>Last updated by {editing.updatedByEmployee.firstName} {editing.updatedByEmployee.lastName} on {new Date(editing.updatedAt).toLocaleDateString()}</>}
+                {editing.updatedByEmployee && <>Last updated by {editing.updatedByEmployee.firstName} {editing.updatedByEmployee.lastName} on {new Date(editing.updatedAt).toLocaleDateString('en-KE')}</>}
               </p>
             )}
 

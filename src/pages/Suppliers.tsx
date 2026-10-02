@@ -326,9 +326,9 @@ export default function Suppliers() {
 
             {editing && (editing.createdByEmployee || editing.updatedByEmployee) && (
               <p className="mt-5 border-t pt-3 text-xs text-muted-foreground">
-                {editing.createdByEmployee && <>Created by {editing.createdByEmployee.firstName} {editing.createdByEmployee.lastName} on {new Date(editing.createdAt).toLocaleDateString()}</>}
+                {editing.createdByEmployee && <>Created by {editing.createdByEmployee.firstName} {editing.createdByEmployee.lastName} on {new Date(editing.createdAt).toLocaleDateString('en-KE')}</>}
                 {editing.createdByEmployee && editing.updatedByEmployee && ' · '}
-                {editing.updatedByEmployee && <>Last updated by {editing.updatedByEmployee.firstName} {editing.updatedByEmployee.lastName} on {new Date(editing.updatedAt).toLocaleDateString()}</>}
+                {editing.updatedByEmployee && <>Last updated by {editing.updatedByEmployee.firstName} {editing.updatedByEmployee.lastName} on {new Date(editing.updatedAt).toLocaleDateString('en-KE')}</>}
               </p>
             )}
 
@@ -462,7 +462,7 @@ function PaySupplierModal({ supplier, onClose, onPaid }: { supplier: Supplier; o
                 <div key={p.id} className="flex items-center justify-between gap-3 rounded-sm border bg-muted/40 px-3 py-2 text-sm">
                   <span className="min-w-0 truncate">
                     <span className="font-medium">{formatKes(Number(p.amount))}</span>
-                    <span className="text-xs text-muted-foreground"> · {p.paymentMethod?.name ?? '—'} · {new Date(p.paidAt).toLocaleDateString()}</span>
+                    <span className="text-xs text-muted-foreground"> · {p.paymentMethod?.name ?? '—'} · {new Date(p.paidAt).toLocaleDateString('en-KE')}</span>
                     {p.note && <span className="block truncate text-xs text-muted-foreground">{p.note}</span>}
                   </span>
                   <span className="shrink-0 text-xs text-muted-foreground">{p.paymentNo}</span>

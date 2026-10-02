@@ -580,9 +580,9 @@ export default function Rooms() {
             </div>
             {editing && (editing.createdByEmployee || editing.updatedByEmployee) && (
               <p className="mt-5 border-t pt-3 text-xs text-muted-foreground">
-                {editing.createdByEmployee && <>Created by {editing.createdByEmployee.firstName} {editing.createdByEmployee.lastName} on {new Date(editing.createdAt).toLocaleDateString()}</>}
+                {editing.createdByEmployee && <>Created by {editing.createdByEmployee.firstName} {editing.createdByEmployee.lastName} on {new Date(editing.createdAt).toLocaleDateString('en-KE')}</>}
                 {editing.createdByEmployee && editing.updatedByEmployee && " · "}
-                {editing.updatedByEmployee && <>Last updated by {editing.updatedByEmployee.firstName} {editing.updatedByEmployee.lastName} on {new Date(editing.updatedAt).toLocaleDateString()}</>}
+                {editing.updatedByEmployee && <>Last updated by {editing.updatedByEmployee.firstName} {editing.updatedByEmployee.lastName} on {new Date(editing.updatedAt).toLocaleDateString('en-KE')}</>}
               </p>
             )}
           </form>
@@ -666,9 +666,9 @@ export default function Rooms() {
               </div>
               {editingType && (editingType.createdByEmployee || editingType.updatedByEmployee) && (
                 <p className="mt-4 border-t pt-3 text-xs text-muted-foreground">
-                  {editingType.createdByEmployee && <>Created by {editingType.createdByEmployee.firstName} {editingType.createdByEmployee.lastName} on {new Date(editingType.createdAt).toLocaleDateString()}</>}
+                  {editingType.createdByEmployee && <>Created by {editingType.createdByEmployee.firstName} {editingType.createdByEmployee.lastName} on {new Date(editingType.createdAt).toLocaleDateString('en-KE')}</>}
                   {editingType.createdByEmployee && editingType.updatedByEmployee && " · "}
-                  {editingType.updatedByEmployee && <>Last updated by {editingType.updatedByEmployee.firstName} {editingType.updatedByEmployee.lastName} on {new Date(editingType.updatedAt).toLocaleDateString()}</>}
+                  {editingType.updatedByEmployee && <>Last updated by {editingType.updatedByEmployee.firstName} {editingType.updatedByEmployee.lastName} on {new Date(editingType.updatedAt).toLocaleDateString('en-KE')}</>}
                 </p>
               )}
               <div className="mt-5 flex gap-2">

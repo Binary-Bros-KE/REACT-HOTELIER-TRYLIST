@@ -267,7 +267,7 @@ export default function Tables() {
                         <span className="text-xs text-muted-foreground">{activeOrder.status}</span>
                       </span>
                       <span className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
-                        <span>{new Date(activeOrder.createdAt).toLocaleString()}</span>
+                        <span>{new Date(activeOrder.createdAt).toLocaleString('en-KE')}</span>
                         <span>{activeOrder.itemCount} item{activeOrder.itemCount === 1 ? '' : 's'}</span>
                         {activeOrder.servedBy && <span>Waiter: {activeOrder.servedBy.firstName} {activeOrder.servedBy.lastName}</span>}
                         {activeOrder.customer && <span>Client: {activeOrder.customer.firstName} {activeOrder.customer.lastName ?? ''}</span>}

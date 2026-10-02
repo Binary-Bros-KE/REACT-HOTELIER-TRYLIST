@@ -195,7 +195,7 @@ export default function Stays() {
                       </td>
                       <td className="px-5 py-3.5 text-muted-foreground">{stay.room.number} · {stay.room.roomType.name}</td>
                       <td className="whitespace-nowrap px-5 py-3.5 text-xs text-muted-foreground">
-                        {new Date(stay.checkIn).toLocaleDateString()} – {new Date(stay.checkOut).toLocaleDateString()}
+                        {new Date(stay.checkIn).toLocaleDateString('en-KE')} – {new Date(stay.checkOut).toLocaleDateString('en-KE')}
                       </td>
                       <td className="px-5 py-3.5">
                         <p className="text-sm font-medium">{info.desk ?? '—'}</p>
@@ -281,8 +281,8 @@ function StayDetailModal({ stay, onClose, onChanged }: { stay: Stay; onClose: ()
       <div className="grid grid-cols-2 border-b bg-card text-sm sm:grid-cols-4">
         {([
           ['Status', <StatusPill key="s" tone={STATUS_TONE[stay.status]}>{titleCase(stay.status)}</StatusPill>],
-          ['Check-in', new Date(stay.checkIn).toLocaleDateString()],
-          ['Check-out', new Date(stay.checkOut).toLocaleDateString()],
+          ['Check-in', new Date(stay.checkIn).toLocaleDateString('en-KE')],
+          ['Check-out', new Date(stay.checkOut).toLocaleDateString('en-KE')],
           ['Desk', info.desk ? `${info.desk}${info.by ? ` · ${info.by}` : ''}` : '—'],
         ] as const).map(([label, value]) => (
           <div key={label} className="border-r px-4 py-3 last:border-r-0">
@@ -348,7 +348,7 @@ function StayDetailModal({ stay, onClose, onChanged }: { stay: Stay; onClose: ()
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
                     <p className={cn('text-xs font-bold uppercase tracking-wider', owing > 0.01 ? 'text-warning' : 'text-success')}>{owing > 0.01 ? 'Checked out on credit' : 'Credit paid in full'}</p>
-                    <p className="mt-1 text-sm">{formatKes(credit)} was left owing{stay.folio?.creditExpectedAt ? `, expected by ${new Date(stay.folio.creditExpectedAt).toLocaleDateString()}` : ''}.</p>
+                    <p className="mt-1 text-sm">{formatKes(credit)} was left owing{stay.folio?.creditExpectedAt ? `, expected by ${new Date(stay.folio.creditExpectedAt).toLocaleDateString('en-KE')}` : ''}.</p>
                     {stay.folio?.creditReason && <p className="text-xs text-muted-foreground">Reason: {stay.folio.creditReason}</p>}
                   </div>
                   {owing > 0.01 && <p className="text-right text-lg font-bold tabular-nums text-warning">{formatKes(owing)}<span className="block text-[11px] font-normal text-muted-foreground">still owing</span></p>}
@@ -398,7 +398,7 @@ function StayDetailModal({ stay, onClose, onChanged }: { stay: Stay; onClose: ()
               {stay.additionalGuests.map((g) => (
                 <div key={g.id} className="flex items-center justify-between gap-3 px-3 py-2.5 text-sm even:bg-muted/30">
                   <span>{g.name}{g.idNumber ? ` · ${g.idNumber}` : ''}</span>
-                  <span className="text-xs text-muted-foreground">{new Date(g.addedAt).toLocaleDateString()}</span>
+                  <span className="text-xs text-muted-foreground">{new Date(g.addedAt).toLocaleDateString('en-KE')}</span>
                 </div>
               ))}
             </div>
@@ -415,7 +415,7 @@ function StayDetailModal({ stay, onClose, onChanged }: { stay: Stay; onClose: ()
                     <p>{a.summary}</p>
                     <p className="text-xs text-muted-foreground">{a.location ? a.location.name : 'Location unknown'}</p>
                   </div>
-                  <span className="shrink-0 text-xs text-muted-foreground">{new Date(a.occurredAt).toLocaleString()}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">{new Date(a.occurredAt).toLocaleString('en-KE')}</span>
                 </div>
               ))}
             </div>

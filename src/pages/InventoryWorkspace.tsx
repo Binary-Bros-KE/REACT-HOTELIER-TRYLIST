@@ -163,7 +163,7 @@ export default function InventoryWorkspace() {
                       <tr key={r.id} className="border-t transition hover:bg-muted/30">
                         <td className="px-5 py-4">
                           <button onClick={() => setReceiptDetail(r)} className="font-semibold text-secondary hover:underline">{r.receiptNo}</button>
-                          <p className="text-xs text-muted-foreground">{new Date(r.createdAt).toLocaleString()}</p>
+                          <p className="text-xs text-muted-foreground">{new Date(r.createdAt).toLocaleString('en-KE')}</p>
                         </td>
                         <td className="px-5 py-4"><span className="rounded-sm border border-success/40 bg-success/5 px-2 py-0.5 text-xs font-medium text-success">{r.location.name}</span></td>
                         <td className="px-5 py-4 text-muted-foreground">{r.items.length} item{r.items.length === 1 ? '' : 's'}</td>
@@ -196,7 +196,7 @@ export default function InventoryWorkspace() {
                     <tr key={t.id} className="border-t transition hover:bg-muted/30">
                       <td className="px-5 py-4">
                         <button onClick={() => setDetail(t)} className="font-semibold text-secondary hover:underline">{t.transferNo}</button>
-                        <p className="text-xs text-muted-foreground">{new Date(t.createdAt).toLocaleString()}</p>
+                        <p className="text-xs text-muted-foreground">{new Date(t.createdAt).toLocaleString('en-KE')}</p>
                       </td>
                       <td className="px-5 py-4">
                         <span className="flex items-center gap-1.5 text-xs">
@@ -257,7 +257,7 @@ export default function InventoryWorkspace() {
               <span className="rounded-sm border border-secondary/40 bg-secondary/5 px-2 py-0.5 font-medium text-secondary">{detail.toLocation.name}</span>
               <span className="text-muted-foreground">
                 {detail.createdByEmployee ? `${detail.createdByEmployee.firstName} ${detail.createdByEmployee.lastName} · ` : ''}
-                {new Date(detail.createdAt).toLocaleString()}
+                {new Date(detail.createdAt).toLocaleString('en-KE')}
               </span>
             </div>
 
@@ -317,7 +317,7 @@ export default function InventoryWorkspace() {
               <span className="rounded-sm border border-success/40 bg-success/5 px-2 py-0.5 font-medium text-success">{receiptDetail.location.name}</span>
               <span className="text-muted-foreground">
                 {receiptDetail.createdByEmployee ? `${receiptDetail.createdByEmployee.firstName} ${receiptDetail.createdByEmployee.lastName} · ` : ''}
-                {new Date(receiptDetail.createdAt).toLocaleString()}
+                {new Date(receiptDetail.createdAt).toLocaleString('en-KE')}
               </span>
             </div>
 

@@ -141,7 +141,7 @@ export const money = (value: number | string, currency = 'KES') =>
   `${currency} ${Number(value || 0).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 export const shortDate = (iso: string | null | undefined) =>
-  iso ? new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
+  iso ? new Date(iso).toLocaleDateString('en-KE') : '—'
 
 export const dateTime = (iso: string | Date) =>
-  new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+  new Date(iso).toLocaleString('en-KE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })

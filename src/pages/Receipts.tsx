@@ -336,7 +336,7 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
                           </>
                         ) : '—'}
                       </td>
-                      <td className="whitespace-nowrap px-5 py-3.5 text-muted-foreground">{new Date(order.createdAt).toLocaleString()}</td>
+                      <td className="whitespace-nowrap px-5 py-3.5 text-muted-foreground">{new Date(order.createdAt).toLocaleString('en-KE')}</td>
                       <td className="px-5 py-3.5">
                         <StatusPill tone={badge.tone}>{badge.label}</StatusPill>
                         <span className="ml-2 text-xs text-muted-foreground">{order.saleType === 'COMPLIMENTARY' ? (order.complimentaryRecipientName || order.complimentarySession?.title || 'No payment') : [...new Set(order.payments.map((p) => p.paymentMethod.name))].join(', ') || '—'}</span>

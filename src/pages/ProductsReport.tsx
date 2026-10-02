@@ -25,13 +25,13 @@ function rangeFor(period: Period, anchor: Date, customFrom: string, customTo: st
   const from = new Date(anchor)
   const to = new Date(anchor)
   if (period === 'day') {
-    return { from: toLocalIso(anchor), to: toLocalIso(anchor), label: anchor.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }) }
+    return { from: toLocalIso(anchor), to: toLocalIso(anchor), label: anchor.toLocaleDateString('en-KE', { day: 'numeric', month: 'long', year: 'numeric' }) }
   }
   if (period === 'week') {
     const day = (anchor.getDay() + 6) % 7 // 0=Mon
     from.setDate(anchor.getDate() - day)
     to.setDate(from.getDate() + 6)
-    return { from: toLocalIso(from), to: toLocalIso(to), label: `${from.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} – ${to.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}` }
+    return { from: toLocalIso(from), to: toLocalIso(to), label: `${from.toLocaleDateString('en-KE', { day: 'numeric', month: 'short' })} – ${to.toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric' })}` }
   }
   if (period === 'year') {
     return { from: `${anchor.getFullYear()}-01-01`, to: `${anchor.getFullYear()}-12-31`, label: String(anchor.getFullYear()) }
@@ -42,7 +42,7 @@ function rangeFor(period: Period, anchor: Date, customFrom: string, customTo: st
   // month
   const first = new Date(anchor.getFullYear(), anchor.getMonth(), 1)
   const last = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0)
-  return { from: toLocalIso(first), to: toLocalIso(last), label: anchor.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) }
+  return { from: toLocalIso(first), to: toLocalIso(last), label: anchor.toLocaleDateString('en-KE', { month: 'long', year: 'numeric' }) }
 }
 
 function shiftAnchor(period: Period, anchor: Date, delta: number): Date {
@@ -75,7 +75,7 @@ function buildReportDoc(overview: ProductsOverview, label: string, bestSelling: 
         title: 'Slowest Moving Products',
         note: 'Fewest units sold first - includes products with zero sales entirely.',
         columns: [{ label: 'Product' }, { label: 'SKU' }, { label: 'Category' }, { label: 'Qty Sold', align: 'right' }, { label: 'Revenue', align: 'right' }, { label: 'Last Sold' }],
-        rows: overview.slowest.map((p) => [p.name, p.sku ?? '-', p.category ?? '-', p.qty.toLocaleString(), formatKes(p.revenue), p.lastSoldAt ? new Date(p.lastSoldAt).toLocaleDateString() : 'Never sold']),
+        rows: overview.slowest.map((p) => [p.name, p.sku ?? '-', p.category ?? '-', p.qty.toLocaleString(), formatKes(p.revenue), p.lastSoldAt ? new Date(p.lastSoldAt).toLocaleDateString('en-KE') : 'Never sold']),
       },
     ],
   }
@@ -233,7 +233,7 @@ export default function ProductsReport() {
                         <td className="px-4 py-3 text-muted-foreground">{p.category ?? '—'}</td>
                         <td className={cn('px-4 py-3 text-right tabular-nums', p.qty === 0 && 'font-semibold text-destructive')}>{p.qty.toLocaleString()}</td>
                         <td className="px-4 py-3 text-right tabular-nums">{formatKes(p.revenue)}</td>
-                        <td className="px-4 py-3">{p.lastSoldAt ? new Date(p.lastSoldAt).toLocaleDateString() : <span className="font-semibold text-destructive">Never sold</span>}</td>
+                        <td className="px-4 py-3">{p.lastSoldAt ? new Date(p.lastSoldAt).toLocaleDateString('en-KE') : <span className="font-semibold text-destructive">Never sold</span>}</td>
                       </tr>
                     ))}
                   </tbody>

@@ -24,8 +24,8 @@ export function receiptToText(order: ReceiptOrder, profile: ReceiptProfile, shar
   lines.push(RULE)
 
   lines.push(`Receipt: ${order.orderNumber}`)
-  lines.push(`Date: ${new Date(order.createdAt).toLocaleString()}`)
-  if (order.completedAt) lines.push(`Paid: ${new Date(order.completedAt).toLocaleString()}`)
+  lines.push(`Date: ${new Date(order.createdAt).toLocaleString('en-KE')}`)
+  if (order.completedAt) lines.push(`Paid: ${new Date(order.completedAt).toLocaleString('en-KE')}`)
   const served = servedByName(order)
   if (served) lines.push(`Served by: ${served}`)
   lines.push(`Status: ${statusText}`)
@@ -33,7 +33,7 @@ export function receiptToText(order: ReceiptOrder, profile: ReceiptProfile, shar
   if (isComplementary) lines.push(`Recipient: ${order.complimentaryRecipientName || (order.customer ? `${order.customer.firstName} ${order.customer.lastName ?? ''}`.trim() : 'Walk-in')}`)
   if (order.complimentarySession) lines.push(`Host/Event: ${order.complimentarySession.title}`)
   if (order.creditReason) lines.push(`Credit reason: ${order.creditReason}`)
-  if (order.creditExpectedAt) lines.push(`Expected pay date: ${new Date(order.creditExpectedAt).toLocaleDateString()}`)
+  if (order.creditExpectedAt) lines.push(`Expected pay date: ${new Date(order.creditExpectedAt).toLocaleDateString('en-KE')}`)
   lines.push(RULE)
 
   for (const item of order.items) {

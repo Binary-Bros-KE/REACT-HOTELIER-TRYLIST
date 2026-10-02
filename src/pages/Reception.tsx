@@ -418,7 +418,7 @@ export default function Reception() {
                     <tr key={b.id} className="align-middle even:bg-muted/30">
                       <td className="px-5 py-3.5">
                         <p className="font-semibold">{b.customer.firstName} {b.customer.lastName}</p>
-                        <p className="text-xs text-muted-foreground">{new Date(b.checkIn).toLocaleDateString()} – {new Date(b.checkOut).toLocaleDateString()}</p>
+                        <p className="text-xs text-muted-foreground">{new Date(b.checkIn).toLocaleDateString('en-KE')} – {new Date(b.checkOut).toLocaleDateString('en-KE')}</p>
                         {b.group && <button type="button" onClick={() => setGroupOpenId(b.group!.id)} className="mt-1 text-xs font-semibold text-secondary hover:underline">Group: {b.group.name}</button>}
                       </td>
                       <td className="px-5 py-3.5">{b.room.number} · {b.room.roomType.name}</td>
@@ -884,7 +884,7 @@ function NewGuestModal({ customers, rooms, at, onClose, onDone, onCustomerCreate
               {([
                 ["Guest", guestName],
                 ["Room", room ? `Room ${room.number} · ${room.roomType.name}` : "—"],
-                ["Stay", hourly ? `${new Date(checkIn).toLocaleString()} – ${new Date(checkOut).toLocaleTimeString()} (${qty} ${unitWord(pricing?.unitName)}${qty === 1 ? "" : "s"})` : `${new Date(checkIn).toLocaleDateString()} – ${new Date(checkOut).toLocaleDateString()} (${qty} ${unitWord(pricing?.unitName)}${qty === 1 ? "" : "s"})`],
+                ["Stay", hourly ? `${new Date(checkIn).toLocaleString('en-KE')} – ${new Date(checkOut).toLocaleTimeString()} (${qty} ${unitWord(pricing?.unitName)}${qty === 1 ? "" : "s"})` : `${new Date(checkIn).toLocaleDateString('en-KE')} – ${new Date(checkOut).toLocaleDateString('en-KE')} (${qty} ${unitWord(pricing?.unitName)}${qty === 1 ? "" : "s"})`],
                 ["Rate", pricing?.rateName ?? "Standard"],
                 ["Guests", `${adults} adult${Number(adults) === 1 ? "" : "s"}${Number(children) > 0 ? `, ${children} child${Number(children) === 1 ? "" : "ren"}` : ""}`],
                 ["Room sale", terms.roomSaleType === "COMPLIMENTARY" ? "Complimentary" : roomOff > 0 ? `Paid — ${formatKes(roomOff)} discount` : "Paid"],
@@ -1428,7 +1428,7 @@ function StayModal({ reservation, rooms, at, onClose, onChanged, onCheckedOut }:
                 New check-out date
                 <input type="date" required min={reservation.checkOut.slice(0, 10)} className="input mt-1.5" value={extendDate} onChange={(e) => setExtendDate(e.target.value)} />
               </label>
-              <p className="text-xs text-muted-foreground">Current check-out: {new Date(reservation.checkOut).toLocaleDateString()}</p>
+              <p className="text-xs text-muted-foreground">Current check-out: {new Date(reservation.checkOut).toLocaleDateString('en-KE')}</p>
               <button disabled={busy} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
                 {busy && <LuLoaderCircle className="animate-spin" />} Extend stay
               </button>
@@ -1448,7 +1448,7 @@ function StayModal({ reservation, rooms, at, onClose, onChanged, onCheckedOut }:
                   <div key={g.id} className="flex items-center justify-between rounded-sm border p-3 text-sm">
                     <div>
                       <p className="font-medium">{g.name}{g.idNumber ? ` · ${g.idNumber}` : ""}</p>
-                      <p className="text-xs text-muted-foreground">Added {new Date(g.addedAt).toLocaleString()}</p>
+                      <p className="text-xs text-muted-foreground">Added {new Date(g.addedAt).toLocaleString('en-KE')}</p>
                     </div>
                     <button onClick={() => void removeGuest(g.id)} className="text-xs text-destructive hover:underline">Remove</button>
                   </div>
@@ -1501,7 +1501,7 @@ function StayModal({ reservation, rooms, at, onClose, onChanged, onCheckedOut }:
                     <p className="font-medium">{a.summary}</p>
                     <p className="text-xs text-muted-foreground">{a.location ? a.location.name : "Location unknown"}</p>
                   </div>
-                  <p className="shrink-0 text-xs text-muted-foreground">{new Date(a.occurredAt).toLocaleString()}</p>
+                  <p className="shrink-0 text-xs text-muted-foreground">{new Date(a.occurredAt).toLocaleString('en-KE')}</p>
                 </div>
               ))}
             </div>

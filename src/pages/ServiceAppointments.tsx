@@ -394,7 +394,7 @@ export default function ServiceAppointments() {
                           </p>
                         </td>
                         <td className={tdBase + " text-xs"}>
-                          <b>{new Date(a.startsAt).toLocaleDateString()}</b>
+                          <b>{new Date(a.startsAt).toLocaleDateString('en-KE')}</b>
                           <p className="text-muted-foreground">
                             {new Date(a.startsAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                             –

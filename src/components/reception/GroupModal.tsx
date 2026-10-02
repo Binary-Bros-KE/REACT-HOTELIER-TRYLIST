@@ -429,7 +429,7 @@ export default function GroupModal({ groupId, at, rooms, customers, onClose, onC
                           <tr key={r.id} className="even:bg-muted/30">
                             <td className="px-3 py-2 font-semibold">{r.room.number}</td>
                             <td className="px-3 py-2 text-xs">{r.folio?.creditReason ?? '—'}</td>
-                            <td className="px-3 py-2 text-xs">{r.folio?.creditExpectedAt ? new Date(r.folio.creditExpectedAt).toLocaleDateString() : '—'}</td>
+                            <td className="px-3 py-2 text-xs">{r.folio?.creditExpectedAt ? new Date(r.folio.creditExpectedAt).toLocaleDateString('en-KE') : '—'}</td>
                             <td className="px-3 py-2 text-right tabular-nums">{kes(r.folio?.creditOutstanding ?? 0)}</td>
                           </tr>
                         ))}

@@ -146,7 +146,7 @@ export default function CommercialDocuments({ type }: { type: DocType }) {
                   <tr key={doc.id} className="even:bg-muted/30">
                     <td className="px-5 py-3.5"><button onClick={() => setPrinting(doc)} className="font-semibold text-secondary hover:underline">{doc.documentNo}</button><p className="text-xs text-muted-foreground">{doc.title || (isInvoice ? 'Invoice' : 'Quotation')}{doc.sourceDocument ? ` from ${doc.sourceDocument.documentNo}` : ''}</p></td>
                     <td className="px-5 py-3.5">{clientName(doc)}<p className="text-xs text-muted-foreground">{doc.location?.name ?? 'No location'}</p></td>
-                    <td className="px-5 py-3.5 text-xs text-muted-foreground">{isInvoice ? `Due ${doc.dueAt ? new Date(doc.dueAt).toLocaleDateString() : '-'}` : `Expires ${doc.expiresAt ? new Date(doc.expiresAt).toLocaleDateString() : '-'}`}</td>
+                    <td className="px-5 py-3.5 text-xs text-muted-foreground">{isInvoice ? `Due ${doc.dueAt ? new Date(doc.dueAt).toLocaleDateString('en-KE') : '-'}` : `Expires ${doc.expiresAt ? new Date(doc.expiresAt).toLocaleDateString('en-KE') : '-'}`}</td>
                     <td className="px-5 py-3.5 text-right font-semibold tabular-nums">{money(Number(doc.total))}</td>
                     <td className="px-5 py-3.5 text-right tabular-nums">{money(Number(doc.balance))}</td>
                     <td className="px-5 py-3.5"><StatusPill tone={statusTone(doc.status)}>{doc.status.replaceAll('_', ' ')}</StatusPill></td>

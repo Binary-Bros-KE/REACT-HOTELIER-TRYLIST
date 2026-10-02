@@ -72,7 +72,7 @@ export default function Attendance() {
   const [openKey, setOpenKey] = useState<string | null>(null)
 
   const weeks = useMemo(() => calendarWeeks(year, month), [year, month])
-  const monthLabel = useMemo(() => new Date(year, month - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }), [year, month])
+  const monthLabel = useMemo(() => new Date(year, month - 1, 1).toLocaleDateString('en-KE', { month: 'long', year: 'numeric' }), [year, month])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -248,7 +248,7 @@ export default function Attendance() {
                     className={cn('block w-full border-t p-3 text-left first:border-t-0', clickable && 'transition hover:bg-muted/50')}
                   >
                     <p className="flex items-center gap-2 text-sm font-semibold">
-                      {s.approvedStartAt ? new Date(s.approvedStartAt).toLocaleString() : 'Shift'} - {s.approvedEndAt ? new Date(s.approvedEndAt).toLocaleString() : rejected ? 'rejected' : 'open'}
+                      {s.approvedStartAt ? new Date(s.approvedStartAt).toLocaleString('en-KE') : 'Shift'} - {s.approvedEndAt ? new Date(s.approvedEndAt).toLocaleString('en-KE') : rejected ? 'rejected' : 'open'}
                       {rejected && <span className="keep-round border border-dashed border-destructive/70 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-destructive">Rejected</span>}
                     </p>
                     {rejected && <p className="mt-1 text-xs text-destructive">{s.rejectionReason || 'No reason given'}</p>}

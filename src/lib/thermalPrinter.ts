@@ -372,7 +372,7 @@ export function buildReceiptBytes(order: ReceiptOrder, profile: ReceiptProfile, 
   if (isComplementary) e.line(`Recipient: ${order.complimentaryRecipientName || (order.customer ? `${order.customer.firstName} ${order.customer.lastName ?? ''}`.trim() : 'Walk-in')}`)
   if (order.complimentarySession) e.line(`Host/Event: ${order.complimentarySession.title}`)
   if (order.creditReason) e.line(`Credit reason: ${order.creditReason}`)
-  if (order.creditExpectedAt) e.line(`Expected pay date: ${new Date(order.creditExpectedAt).toLocaleDateString()}`)
+  if (order.creditExpectedAt) e.line(`Expected pay date: ${new Date(order.creditExpectedAt).toLocaleDateString('en-KE')}`)
   e.rule()
 
   // -------- items --------
@@ -478,7 +478,7 @@ export function buildDispatchSlipBytes(slip: DispatchSlip, profile: ReceiptProfi
   e.line(`For:      ${slip.to}`)
   e.line(`From:     ${slip.from}`)
   if (slip.requestedByName) e.line(`By:       ${slip.requestedByName}`)
-  e.line(`Time:     ${new Date(slip.requestedAt).toLocaleString()}`)
+  e.line(`Time:     ${new Date(slip.requestedAt).toLocaleString('en-KE')}`)
   e.line(rule)
   const qtyW = compact ? 12 : 16
   const nameW = cols - qtyW - 1
@@ -508,7 +508,7 @@ function printSlipViaWindow(slip: DispatchSlip): void {
 <h1>STORE DISPATCH REQUEST</h1><hr>
 <div>Request: ${esc(slip.requestNo)}</div><div>Order: #${slip.orderNumber}${slip.table ? ' (' + esc(slip.table) + ')' : ''}</div>
 <div>For: ${esc(slip.to)}</div><div>From: ${esc(slip.from)}</div>${slip.requestedByName ? '<div>By: ' + esc(slip.requestedByName) + '</div>' : ''}
-<div>Time: ${esc(new Date(slip.requestedAt).toLocaleString())}</div><hr>
+<div>Time: ${esc(new Date(slip.requestedAt).toLocaleString('en-KE'))}</div><hr>
 <table>${rows}</table><hr>${slip.note ? '<div>' + esc(slip.note) + '</div><hr>' : ''}
 <p>Dispatched by: ____________</p><p>Received by: ____________</p>`)
   win.document.close()

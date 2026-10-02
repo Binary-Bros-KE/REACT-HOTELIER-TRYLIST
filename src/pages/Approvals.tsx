@@ -55,7 +55,7 @@ const ago = (iso: string | null) => {
   if (mins < 1) return 'just now'
   if (mins < 60) return `${mins} min ago`
   const hrs = Math.floor(mins / 60)
-  return hrs < 24 ? `${hrs} h ago` : new Date(iso).toLocaleString()
+  return hrs < 24 ? `${hrs} h ago` : new Date(iso).toLocaleString('en-KE')
 }
 
 export default function Approvals() {

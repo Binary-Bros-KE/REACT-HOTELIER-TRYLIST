@@ -204,7 +204,7 @@ function RevenueDashboard({ variant, pickerSlot }: { variant: 'operations' | 'fi
                 const pct = Math.max(0, Math.min(100, session.coverPercent))
                 return (
                   <tr key={session.id} className="border-t">
-                    <td className="px-4 py-3"><span className="font-semibold">{session.title}</span><span className="block text-xs text-muted-foreground">{session.hostName ?? 'Host'}{session.startsAt ? ` - ${new Date(session.startsAt).toLocaleString()}` : ''}</span></td>
+                    <td className="px-4 py-3"><span className="font-semibold">{session.title}</span><span className="block text-xs text-muted-foreground">{session.hostName ?? 'Host'}{session.startsAt ? ` - ${new Date(session.startsAt).toLocaleString('en-KE')}` : ''}</span></td>
                     <td className="px-4 py-3 text-right tabular-nums">{formatKes(session.complimentaryCogs)}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{formatKes(session.guestRevenue)}</td>
                     <td className="px-4 py-3">
@@ -317,7 +317,7 @@ function RevenueDashboard({ variant, pickerSlot }: { variant: 'operations' | 'fi
                 <div key={r.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
                   <div className="min-w-0">
                     <p className="truncate font-medium">{r.customer.firstName} {r.customer.lastName ?? ''}</p>
-                    <p className="text-xs text-muted-foreground">{r.reservationNo} · Room {r.room.number} · {new Date(r.checkIn).toLocaleDateString()}</p>
+                    <p className="text-xs text-muted-foreground">{r.reservationNo} · Room {r.room.number} · {new Date(r.checkIn).toLocaleDateString('en-KE')}</p>
                   </div>
                   <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{r.status}</span>
                 </div>
@@ -410,7 +410,7 @@ function RevenueDashboard({ variant, pickerSlot }: { variant: 'operations' | 'fi
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{who}</p>
-                    <p className="text-xs text-muted-foreground">{titleCase(t.source)}{t.paymentMethod ? ` · ${t.paymentMethod.name}` : ''} · {new Date(t.createdAt).toLocaleString()}</p>
+                    <p className="text-xs text-muted-foreground">{titleCase(t.source)}{t.paymentMethod ? ` · ${t.paymentMethod.name}` : ''} · {new Date(t.createdAt).toLocaleString('en-KE')}</p>
                   </div>
                   <p className={cn('shrink-0 font-semibold tabular-nums', t.direction === 'IN' ? 'text-success' : 'text-destructive')}>{t.direction === 'IN' ? '+' : '−'}{formatKes(Number(t.amount))}</p>
                 </div>
@@ -1026,7 +1026,7 @@ function StorekeeperDashboard() {
                 <div key={m.id} className="flex items-center gap-3 p-3.5 text-sm">
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-medium">{m.product?.name ?? 'Unknown product'}</p>
-                    <p className="text-xs text-muted-foreground">{titleCase(m.type)}{m.location ? ` · ${m.location.name}` : ''} · {new Date(m.occurredAt).toLocaleDateString()}</p>
+                    <p className="text-xs text-muted-foreground">{titleCase(m.type)}{m.location ? ` · ${m.location.name}` : ''} · {new Date(m.occurredAt).toLocaleDateString('en-KE')}</p>
                   </div>
                   <p className={cn('shrink-0 tabular-nums font-semibold', Number(m.quantity) >= 0 ? 'text-success' : 'text-destructive')}>{Number(m.quantity) >= 0 ? '+' : ''}{m.product ? stockLabel(m.quantity, m.product) : Number(m.quantity).toLocaleString()}</p>
                 </div>
@@ -1319,7 +1319,7 @@ function HousekeepingDashboard() {
               <div key={t.id} className="flex items-center gap-3 p-3.5 text-sm">
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium">{t.roomNumber ? `Room ${t.roomNumber} · ${titleCase(t.type)}` : t.title ?? titleCase(t.type)}</p>
-                  <p className="text-xs text-muted-foreground">{t.assigneeName ? `Assigned to ${t.assigneeName}` : 'Unassigned'}{t.dueAt ? ` · Due ${new Date(t.dueAt).toLocaleString()}` : ''}{t.overdue ? ' · Overdue' : ''}</p>
+                  <p className="text-xs text-muted-foreground">{t.assigneeName ? `Assigned to ${t.assigneeName}` : 'Unassigned'}{t.dueAt ? ` · Due ${new Date(t.dueAt).toLocaleString('en-KE')}` : ''}{t.overdue ? ' · Overdue' : ''}</p>
                 </div>
                 <span className={cn('shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide', t.status === 'PENDING' ? 'bg-warning/15 text-warning' : 'bg-secondary/10 text-secondary')}>{t.status.replace('_', ' ')}</span>
                 {(t.status === 'IN_PROGRESS' || t.assigneeName) && (
@@ -1360,7 +1360,7 @@ function HousekeepingDashboard() {
                 <div key={item.id} className="flex items-center gap-3 p-3.5 text-sm">
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-medium">{item.itemName}</p>
-                    <p className="text-xs text-muted-foreground">{item.itemNo}{item.room ? ` · Room ${item.room.number}` : ''} · {new Date(item.foundAt).toLocaleDateString()}</p>
+                    <p className="text-xs text-muted-foreground">{item.itemNo}{item.room ? ` · Room ${item.room.number}` : ''} · {new Date(item.foundAt).toLocaleDateString('en-KE')}</p>
                   </div>
                   <span className="shrink-0 rounded-full bg-warning/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-warning">Unclaimed</span>
                 </div>
@@ -1567,7 +1567,7 @@ function ShiftControl() {
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-secondary">Shift</p>
             <h2 className="mt-1 font-display text-xl font-semibold">{session?.status === 'ACTIVE' ? 'You are on shift' : session?.status === 'REQUESTED_START' ? 'Start request waiting approval' : session?.status === 'REQUESTED_END' ? 'End request waiting approval' : 'Request shift start'}</h2>
-            <p className="mt-1 text-sm text-muted-foreground">{new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{new Date().toLocaleDateString('en-KE', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}</p>
             {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
           </div>
           <div className="text-left lg:text-right">

@@ -516,9 +516,9 @@ export default function Customers() {
 
             {editing && (editing.createdByEmployee || editing.updatedByEmployee) && (
               <p className="mt-5 border-t pt-3 text-xs text-muted-foreground">
-                {editing.createdByEmployee && <>Created by {editing.createdByEmployee.firstName} {editing.createdByEmployee.lastName} on {new Date(editing.createdAt).toLocaleDateString()}</>}
+                {editing.createdByEmployee && <>Created by {editing.createdByEmployee.firstName} {editing.createdByEmployee.lastName} on {new Date(editing.createdAt).toLocaleDateString('en-KE')}</>}
                 {editing.createdByEmployee && editing.updatedByEmployee && ' · '}
-                {editing.updatedByEmployee && <>Last updated by {editing.updatedByEmployee.firstName} {editing.updatedByEmployee.lastName} on {new Date(editing.updatedAt).toLocaleDateString()}</>}
+                {editing.updatedByEmployee && <>Last updated by {editing.updatedByEmployee.firstName} {editing.updatedByEmployee.lastName} on {new Date(editing.updatedAt).toLocaleDateString('en-KE')}</>}
               </p>
             )}
 
@@ -586,7 +586,7 @@ function CreditHistoryModal({ customer, onClose }: { customer: Customer; onClose
                       {e.type === 'CREDIT' ? 'Taken on credit' : e.type === 'REPAYMENT' ? 'Repayment' : 'Adjustment'}
                       {e.order && <span className="text-muted-foreground"> · order #{e.order.orderNumber}</span>}
                     </p>
-                    <p className="text-[11px] text-muted-foreground">{new Date(e.createdAt).toLocaleString()}{e.note ? ` · ${e.note}` : ''}</p>
+                    <p className="text-[11px] text-muted-foreground">{new Date(e.createdAt).toLocaleString('en-KE')}{e.note ? ` · ${e.note}` : ''}</p>
                   </div>
                   <div className="shrink-0 text-right tabular-nums">
                     <p className={cn('font-semibold', Number(e.amount) > 0 ? 'text-warning' : 'text-success')}>{Number(e.amount) > 0 ? '+' : ''}{money(e.amount)}</p>

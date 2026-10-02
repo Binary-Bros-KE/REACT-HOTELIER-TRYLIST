@@ -711,7 +711,7 @@ export default function PointOfSale() {
                       {waiter && <p className="mt-1.5 flex items-center gap-1.5 text-xs font-bold text-amber-600"><LuUserRound className="size-3.5" /> Waiter: {waiter}</p>}
                       <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground"><LuUserRound className="size-3.5" /> {order.customer ? `${order.customer.firstName} ${order.customer.lastName ?? ''}` : 'Walk-in'} · {order.table?.label ?? 'Takeaway'}</p>
                       {compBadge && <p className={cn('mt-2 inline-flex keep-round border border-dashed px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', compBadge.cls)}>{compBadge.label}{order.complimentarySession ? ` - ${order.complimentarySession.title}` : ''}</p>}
-                      <p className="mt-1 text-[11px] text-muted-foreground">{new Date(order.updatedAt).toLocaleString()}</p>
+                      <p className="mt-1 text-[11px] text-muted-foreground">{new Date(order.updatedAt).toLocaleString('en-KE')}</p>
                       <p className="mt-2 text-lg font-bold">{formatKes(order.total)}</p>
                       {pendingReturns > 0 && <p className="mt-1 text-xs font-semibold text-warning">{pendingReturns} item{pendingReturns === 1 ? '' : 's'} waiting return approval</p>}
                       {owed > 0.01 && <p className="text-xs font-semibold text-warning">Owing {formatKes(owed)} · paid {formatKes(order.paid)}</p>}

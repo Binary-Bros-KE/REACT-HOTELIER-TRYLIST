@@ -184,7 +184,7 @@ export default function ShiftTeamPanels() {
                           </div>
                         </td>
                       )}
-                      <td className="whitespace-nowrap px-4 py-3">{new Date(s.approvedStartAt ?? s.requestedStartAt).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</td>
+                      <td className="whitespace-nowrap px-4 py-3">{new Date(s.approvedStartAt ?? s.requestedStartAt).toLocaleDateString('en-KE', { weekday: 'short', month: 'short', day: 'numeric' })}</td>
                       <td className="whitespace-nowrap px-4 py-3 tabular-nums text-muted-foreground">{clock(s.approvedStartAt)} – {clock(s.approvedEndAt)}</td>
                       <td className="px-4 py-3 text-right tabular-nums">{hasSummary ? (s.summary?.hours ?? 0).toFixed(1) : '—'}</td>
                       <td className="px-4 py-3 text-right font-semibold tabular-nums">{hasSummary ? formatKes(s.summary?.totalSales ?? 0) : '—'}</td>

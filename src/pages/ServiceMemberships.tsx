@@ -376,7 +376,7 @@ export default function ServiceMemberships() {
       // paused (see the NODE route) - surfacing that here so it doesn't look
       // like the date silently moved for no reason.
       if (wasPaused && status === "ACTIVE") {
-        toast.success(`Resumed — membership now runs through ${new Date(membership.endsAt).toLocaleDateString()} (paused time added back).`);
+        toast.success(`Resumed — membership now runs through ${new Date(membership.endsAt).toLocaleDateString('en-KE')} (paused time added back).`);
       }
       await load();
     } catch (e) {
@@ -471,8 +471,8 @@ export default function ServiceMemberships() {
                       </p>
                     </td>
                     <td className="px-5 py-4 text-xs">
-                      <b>{new Date(m.startsAt).toLocaleDateString()}</b>
-                      <p className="text-muted-foreground">to {new Date(m.endsAt).toLocaleDateString()}</p>
+                      <b>{new Date(m.startsAt).toLocaleDateString('en-KE')}</b>
+                      <p className="text-muted-foreground">to {new Date(m.endsAt).toLocaleDateString('en-KE')}</p>
                       <p className="mt-1 font-semibold text-secondary">{daysRemaining(m)} days remaining</p>
                     </td>
                     <td className="px-5 py-4">
@@ -719,7 +719,7 @@ function MembershipAttendanceModal({ membership, onClose, onChanged }: { members
   const start = new Date(membership.startsAt); start.setHours(0, 0, 0, 0);
   const end = new Date(membership.endsAt); end.setHours(0, 0, 0, 0);
   const today = new Date(); today.setHours(0, 0, 0, 0);
-  const monthLabel = new Date(year, month - 1, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  const monthLabel = new Date(year, month - 1, 1).toLocaleDateString('en-KE', { month: "long", year: "numeric" });
   // A day only counts as eligible-to-be-missed once it's actually over —
   // today isn't "missed" yet just because it hasn't been marked, it's
   // still in progress (d < today, not <=).
@@ -751,7 +751,7 @@ function MembershipAttendanceModal({ membership, onClose, onChanged }: { members
   }
 
   return (
-    <ModalShell size="xl" kicker="Membership attendance" title={`${membership.customer.firstName} ${membership.customer.lastName}`} subtitle={`${membership.planName} - expires ${new Date(membership.endsAt).toLocaleDateString()}`} onClose={onClose}>
+    <ModalShell size="xl" kicker="Membership attendance" title={`${membership.customer.firstName} ${membership.customer.lastName}`} subtitle={`${membership.planName} - expires ${new Date(membership.endsAt).toLocaleDateString('en-KE')}`} onClose={onClose}>
       <div className="p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -903,7 +903,7 @@ function MembershipWalletModal({ membership, plans, paymentMethods, onClose, onC
               ) : (
                 <>
                   <b className="block text-sm">This is the first payment</b>
-                  <p className="mt-1">No payment was captured when this membership was created, so this one just settles the term already on it (through {currentEndsAt.toLocaleDateString()}) — it won't add more time. The next payment recorded will extend it.</p>
+                  <p className="mt-1">No payment was captured when this membership was created, so this one just settles the term already on it (through {currentEndsAt.toLocaleDateString('en-KE')}) — it won't add more time. The next payment recorded will extend it.</p>
                 </>
               )}
             </div>
@@ -948,7 +948,7 @@ function MembershipWalletModal({ membership, plans, paymentMethods, onClose, onC
             {selectedPlan && (
               <div className="sm:col-span-2 border border-l-4 border-l-accent bg-muted/30 p-3 text-sm">
                 <p>{selectedPlan.durationDays} days - {Number(selectedPlan.discountPercent)}% discount - {money(Number(selectedPlan.price))}</p>
-                <p className="mt-1 text-xs text-muted-foreground">Switching restarts this membership's validity from today: it will run {new Date().toLocaleDateString()} to {new Date(Date.now() + selectedPlan.durationDays * 86_400_000).toLocaleDateString()} under the new plan, regardless of time left on the current one.</p>
+                <p className="mt-1 text-xs text-muted-foreground">Switching restarts this membership's validity from today: it will run {new Date().toLocaleDateString('en-KE')} to {new Date(Date.now() + selectedPlan.durationDays * 86_400_000).toLocaleDateString('en-KE')} under the new plan, regardless of time left on the current one.</p>
               </div>
             )}
             <div className="sm:col-span-2"><button disabled={saving || !planId} className="bg-primary px-5 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground disabled:opacity-60">{saving ? "Saving..." : "Switch plan"}</button></div>
@@ -958,7 +958,7 @@ function MembershipWalletModal({ membership, plans, paymentMethods, onClose, onC
           <div className="mt-5 divide-y border">
             {membership.payments.length === 0 ? <p className="p-8 text-center text-sm text-muted-foreground">No payments recorded.</p> : membership.payments.map((p) => (
               <div key={p.id} className="flex items-center justify-between gap-3 p-3 text-sm">
-                <div><p className="font-semibold">{p.paymentMethod.name}</p><p className="text-xs text-muted-foreground">{p.paidAt ? new Date(p.paidAt).toLocaleString() : "No payment date"}{p.reference ? ` - ${p.reference}` : ""}</p></div>
+                <div><p className="font-semibold">{p.paymentMethod.name}</p><p className="text-xs text-muted-foreground">{p.paidAt ? new Date(p.paidAt).toLocaleString('en-KE') : "No payment date"}{p.reference ? ` - ${p.reference}` : ""}</p></div>
                 <b>{money(Number(p.amount))}</b>
               </div>
             ))}

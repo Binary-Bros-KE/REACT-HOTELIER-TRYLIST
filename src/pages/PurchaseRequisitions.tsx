@@ -467,7 +467,7 @@ export default function PurchaseRequisitions() {
                     <td className="px-5 py-4">
                       <button onClick={() => openDetail(r)} className="font-semibold text-secondary hover:underline">{r.requisitionNo}</button>
                       <p className="text-xs text-muted-foreground">
-                        {new Date(r.requisitionDate).toLocaleDateString()}
+                        {new Date(r.requisitionDate).toLocaleDateString('en-KE')}
                         {r.purchase && <> · {r.purchase.purchaseNo}</>}
                       </p>
                     </td>
@@ -633,9 +633,9 @@ export default function PurchaseRequisitions() {
                 <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">Requisition</p>
                 <h2 className="mt-1 font-display text-2xl font-semibold">{detail.requisitionNo}</h2>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Raised {new Date(detail.requisitionDate).toLocaleDateString()}
+                  Raised {new Date(detail.requisitionDate).toLocaleDateString('en-KE')}
                   {detail.createdByEmployee && <> by {detail.createdByEmployee.firstName} {detail.createdByEmployee.lastName}</>}
-                  {detail.neededBy && <> · needed by {new Date(detail.neededBy).toLocaleDateString()}</>}
+                  {detail.neededBy && <> · needed by {new Date(detail.neededBy).toLocaleDateString('en-KE')}</>}
                 </p>
               </div>
               <span className={cn('keep-round border border-dashed px-2 py-0.5 text-xs font-semibold', STATUS_META[detail.status].className)}>{STATUS_META[detail.status].label}</span>
@@ -707,7 +707,7 @@ export default function PurchaseRequisitions() {
             {detail.reviewedByEmployee && (
               <p className={cn('mt-3 rounded-sm p-3 text-sm', detail.status === 'REJECTED' ? 'border-destructive/70 text-destructive' : 'bg-muted/50 text-muted-foreground')}>
                 {detail.status === 'REJECTED' ? 'Rejected' : 'Approved'} by {detail.reviewedByEmployee.firstName} {detail.reviewedByEmployee.lastName}
-                {detail.reviewedAt && <> on {new Date(detail.reviewedAt).toLocaleDateString()}</>}
+                {detail.reviewedAt && <> on {new Date(detail.reviewedAt).toLocaleDateString('en-KE')}</>}
                 {detail.reviewNote && <> — “{detail.reviewNote}”</>}
               </p>
             )}

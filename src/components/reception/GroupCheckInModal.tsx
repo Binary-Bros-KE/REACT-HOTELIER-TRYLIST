@@ -205,7 +205,7 @@ export default function GroupCheckInModal({ customers, rooms, at, onClose, onDon
               {([
                 ['Group', name || '—'],
                 ['Billed to', mode === 'existing' ? (billing ? `${billing.firstName} ${billing.lastName}`.trim() : '—') : company.firstName],
-                ['Stay', `${new Date(checkIn).toLocaleDateString()} – ${new Date(checkOut).toLocaleDateString()} (${nights} night${nights === 1 ? '' : 's'})`],
+                ['Stay', `${new Date(checkIn).toLocaleDateString('en-KE')} – ${new Date(checkOut).toLocaleDateString('en-KE')} (${nights} night${nights === 1 ? '' : 's'})`],
                 ['Rooms', `${rows.length} · about ${review.people} guest${review.people === 1 ? '' : 's'}`],
                 ['Arrival', arrival === 'CHECKED_IN' ? 'Checked in now' : 'Reserved for later'],
                 ['Room charges', kes(review.gross)],

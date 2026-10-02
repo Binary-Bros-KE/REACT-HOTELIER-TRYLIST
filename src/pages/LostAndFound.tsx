@@ -203,13 +203,13 @@ export default function LostAndFound() {
                       <p className="text-xs text-muted-foreground">{item.itemNo}{item.description ? ` · ${item.description}` : ''}</p>
                       {item.status === 'COLLECTED' && (
                         <p className="mt-1 text-xs text-success">
-                          Collected by {item.collectedByName}{item.collectedByContact ? ` (${item.collectedByContact})` : ''} on {item.collectedAt ? new Date(item.collectedAt).toLocaleDateString() : ''}
+                          Collected by {item.collectedByName}{item.collectedByContact ? ` (${item.collectedByContact})` : ''} on {item.collectedAt ? new Date(item.collectedAt).toLocaleDateString('en-KE') : ''}
                           {item.collectedByEmployee ? ` · handled by ${item.collectedByEmployee.firstName} ${item.collectedByEmployee.lastName}` : ''}
                         </p>
                       )}
                     </td>
                     <td className="px-5 py-4 text-xs text-muted-foreground">
-                      {new Date(item.foundAt).toLocaleDateString()}
+                      {new Date(item.foundAt).toLocaleDateString('en-KE')}
                       {item.room ? ` · Room ${item.room.number}` : ''}
                       {item.locationNote ? ` · ${item.locationNote}` : ''}
                       {item.foundByEmployee && <p>By {item.foundByEmployee.firstName} {item.foundByEmployee.lastName}</p>}

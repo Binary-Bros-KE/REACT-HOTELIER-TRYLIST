@@ -209,7 +209,7 @@ export default function Expenses() {
       <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard tone="danger" icon={<LuWallet />} label="Total (active)" value={formatKes(summary.total)} />
         <StatCard index={4} icon={<LuCalendarDays />} label="Today" value={formatKes(spendToday)} hint={`${countToday} expense${countToday === 1 ? '' : 's'}`} />
-        <StatCard index={0} icon={<LuCalendarRange />} label="This month" value={formatKes(spendMonth)} hint={new Date().toLocaleDateString(undefined, { month: 'long', year: 'numeric' })} />
+        <StatCard index={0} icon={<LuCalendarRange />} label="This month" value={formatKes(spendMonth)} hint={new Date().toLocaleDateString('en-KE', { month: 'long', year: 'numeric' })} />
         <StatCard index={2} icon={<LuReceiptText />} label="Entries" value={String(activeExpenses.length)} hint={activeExpenses.length > 0 ? `Average ${formatKes(averageSpend)}` : 'Nothing recorded yet'} />
       </div>
 
@@ -259,7 +259,7 @@ export default function Expenses() {
                   <tr key={expense.id} className="align-middle even:bg-muted/30">
                     <td className="px-5 py-3.5">
                       <p className="font-semibold">{expense.expenseNo}</p>
-                      <p className="text-xs text-muted-foreground">{new Date(expense.expenseDate).toLocaleDateString()}{expense.description ? ` · ${expense.description}` : ''}</p>
+                      <p className="text-xs text-muted-foreground">{new Date(expense.expenseDate).toLocaleDateString('en-KE')}{expense.description ? ` · ${expense.description}` : ''}</p>
                     </td>
                     <td className="px-5 py-3.5">{expense.category.name}</td>
                     <td className="px-5 py-3.5 text-muted-foreground">{expense.paymentMethod.name}{expense.reference ? ` · ${expense.reference}` : ''}</td>

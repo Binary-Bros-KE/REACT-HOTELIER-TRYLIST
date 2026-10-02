@@ -163,7 +163,7 @@ export default function ShiftSummaryModal({
             </div>
           )}
           {live.reviewedAt && (
-            <p className="text-xs text-muted-foreground">Outcome edited {new Date(live.reviewedAt).toLocaleString()}{live.reviewReason ? ' — ' + live.reviewReason : ''}</p>
+            <p className="text-xs text-muted-foreground">Outcome edited {new Date(live.reviewedAt).toLocaleString('en-KE')}{live.reviewReason ? ' — ' + live.reviewReason : ''}</p>
           )}
 
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
