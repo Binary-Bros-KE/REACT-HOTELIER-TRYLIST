@@ -7,13 +7,11 @@ import {
   LuChevronLeft,
   LuChevronRight,
   LuCircleDollarSign,
-  LuGrid2X2,
   LuLayers,
   LuLoaderCircle,
   LuPencil,
   LuPlus,
   LuSearch,
-  LuTable2,
   LuTrash2,
   LuUsers,
   LuWallet,
@@ -133,7 +131,6 @@ const dateInput = (value: Date | string) => {
 };
 const money = (value: number) =>
   `KSh ${value.toLocaleString("en-KE", { maximumFractionDigits: 2 })}`;
-type View = "table" | "cards";
 type WalletTab = "payment" | "plan" | "history";
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -178,6 +175,7 @@ export default function ServiceMemberships() {
   const [editing, setEditing] = useState<Membership | null>(null);
   const [query, setQuery] = useState("");
   const [groupFilter, setGroupFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState<Status | "">("");
   const [open, setOpen] = useState(false);
   const [quickCustomer, setQuickCustomer] = useState(false);
   const [attendanceFor, setAttendanceFor] = useState<Membership | null>(null);
@@ -190,9 +188,6 @@ export default function ServiceMemberships() {
   const [plans, setPlans] = useState<CatalogPlan[]>([]);
   const [managingPlans, setManagingPlans] = useState(false);
   const [managingGroups, setManagingGroups] = useState(false);
-  const [view, setView] = useState<View>(
-    () => (localStorage.getItem("membership-view") as View) || "table",
-  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -222,19 +217,18 @@ export default function ServiceMemberships() {
   useEffect(() => {
     void load();
   }, [load]);
-  useEffect(() => {
-    localStorage.setItem("membership-view", view);
-  }, [view]);
 
   const visible = useMemo(() => {
     const term = query.toLowerCase().trim();
-    return memberships.filter((m) =>
-      `${m.customer.firstName} ${m.customer.lastName} ${m.plan.name} ${m.status}`
-        .concat(` ${m.customer.serviceGroup?.name ?? ""}`)
-        .toLowerCase()
-        .includes(term),
-    );
-  }, [memberships, query]);
+    return memberships
+      .filter((m) => !statusFilter || m.status === statusFilter)
+      .filter((m) =>
+        `${m.customer.firstName} ${m.customer.lastName} ${m.plan.name} ${m.status}`
+          .concat(` ${m.customer.serviceGroup?.name ?? ""}`)
+          .toLowerCase()
+          .includes(term),
+      );
+  }, [memberships, query, statusFilter]);
   const previewPrice = Number(form.planPrice) || 0;
   const previewDays = Number(form.durationDays) || 0;
   const previewDiscount = Number(form.discountPercent) || 0;
@@ -372,23 +366,37 @@ export default function ServiceMemberships() {
       : { ...form, planId: "" });
   }
   async function setStatus(item: Membership, status: Status) {
+    const wasPaused = item.status === "PAUSED";
     try {
-      await api(`/service-center/memberships/${item.id}`, {
+      const { membership } = await api<{ membership: Membership }>(`/service-center/memberships/${item.id}`, {
         method: "PATCH",
         body: JSON.stringify({ status }),
       });
+      // Resuming from a pause pushes endsAt out by however long it was
+      // paused (see the NODE route) - surfacing that here so it doesn't look
+      // like the date silently moved for no reason.
+      if (wasPaused && status === "ACTIVE") {
+        toast.success(`Resumed — membership now runs through ${new Date(membership.endsAt).toLocaleDateString()} (paused time added back).`);
+      }
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not update status");
     }
   }
 
-  const paidTotal = (m: Membership) => m.payments.filter((p) => p.status === "PAID").reduce((sum, p) => sum + Number(p.amount), 0);
+  // Active = green, Paused = amber, Expired/Cancelled = red (cancelled a
+  // touch muted, since it was a deliberate stop rather than simply lapsing).
+  const statusStyles: Record<Status, string> = {
+    ACTIVE: "border-success/40 bg-success/10 text-success",
+    PAUSED: "border-warning/40 bg-warning/10 text-warning",
+    EXPIRED: "border-destructive/40 bg-destructive/10 text-destructive",
+    CANCELLED: "border-destructive/30 bg-destructive/5 text-destructive/80",
+  };
   const statusSelect = (m: Membership, className = "") => (
     <select
       value={m.status}
       onChange={(e) => void setStatus(m, e.target.value as Status)}
-      className={"border bg-background p-2 text-xs font-semibold " + className}
+      className={cn("border p-2 text-xs font-bold uppercase tracking-wide", statusStyles[m.status], className)}
     >
       {["ACTIVE", "PAUSED", "EXPIRED", "CANCELLED"].map((s) => (
         <option key={s}>{s}</option>
@@ -406,37 +414,27 @@ export default function ServiceMemberships() {
         <Metric index={3} icon={<LuCircleDollarSign />} label="Paid revenue" value={money(summary.revenue)} />
       </section>
       <section className="mt-6 overflow-hidden border bg-card shadow-sm">
-        <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="border-l-4 border-accent pl-3">
-            <h2 className="font-display text-xl font-semibold leading-tight">Customer memberships</h2>
-            <p className="text-xs text-muted-foreground">Changes immediately flow into appointment eligibility and discounts.</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="relative">
-              <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search memberships"
-                className="w-56 border bg-background py-2.5 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
-              />
-            </label>
-            <select value={groupFilter} onChange={(e) => setGroupFilter(e.target.value)} className="border bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring">
-              <option value="">All groups</option>
-              {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
-            </select>
-            <div className="flex border bg-background">
-              <button onClick={() => setView("table")} aria-label="Table view" title="Table view" className={"p-2.5 " + (view === "table" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted")}>
-                <LuTable2 />
-              </button>
-              <button onClick={() => setView("cards")} aria-label="Card view" title="Card view" className={"p-2.5 " + (view === "cards" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted")}>
-                <LuGrid2X2 />
-              </button>
-            </div>
-            <ActionButton tone="neutral" icon={<LuLayers />} onClick={() => setManagingGroups(true)}>Groups</ActionButton>
-            <ActionButton tone="neutral" icon={<LuBadgeCheck />} onClick={() => setManagingPlans(true)}>Plans</ActionButton>
-            <ActionButton tone="primary" icon={<LuPlus />} onClick={create}>New membership</ActionButton>
-          </div>
+        <div className="flex flex-wrap items-center justify-end gap-2 border-b p-4">
+          <label className="relative">
+            <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search memberships"
+              className="w-56 border bg-background py-2.5 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+            />
+          </label>
+          <select value={groupFilter} onChange={(e) => setGroupFilter(e.target.value)} className="border bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring">
+            <option value="">All groups</option>
+            {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+          </select>
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as Status | "")} className="border bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring">
+            <option value="">All statuses</option>
+            {(["ACTIVE", "PAUSED", "EXPIRED", "CANCELLED"] as Status[]).map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <ActionButton tone="neutral" icon={<LuLayers />} onClick={() => setManagingGroups(true)}>Groups</ActionButton>
+          <ActionButton tone="neutral" icon={<LuBadgeCheck />} onClick={() => setManagingPlans(true)}>Plans</ActionButton>
+          <ActionButton tone="primary" icon={<LuPlus />} onClick={create}>New membership</ActionButton>
         </div>
         {loading ? (
           <div className="p-20 text-center">
@@ -444,50 +442,6 @@ export default function ServiceMemberships() {
           </div>
         ) : visible.length === 0 ? (
           <div className="p-20 text-center text-sm text-muted-foreground">No memberships found.</div>
-        ) : view === "cards" ? (
-          <div className="grid gap-4 p-5 sm:grid-cols-2 xl:grid-cols-3">
-            {visible.map((m) => (
-              <article key={m.id} className="relative overflow-hidden border border-t-4 border-t-accent bg-background p-5 shadow-sm">
-                <div className="flex items-start justify-between gap-3">
-                  <span className="flex h-12 w-12 items-center justify-center bg-secondary/10 text-lg font-black text-secondary">
-                    {m.customer.firstName[0]}
-                    {m.customer.lastName?.[0]}
-                  </span>
-                  {statusSelect(m, "py-1 text-[11px]")}
-                </div>
-                <h3 className="mt-4 text-lg font-bold">
-                  {m.customer.firstName} {m.customer.lastName}
-                </h3>
-                <p className="text-xs text-muted-foreground">{m.customer.phone ?? m.customer.email ?? "No contact details"}</p>
-                {m.customer.serviceGroup && <p className="mt-1 text-xs font-semibold text-secondary">{m.customer.serviceGroup.name}</p>}
-                <div className="mt-4 bg-secondary/10 p-3 text-secondary">
-                  <p className="text-xs font-bold uppercase tracking-wide">{m.plan.name}</p>
-                  <p className="mt-1 text-sm">
-                    {m.plan.discountPercent}% savings · {m.plan.durationDays} days
-                  </p>
-                </div>
-                <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
-                  <div>
-                    <span className="text-muted-foreground">Valid until</span>
-                    <b className="mt-1 block">{new Date(m.endsAt).toLocaleDateString()}</b>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Remaining</span>
-                    <b className="mt-1 block">{daysRemaining(m)} days</b>
-                  </div>
-                </div>
-                <div className="mt-5 flex items-center justify-between border-t pt-3">
-                  <b className="text-sm">{money(paidTotal(m))} paid</b>
-                  <div className="flex gap-1.5">
-                    <ActionButton tone="neutral" icon={<LuCalendarDays />} title="Attendance" onClick={() => setAttendanceFor(m)} />
-                    <ActionButton tone="neutral" icon={<LuWallet />} title="Payments and plan" onClick={() => setWalletFor(m)} />
-                    <ActionButton tone="neutral" icon={<LuPencil />} title="Edit membership" onClick={() => edit(m)} />
-                    <ActionButton tone="neutral" icon={<LuTrash2 />} title="Delete membership" onClick={() => void remove(m)} />
-                  </div>
-                </div>
-              </article>
-            ))}
-          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
@@ -868,15 +822,41 @@ function MembershipWalletModal({ membership, plans, paymentMethods, onClose, onC
   const priorPaidCount = membership.payments.filter((p) => p.status === "PAID").length;
   const isRenewal = priorPaidCount > 0;
   const currentEndsAt = new Date(membership.endsAt);
-  const renewalFrom = currentEndsAt > new Date() ? currentEndsAt : new Date();
+  // Keyed off the payment date, not literal "now" — a late renewal (paid
+  // after the old end date already passed) starts fresh from the day it was
+  // actually paid, never from the stale old end date (which would silently
+  // hand back the days the member didn't show up for) and never from
+  // whatever day staff happen to be sitting at when they get around to
+  // recording it (if that's backdated via "Paid at" below).
+  const paidAtDate = new Date(paidAt);
+  const renewalFrom = currentEndsAt > paidAtDate ? currentEndsAt : paidAtDate;
   const renewalTo = new Date(renewalFrom.getTime() + membership.durationDays * 86_400_000);
+  const [termFrom, setTermFrom] = useState(() => dateInput(renewalFrom));
+  const [termTo, setTermTo] = useState(() => dateInput(renewalTo));
+  useEffect(() => {
+    const paidAtDate = new Date(paidAt);
+    const from = currentEndsAt > paidAtDate ? currentEndsAt : paidAtDate;
+    setTermFrom(dateInput(from));
+    setTermTo(dateInput(new Date(from.getTime() + membership.durationDays * 86_400_000)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paidAt]);
 
   async function recordPayment(event: FormEvent) {
     event.preventDefault();
     if (!paymentMethodId) { toast.error("Choose a payment method"); return; }
     setSaving(true);
     try {
-      await api("/service-center/membership-payments", { method: "POST", body: JSON.stringify({ membershipId: membership.id, paymentMethodId, amount, paidAt: new Date(paidAt), reference: reference || null }) });
+      await api("/service-center/membership-payments", {
+        method: "POST",
+        body: JSON.stringify({
+          membershipId: membership.id,
+          paymentMethodId,
+          amount,
+          paidAt: new Date(paidAt),
+          reference: reference || null,
+          termEndsAt: isRenewal ? new Date(`${termTo}T23:59:59`) : undefined,
+        }),
+      });
       toast.success("Membership payment recorded.");
       await onChanged();
       onClose();
@@ -918,7 +898,7 @@ function MembershipWalletModal({ membership, plans, paymentMethods, onClose, onC
               {isRenewal ? (
                 <>
                   <b className="block text-sm">This payment renews the membership</b>
-                  <p className="mt-1">New term: {renewalFrom.toLocaleDateString()} to {renewalTo.toLocaleDateString()}</p>
+                  <p className="mt-1">Confirm or adjust the new term's dates below — they default to what the plan and payment date give, but you can correct them (e.g. a late payment should still start from the day it was actually paid, not get backdated to cover days the member didn't show up for).</p>
                 </>
               ) : (
                 <>
@@ -935,6 +915,24 @@ function MembershipWalletModal({ membership, plans, paymentMethods, onClose, onC
             </Field>
             <Field label="Reference"><input className="input" value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Transaction code" /></Field>
             <Field label="Paid at"><input type="datetime-local" className="input" value={paidAt} onChange={(e) => setPaidAt(e.target.value)} /></Field>
+            {isRenewal && (
+              <>
+                <Field label="New term from">
+                  <input
+                    type="date"
+                    className="input"
+                    value={termFrom}
+                    onChange={(e) => {
+                      setTermFrom(e.target.value);
+                      setTermTo(dateInput(new Date(new Date(`${e.target.value}T00:00:00`).getTime() + membership.durationDays * 86_400_000)));
+                    }}
+                  />
+                </Field>
+                <Field label="New term up to">
+                  <input type="date" className="input" min={termFrom} value={termTo} onChange={(e) => setTermTo(e.target.value)} />
+                </Field>
+              </>
+            )}
             <div className="sm:col-span-2"><button disabled={saving} className="bg-primary px-5 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground disabled:opacity-60">{saving ? "Saving..." : "Record full payment"}</button></div>
           </form>
         )}
