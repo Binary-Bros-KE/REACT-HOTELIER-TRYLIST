@@ -24,6 +24,8 @@ import { useToast } from "@/components/ui/Toast";
 import PageBanner from "@/components/ui/PageBanner";
 import ActionButton from "@/components/ui/ActionButton";
 import ModalShell from "@/components/ui/ModalShell";
+import SearchableSelect from "@/components/ui/SearchableSelect";
+import { cn } from "@/lib/utils";
 
 type Status = "ACTIVE" | "PAUSED" | "EXPIRED" | "CANCELLED";
 type Customer = {
@@ -107,8 +109,20 @@ const blank: Form = {
   endsAt: "",
   status: "ACTIVE",
 };
-const dateInput = (value: Date | string) =>
-  new Date(value).toISOString().slice(0, 10);
+// Local calendar date, not the UTC one — a membership's startsAt/endsAt are
+// stored as exact instants (e.g. local midnight, which for a tenant east of
+// UTC is still the previous day in UTC). toISOString() always reports the
+// UTC date, so it silently showed Aug 31 for a membership that every other
+// view (toLocaleDateString, used everywhere else in this file) correctly
+// showed as Sep 1. Reading the Date object's own local fields matches how
+// <input type="date"> values get turned back into Dates on save.
+const dateInput = (value: Date | string) => {
+  const d = new Date(value);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+};
 const money = (value: number) =>
   `KSh ${value.toLocaleString("en-KE", { maximumFractionDigits: 2 })}`;
 type View = "table" | "cards";
@@ -126,9 +140,8 @@ function calendarWeeks(year: number, month: number): (number | null)[][] {
   return weeks;
 }
 
-function dateKey(value: Date | string) {
-  return new Date(value).toISOString().slice(0, 10);
-}
+// Same local-date rule as dateInput — visit matching must agree with it.
+const dateKey = dateInput;
 
 function addDays(date: Date, days: number) {
   const next = new Date(date);
@@ -158,6 +171,7 @@ export default function ServiceMemberships() {
   const [query, setQuery] = useState("");
   const [groupFilter, setGroupFilter] = useState("");
   const [open, setOpen] = useState(false);
+  const [quickCustomer, setQuickCustomer] = useState(false);
   const [attendanceFor, setAttendanceFor] = useState<Membership | null>(null);
   const [walletFor, setWalletFor] = useState<Membership | null>(null);
   const [loading, setLoading] = useState(true);
@@ -216,6 +230,12 @@ export default function ServiceMemberships() {
   const previewPrice = Number(form.planPrice) || 0;
   const previewDays = Number(form.durationDays) || 0;
   const previewDiscount = Number(form.discountPercent) || 0;
+  // A plan-backed membership's name/price/duration/discount/visit limit
+  // come straight from the plan — the server re-pins them from there no
+  // matter what's submitted, so editing them here would silently do
+  // nothing (or worse, look changed locally and drift from what's actually
+  // saved). Only a Custom (one-off) membership leaves them free to type.
+  const lockedToPlan = Boolean(form.planId);
 
   function create() {
     const start = new Date();
@@ -475,6 +495,16 @@ export default function ServiceMemberships() {
       {managingGroups && (
         <GroupsModal groups={groups} onClose={() => setManagingGroups(false)} onChanged={load} />
       )}
+      {quickCustomer && (
+        <QuickCustomerModal
+          onClose={() => setQuickCustomer(false)}
+          onCreated={(c) => {
+            setCustomers((cur) => [...cur, c].sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`)));
+            setForm((f) => ({ ...f, customerId: c.id }));
+            setQuickCustomer(false);
+          }}
+        />
+      )}
       {attendanceFor && (
         <MembershipAttendanceModal membership={attendanceFor} onClose={() => setAttendanceFor(null)} onChanged={load} />
       )}
@@ -499,19 +529,24 @@ export default function ServiceMemberships() {
         >
           <form id="membership-form" onSubmit={save} className="grid gap-4 p-5 sm:grid-cols-2">
             <Field label="Customer" required>
-              <select
-                required
-                className="input"
-                value={form.customerId}
-                onChange={(e) => setForm({ ...form, customerId: e.target.value })}
-              >
-                <option value="" disabled>Select customer</option>
-                {customers.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.firstName} {c.lastName}{c.serviceGroup ? ` - ${c.serviceGroup.name}` : ""}
-                  </option>
-                ))}
-              </select>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <SearchableSelect
+                    value={form.customerId}
+                    onChange={(id) => setForm({ ...form, customerId: id })}
+                    placeholder="Select customer"
+                    searchPlaceholder="Search customers…"
+                    emptyText="No customers match."
+                    options={customers.map((c) => ({
+                      value: c.id,
+                      label: `${c.firstName} ${c.lastName}`.trim(),
+                      hint: c.serviceGroup?.name ?? undefined,
+                      keywords: c.phone ?? undefined,
+                    }))}
+                  />
+                </div>
+                <ActionButton tone="neutral" icon={<LuPlus />} title="Create a new customer without leaving this form" onClick={() => setQuickCustomer(true)} className="h-10 shrink-0" />
+              </div>
             </Field>
             <Field label="Plan">
               <select className="input" value={form.planId} onChange={(e) => pickPlan(e.target.value)}>
@@ -521,17 +556,23 @@ export default function ServiceMemberships() {
                 ))}
               </select>
             </Field>
+            {lockedToPlan && (
+              <p className="text-xs text-muted-foreground sm:col-span-2">
+                These come from the plan and can't be typed over here — switch to a different plan (from the membership's wallet, once saved) or edit the plan itself to change them. Pick "Custom (one-off)" above to set them freely instead.
+              </p>
+            )}
             <Field label="Visit limit per term (blank = unlimited)">
-              <input type="number" min="1" className="input" value={form.visitLimit} onChange={(e) => setForm({ ...form, visitLimit: e.target.value })} placeholder="e.g. 12" />
+              <input type="number" min="1" disabled={lockedToPlan} className="input disabled:cursor-not-allowed disabled:bg-muted/50 disabled:text-muted-foreground" value={form.visitLimit} onChange={(e) => setForm({ ...form, visitLimit: e.target.value })} placeholder="e.g. 12" />
             </Field>
-            <label className="flex items-center justify-between border bg-background px-3 py-2.5 text-sm font-medium sm:self-end">
+            <label className={cn("flex items-center justify-between border bg-background px-3 py-2.5 text-sm font-medium sm:self-end", lockedToPlan && "bg-muted/50 text-muted-foreground")}>
               Discount also applies to products
-              <input type="checkbox" className="size-4 accent-secondary" checked={form.discountOnProducts} onChange={(e) => setForm({ ...form, discountOnProducts: e.target.checked })} />
+              <input type="checkbox" disabled={lockedToPlan} className="size-4 accent-secondary disabled:cursor-not-allowed" checked={form.discountOnProducts} onChange={(e) => setForm({ ...form, discountOnProducts: e.target.checked })} />
             </label>
             <Field label="Membership name" required>
               <input
                 required
-                className="input"
+                disabled={lockedToPlan}
+                className="input disabled:cursor-not-allowed disabled:bg-muted/50 disabled:text-muted-foreground"
                 value={form.planName}
                 onChange={(e) => setForm({ ...form, planName: e.target.value, endsAt: "" })}
                 placeholder="e.g. Gold monthly"
@@ -543,7 +584,8 @@ export default function ServiceMemberships() {
                 type="number"
                 min="0"
                 step="0.01"
-                className="input"
+                disabled={lockedToPlan}
+                className="input disabled:cursor-not-allowed disabled:bg-muted/50 disabled:text-muted-foreground"
                 placeholder="e.g. 5000"
                 value={form.planPrice}
                 onChange={(e) => setForm({ ...form, planPrice: e.target.value })}
@@ -555,7 +597,8 @@ export default function ServiceMemberships() {
                 type="number"
                 min="1"
                 step="1"
-                className="input"
+                disabled={lockedToPlan}
+                className="input disabled:cursor-not-allowed disabled:bg-muted/50 disabled:text-muted-foreground"
                 placeholder="e.g. 30"
                 value={form.durationDays}
                 onChange={(e) => setForm({ ...form, durationDays: e.target.value, endsAt: "" })}
@@ -567,7 +610,8 @@ export default function ServiceMemberships() {
                 min="0"
                 max="100"
                 step="0.01"
-                className="input"
+                disabled={lockedToPlan}
+                className="input disabled:cursor-not-allowed disabled:bg-muted/50 disabled:text-muted-foreground"
                 placeholder="e.g. 10 (blank = none)"
                 value={form.discountPercent}
                 onChange={(e) => setForm({ ...form, discountPercent: e.target.value })}
@@ -628,8 +672,11 @@ function MembershipAttendanceModal({ membership, onClose, onChanged }: { members
   const end = new Date(membership.endsAt); end.setHours(0, 0, 0, 0);
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const monthLabel = new Date(year, month - 1, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  // A day only counts as eligible-to-be-missed once it's actually over —
+  // today isn't "missed" yet just because it hasn't been marked, it's
+  // still in progress (d < today, not <=).
   let eligiblePast = 0;
-  for (let d = new Date(Math.max(start.getTime(), new Date(year, month - 1, 1).getTime())); d <= today && d <= end && d.getMonth() === month - 1; d = addDays(d, 1)) eligiblePast += 1;
+  for (let d = new Date(Math.max(start.getTime(), new Date(year, month - 1, 1).getTime())); d < today && d <= end && d.getMonth() === month - 1; d = addDays(d, 1)) eligiblePast += 1;
   const attended = [...visitDays].filter((k) => k.startsWith(`${year}-${String(month).padStart(2, "0")}`)).length;
   const missed = Math.max(0, eligiblePast - attended);
   const attendance = eligiblePast ? Math.round((attended / eligiblePast) * 100) : 0;
@@ -684,7 +731,9 @@ function MembershipAttendanceModal({ membership, onClose, onChanged }: { members
                 const date = new Date(year, month - 1, day);
                 const key = dateInput(date);
                 const inTerm = date >= start && date <= end;
-                const isFuture = date > today;
+                // Today counts as "not over yet", same as a real future day —
+                // it only becomes eligible to show as Missed once it's past.
+                const isFuture = date >= today;
                 const present = visitDays.has(key);
                 const missedDay = inTerm && !isFuture && !present;
                 return (
@@ -718,6 +767,15 @@ function MembershipWalletModal({ membership, plans, paymentMethods, onClose, onC
   const [saving, setSaving] = useState(false);
   const selectedPlan = plans.find((p) => p.id === (planId || membership.planId));
   const amount = Number(membership.planPrice);
+  // The membership's very first payment just settles the term it was
+  // enrolled with (already on the row) — it isn't extended again. Every
+  // payment after that is a renewal: one more full term from whichever is
+  // later, today or the current end date (mirrors the server's own rule).
+  const priorPaidCount = membership.payments.filter((p) => p.status === "PAID").length;
+  const isRenewal = priorPaidCount > 0;
+  const currentEndsAt = new Date(membership.endsAt);
+  const renewalFrom = currentEndsAt > new Date() ? currentEndsAt : new Date();
+  const renewalTo = new Date(renewalFrom.getTime() + membership.durationDays * 86_400_000);
 
   async function recordPayment(event: FormEvent) {
     event.preventDefault();
@@ -762,6 +820,19 @@ function MembershipWalletModal({ membership, plans, paymentMethods, onClose, onC
         {tab === "payment" && (
           <form onSubmit={recordPayment} className="mt-5 grid gap-4 sm:grid-cols-2">
             <Mini label="Locked amount" value={money(amount)} />
+            <div className="border border-l-4 border-l-accent bg-muted/40 p-3 text-xs sm:col-span-2">
+              {isRenewal ? (
+                <>
+                  <b className="block text-sm">This payment renews the membership</b>
+                  <p className="mt-1">New term: {renewalFrom.toLocaleDateString()} to {renewalTo.toLocaleDateString()}</p>
+                </>
+              ) : (
+                <>
+                  <b className="block text-sm">This is the first payment</b>
+                  <p className="mt-1">It settles the term already on this membership (through {currentEndsAt.toLocaleDateString()}) — it won't add more time. The next payment recorded will extend it.</p>
+                </>
+              )}
+            </div>
             <Field label="Payment method" required>
               <select required className="input" value={paymentMethodId} onChange={(e) => setPaymentMethodId(e.target.value)}>
                 <option value="">Choose method</option>
@@ -782,7 +853,12 @@ function MembershipWalletModal({ membership, plans, paymentMethods, onClose, onC
                 {plans.filter((p) => p.isActive || p.id === membership.planId).map((p) => <option key={p.id} value={p.id}>{p.name} - {money(Number(p.price))}</option>)}
               </select>
             </Field>
-            {selectedPlan && <div className="sm:col-span-2 border border-l-4 border-l-accent bg-muted/30 p-3 text-sm">{selectedPlan.durationDays} days - {Number(selectedPlan.discountPercent)}% discount - {money(Number(selectedPlan.price))}</div>}
+            {selectedPlan && (
+              <div className="sm:col-span-2 border border-l-4 border-l-accent bg-muted/30 p-3 text-sm">
+                <p>{selectedPlan.durationDays} days - {Number(selectedPlan.discountPercent)}% discount - {money(Number(selectedPlan.price))}</p>
+                <p className="mt-1 text-xs text-muted-foreground">Switching restarts this membership's validity from today: it will run {new Date().toLocaleDateString()} to {new Date(Date.now() + selectedPlan.durationDays * 86_400_000).toLocaleDateString()} under the new plan, regardless of time left on the current one.</p>
+              </div>
+            )}
             <div className="sm:col-span-2"><button disabled={saving || !planId} className="bg-primary px-5 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground disabled:opacity-60">{saving ? "Saving..." : "Switch plan"}</button></div>
           </form>
         )}
@@ -899,6 +975,51 @@ function PlansModal({ plans, onClose, onChanged }: { plans: CatalogPlan[]; onClo
     </ModalShell>
   );
 }
+function QuickCustomerModal({ onClose, onCreated }: { onClose: () => void; onCreated: (customer: Customer) => void }) {
+  const toast = useToast();
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [saving, setSaving] = useState(false);
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!firstName.trim() || !phone.trim()) return;
+    setSaving(true);
+    try {
+      const { customer } = await api<{ customer: Customer }>("/customers", {
+        method: "POST",
+        body: JSON.stringify({ firstName: firstName.trim(), lastName: lastName.trim() || undefined, phone: phone.trim() }),
+      });
+      toast.success("Customer created.");
+      onCreated(customer);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not create customer");
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <ModalShell
+      size="sm"
+      kicker="Service centre"
+      title="New customer"
+      onClose={onClose}
+      footer={
+        <button form="quick-customer-form" disabled={saving || !firstName.trim() || !phone.trim()} className="inline-flex items-center gap-2 bg-primary px-5 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground disabled:opacity-60">
+          {saving && <LuLoaderCircle className="animate-spin" />}
+          Create
+        </button>
+      }
+    >
+      <form id="quick-customer-form" onSubmit={submit} className="grid gap-4 p-5 sm:grid-cols-2">
+        <Field label="First name" required><input required autoFocus className="input" value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="e.g. Faith" /></Field>
+        <Field label="Last name"><input className="input" value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="e.g. Wanjiru" /></Field>
+        <Field label="Phone" required className="sm:col-span-2"><input required type="tel" className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="e.g. 0712 345 678" /></Field>
+        <p className="text-xs text-muted-foreground sm:col-span-2">They're selected for you as soon as they're created — add email, ID or a service group later from Customers.</p>
+      </form>
+    </ModalShell>
+  );
+}
 function GroupsModal({ groups, onClose, onChanged }: { groups: CustomerGroup[]; onClose: () => void; onChanged: () => Promise<void> }) {
   const empty = { name: "", description: "" };
   const [draft, setDraft] = useState(empty);
@@ -937,7 +1058,7 @@ function GroupsModal({ groups, onClose, onChanged }: { groups: CustomerGroup[]; 
     }
   }
   return (
-    <ModalShell size="md" kicker="Service centre" title="Customer groups" subtitle="Use groups to track corporate, gym or family memberships. Discounts still come from membership plans." onClose={onClose}>
+    <ModalShell size="md" kicker="Service centre" title="Customer groups" subtitle="Use groups to track corporate, gym or family memberships. Discounts still come from membership plans. Put a customer in a group from Service Center ▸ Customers ▸ edit that customer ▸ Service group — not here." onClose={onClose}>
       <div className="p-5">
         {err && <Message text={err} error />}
         <form onSubmit={submit} className="grid gap-3 sm:grid-cols-[1fr_auto]">
