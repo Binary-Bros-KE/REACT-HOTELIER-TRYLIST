@@ -98,6 +98,7 @@ type Form = {
   recordPayment: boolean;
   paymentMethodId: string;
   paymentReference: string;
+  groupId: string;
 };
 const blank: Form = {
   customerId: "",
@@ -114,6 +115,7 @@ const blank: Form = {
   recordPayment: true,
   paymentMethodId: "",
   paymentReference: "",
+  groupId: "",
 };
 // Local calendar date, not the UTC one — a membership's startsAt/endsAt are
 // stored as exact instants (e.g. local midnight, which for a tenant east of
@@ -272,9 +274,14 @@ export default function ServiceMemberships() {
       recordPayment: false,
       paymentMethodId: "",
       paymentReference: "",
+      groupId: item.customer.serviceGroup?.id ?? "",
     });
     setOpen(true);
     setError("");
+  }
+  function pickCustomer(id: string) {
+    const customer = customers.find((c) => c.id === id);
+    setForm((f) => ({ ...f, customerId: id, groupId: customer?.serviceGroup?.id ?? "" }));
   }
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -301,6 +308,16 @@ export default function ServiceMemberships() {
           }),
         },
       );
+      // The service group lives on the customer, not the membership — but
+      // staff shouldn't have to leave this form and go edit the customer
+      // separately just to put them in a group, so it's synced from here.
+      const customer = customers.find((c) => c.id === form.customerId);
+      if (form.customerId && form.groupId !== (customer?.serviceGroup?.id ?? "")) {
+        await api(`/customers/${form.customerId}`, {
+          method: "PATCH",
+          body: JSON.stringify({ serviceGroupId: form.groupId || null }),
+        });
+      }
       // Capturing the first payment right here — rather than leaving staff to
       // hit "Record Payment" afterward expecting it to extend the term it
       // just granted — is what keeps every *later* payment an unambiguous
@@ -533,7 +550,7 @@ export default function ServiceMemberships() {
           onClose={() => setQuickCustomer(false)}
           onCreated={(c) => {
             setCustomers((cur) => [...cur, c].sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`)));
-            setForm((f) => ({ ...f, customerId: c.id }));
+            setForm((f) => ({ ...f, customerId: c.id, groupId: c.serviceGroup?.id ?? "" }));
             setQuickCustomer(false);
           }}
         />
@@ -566,7 +583,7 @@ export default function ServiceMemberships() {
                 <div className="flex-1">
                   <SearchableSelect
                     value={form.customerId}
-                    onChange={(id) => setForm({ ...form, customerId: id })}
+                    onChange={pickCustomer}
                     placeholder="Select customer"
                     searchPlaceholder="Search customers…"
                     emptyText="No customers match."
@@ -580,6 +597,12 @@ export default function ServiceMemberships() {
                 </div>
                 <ActionButton tone="neutral" icon={<LuPlus />} title="Create a new customer without leaving this form" onClick={() => setQuickCustomer(true)} className="h-10 shrink-0" />
               </div>
+            </Field>
+            <Field label="Service group (optional)">
+              <select className="input" value={form.groupId} onChange={(e) => setForm({ ...form, groupId: e.target.value })}>
+                <option value="">No group</option>
+                {groups.filter((g) => g.isActive || g.id === form.groupId).map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+              </select>
             </Field>
             <Field label="Plan">
               <select className="input" value={form.planId} onChange={(e) => pickPlan(e.target.value)}>
@@ -1129,7 +1152,7 @@ function GroupsModal({ groups, onClose, onChanged }: { groups: CustomerGroup[]; 
     }
   }
   return (
-    <ModalShell size="md" kicker="Service centre" title="Customer groups" subtitle="Use groups to track corporate, gym or family memberships. Discounts still come from membership plans. Put a customer in a group from Service Center ▸ Customers ▸ edit that customer ▸ Service group — not here." onClose={onClose}>
+    <ModalShell size="md" kicker="Service centre" title="Customer groups" subtitle="Use groups to track corporate, gym or family memberships. Discounts still come from membership plans. Assign a member to a group from the membership's own create/edit form (or from Customers ▸ edit customer) — not here, this is just the list of groups." onClose={onClose}>
       <div className="p-5">
         {err && <Message text={err} error />}
         <form onSubmit={submit} className="grid gap-3 sm:grid-cols-[1fr_auto]">
