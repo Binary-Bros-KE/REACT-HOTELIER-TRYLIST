@@ -95,6 +95,9 @@ type Form = {
   startsAt: string;
   endsAt: string;
   status: Status;
+  recordPayment: boolean;
+  paymentMethodId: string;
+  paymentReference: string;
 };
 const blank: Form = {
   customerId: "",
@@ -108,6 +111,9 @@ const blank: Form = {
   startsAt: "",
   endsAt: "",
   status: "ACTIVE",
+  recordPayment: true,
+  paymentMethodId: "",
+  paymentReference: "",
 };
 // Local calendar date, not the UTC one — a membership's startsAt/endsAt are
 // stored as exact instants (e.g. local midnight, which for a tenant east of
@@ -236,6 +242,7 @@ export default function ServiceMemberships() {
   // nothing (or worse, look changed locally and drift from what's actually
   // saved). Only a Custom (one-off) membership leaves them free to type.
   const lockedToPlan = Boolean(form.planId);
+  const selectedPaymentMethod = paymentMethods.find((m) => m.id === form.paymentMethodId);
 
   function create() {
     const start = new Date();
@@ -262,6 +269,9 @@ export default function ServiceMemberships() {
       startsAt: dateInput(item.startsAt),
       endsAt: dateInput(item.endsAt),
       status: item.status,
+      recordPayment: false,
+      paymentMethodId: "",
+      paymentReference: "",
     });
     setOpen(true);
     setError("");
@@ -271,7 +281,7 @@ export default function ServiceMemberships() {
     setSaving(true);
     setError("");
     try {
-      await api(
+      const result = await api<{ membership: Membership }>(
         editing
           ? `/service-center/memberships/${editing.id}`
           : "/service-center/memberships",
@@ -291,8 +301,31 @@ export default function ServiceMemberships() {
           }),
         },
       );
+      // Capturing the first payment right here — rather than leaving staff to
+      // hit "Record Payment" afterward expecting it to extend the term it
+      // just granted — is what keeps every *later* payment an unambiguous
+      // renewal (see the payment-recording route's priorPaidCount check).
+      let paymentRecorded = false;
+      if (!editing && form.recordPayment && form.paymentMethodId) {
+        await api("/service-center/membership-payments", {
+          method: "POST",
+          body: JSON.stringify({
+            membershipId: result.membership.id,
+            paymentMethodId: form.paymentMethodId,
+            reference: form.paymentReference || undefined,
+            status: "PAID",
+          }),
+        });
+        paymentRecorded = true;
+      }
       setOpen(false);
-      setNotice(editing ? "Membership updated." : "Membership created.");
+      setNotice(
+        editing
+          ? "Membership updated."
+          : paymentRecorded
+            ? "Membership created and first payment recorded."
+            : "Membership created.",
+      );
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not save membership");
@@ -646,6 +679,44 @@ export default function ServiceMemberships() {
                 ))}
               </select>
             </Field>
+            {!editing && (
+              <label className="flex items-center justify-between border bg-background px-3 py-2.5 text-sm font-medium sm:col-span-2">
+                Record first payment now
+                <input
+                  type="checkbox"
+                  className="size-4 accent-secondary"
+                  checked={form.recordPayment}
+                  onChange={(e) => setForm({ ...form, recordPayment: e.target.checked, paymentMethodId: e.target.checked ? form.paymentMethodId : "", paymentReference: e.target.checked ? form.paymentReference : "" })}
+                />
+              </label>
+            )}
+            {!editing && form.recordPayment && (
+              <>
+                <Field label="Payment method" required>
+                  <select required className="input" value={form.paymentMethodId} onChange={(e) => setForm({ ...form, paymentMethodId: e.target.value })}>
+                    <option value="">Choose method</option>
+                    {paymentMethods.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                  </select>
+                </Field>
+                <Field label="Reference" required={selectedPaymentMethod?.requiresReference}>
+                  <input
+                    required={selectedPaymentMethod?.requiresReference}
+                    className="input"
+                    value={form.paymentReference}
+                    onChange={(e) => setForm({ ...form, paymentReference: e.target.value })}
+                    placeholder="Transaction code"
+                  />
+                </Field>
+                <p className="text-xs text-muted-foreground sm:col-span-2">
+                  This settles the term being granted now — it won't add extra time. Every payment recorded after this one extends the membership by a full term.
+                </p>
+              </>
+            )}
+            {!editing && !form.recordPayment && (
+              <p className="text-xs text-muted-foreground sm:col-span-2">
+                No payment will be recorded — this membership is created on credit. Record its first payment later from the membership's wallet.
+              </p>
+            )}
             <div className="border border-l-4 border-l-accent bg-muted/40 p-3 text-xs">
               <b>{form.planName || "Membership preview"}</b>
               <p className="mt-1">
@@ -829,7 +900,7 @@ function MembershipWalletModal({ membership, plans, paymentMethods, onClose, onC
               ) : (
                 <>
                   <b className="block text-sm">This is the first payment</b>
-                  <p className="mt-1">It settles the term already on this membership (through {currentEndsAt.toLocaleDateString()}) — it won't add more time. The next payment recorded will extend it.</p>
+                  <p className="mt-1">No payment was captured when this membership was created, so this one just settles the term already on it (through {currentEndsAt.toLocaleDateString()}) — it won't add more time. The next payment recorded will extend it.</p>
                 </>
               )}
             </div>
