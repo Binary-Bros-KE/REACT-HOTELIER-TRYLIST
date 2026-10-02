@@ -46,13 +46,33 @@ export const PRINTER_MODELS: { value: string; label: string }[] = [
   { value: 'bixolon-srp-350iii', label: 'Bixolon SRP-350' },
 ]
 
+// How many characters actually fit per line on 80mm paper at each printer's
+// own default font — this is a per-model hardware fact, not a style choice.
+// Epson's default Font A fits 42 at 80mm (48 is Font B/condensed, which we
+// never select), while Star's firmware default is genuinely 48. Guessing one
+// number for every brand is what clipped a real receipt's totals column —
+// see the 80mm branch of buildReceiptBytes. 58mm paper is handled separately
+// via the <=35 compact threshold, not covered by this map.
+const RECOMMENDED_COLUMNS_80MM: Record<string, number> = {
+  generic: 42, // conservative: under-filling wastes a little margin, over-filling clips content
+  'epson-tm-t88iv': 42,
+  'epson-tm-t20iii': 42,
+  'epson-tm-m30': 42,
+  'star-tsp650': 48,
+  'star-mc-print3': 48,
+  'bixolon-srp-350iii': 42,
+}
+export function recommendedColumns(model: string): number {
+  return RECOMMENDED_COLUMNS_80MM[model] ?? 42
+}
+
 const DEFAULTS: ThermalSettings = {
   enabled: true,
   connection: 'bridge',
   model: 'generic',
   address: '',
   bridgeUrl: DEFAULT_BRIDGE_URL,
-  columns: 48,
+  columns: 42,
   autoPrint: true,
 }
 
@@ -285,7 +305,7 @@ function wrapWords(text: string, width: number): string[] {
 }
 
 export function buildReceiptBytes(order: ReceiptOrder, profile: ReceiptProfile, s: ThermalSettings): Uint8Array {
-  const cols = Math.max(24, Math.min(64, Math.round(s.columns) || 48))
+  const cols = Math.max(24, Math.min(64, Math.round(s.columns) || 42))
   const compact = cols <= 35
   const isComplementary = order.saleType === 'COMPLIMENTARY'
   const paid = order.payments.reduce((sum, p) => sum + Number(p.amount), 0)
@@ -303,6 +323,13 @@ export function buildReceiptBytes(order: ReceiptOrder, profile: ReceiptProfile, 
   const priceW = compact ? 10 : 12
   const nameW = cols - priceW - 1
   const row = (l: string, r: string) => e.table([{ width: nameW, align: 'left' }, { width: priceW, align: 'right' }], [[l, r]])
+  // A label too long for its column would otherwise get hard-wrapped by the
+  // printer itself mid-price — drop it to its own line with the price
+  // right-aligned below, in either paper mode, not just compact.
+  const rowSafe = (l: string, r: string) => {
+    if (l.length > nameW) { e.line(l); e.line(`${' '.repeat(Math.max(0, cols - r.length))}${r}`) }
+    else row(l, r)
+  }
 
   // -------- header: business name (large, caps, centered) down through the
   // location's own receipt header text --------
@@ -351,14 +378,8 @@ export function buildReceiptBytes(order: ReceiptOrder, profile: ReceiptProfile, 
   // -------- items --------
   for (const item of order.items) {
     const label = `${item.quantity} x ${receiptItemName(item)}${receiptVariantSuffix(item)}`
-    if (compact && label.length > nameW) {
-      const price = money(Number(item.unitPrice) * item.quantity)
-      e.line(label)
-      e.line(`${' '.repeat(Math.max(0, cols - price.length))}${price}`)
-    } else {
-      row(label, money(Number(item.unitPrice) * item.quantity))
-    }
-    for (const a of item.addons) row(`  + ${a.addon.name}`, money(Number(a.unitPrice) * a.quantity))
+    rowSafe(label, money(Number(item.unitPrice) * item.quantity))
+    for (const a of item.addons) rowSafe(`  + ${a.addon.name}`, money(Number(a.unitPrice) * a.quantity))
   }
   e.rule()
 
@@ -437,7 +458,7 @@ export type DispatchSlip = {
 const qtyText = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 3 })
 
 export function buildDispatchSlipBytes(slip: DispatchSlip, profile: ReceiptProfile | null, s: ThermalSettings): Uint8Array {
-  const cols = Math.max(24, Math.min(64, Math.round(s.columns) || 48))
+  const cols = Math.max(24, Math.min(64, Math.round(s.columns) || 42))
   const compact = cols <= 35
   const e = new ReceiptPrinterEncoder({
     language: 'esc-pos',

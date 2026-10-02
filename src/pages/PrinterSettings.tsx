@@ -7,7 +7,7 @@ import PageBanner from '@/components/ui/PageBanner'
 import ActionButton from '@/components/ui/ActionButton'
 import {
   getThermalSettings, saveThermalSettings, pairUsbPrinter, pairBluetoothPrinter,
-  webUsbAvailable, webBluetoothAvailable, PRINTER_MODELS,
+  webUsbAvailable, webBluetoothAvailable, PRINTER_MODELS, recommendedColumns,
   pingBridge, listBridgePrinters,
   type ThermalSettings, type ThermalConnection, type BridgePrinter,
 } from '@/lib/thermalPrinter'
@@ -116,7 +116,18 @@ export default function PrinterSettings() {
               </div>
               <div>
                 <Label>Printer type</Label>
-                <select value={s.model} onChange={(e) => patch({ model: e.target.value })} className="input mt-2">
+                <select
+                  value={s.model}
+                  // Re-suggests the column count for 80mm paper that matches
+                  // this brand's own default font — Epson fits 42, Star 48;
+                  // using one number for every brand is what clipped a real
+                  // receipt's totals column on an Epson TM-T88. Only applied
+                  // on an actual model change, so it never fights a width
+                  // you already fine-tuned by hand for 58mm paper or a
+                  // non-default font.
+                  onChange={(e) => patch({ model: e.target.value, columns: s.columns > 35 ? recommendedColumns(e.target.value) : s.columns })}
+                  className="input mt-2"
+                >
                   {PRINTER_MODELS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
                 </select>
               </div>
@@ -187,11 +198,11 @@ export default function PrinterSettings() {
             <input
               type="number" min={24} max={64}
               value={s.columns}
-              onChange={(e) => patch({ columns: Number(e.target.value) || 48 })}
+              onChange={(e) => patch({ columns: Number(e.target.value) || recommendedColumns(s.model) })}
               className="input mt-2 max-w-40"
             />
             <p className="mt-2 max-w-xl text-xs text-muted-foreground">
-              Content prints at its true size (not shrunk to fit), so setting this too high cuts off the right edge. 32 suits 58&nbsp;mm paper, 48 suits 80&nbsp;mm. The moment a column or a total gets clipped, drop back to the last value that printed cleanly.
+              Content prints at its true size (not shrunk to fit), so setting this too high cuts off the right edge — a price can even end up split across two lines. 32 suits 58&nbsp;mm paper. For 80&nbsp;mm, it depends on the printer's own default font: most Epson models fit 42, Star models usually fit 48 — picking the Printer type above already fills in the right number. The moment a column or a total gets clipped, drop back to the last value that printed cleanly.
             </p>
 
             <label className="mt-5 flex cursor-pointer items-start gap-2.5 border bg-muted/40 p-3">
