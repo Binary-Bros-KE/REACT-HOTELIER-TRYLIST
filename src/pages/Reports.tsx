@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   LuBanknote,
   LuCalendarDays,
@@ -60,6 +61,8 @@ type RevenueBreakdown = {
   unresolvedCostLines: number
   netRevenue: number
   serviceCenterExcludedByLocationFilter: boolean
+  expensesOnly?: number
+  salariesPaid?: number
 }
 type TopItem = { name: string; qty: number; revenue: number }
 type CountBucket = { name: string; count: number; total: number }
@@ -383,19 +386,25 @@ export default function Reports() {
 
               <div>
                 <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total Expenses — where the money went ({formatKes(report.cards.totalExpenses)})</p>
+                <p className="mb-2 text-xs text-muted-foreground">
+                  <span className="font-semibold">{formatKes(report.revenueBreakdown.expensesOnly ?? report.cards.totalExpenses)}</span> day-to-day expenses (below)
+                  {' + '}<span className="font-semibold">{formatKes(report.revenueBreakdown.salariesPaid ?? 0)}</span> salaries paid
+                </p>
                 {report.expensesByCategory.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No expenses recorded this period.</p>
                 ) : (
                   <div className="overflow-hidden rounded-sm border">
                     <table className="w-full text-left text-sm">
                       <thead className="bg-primary text-xs uppercase text-primary-foreground"><tr><th className="px-4 py-2">Category</th><th className="px-4 py-2 text-right">Times Paid</th><th className="px-4 py-2 text-right">Total</th><th className="px-4 py-2 text-right">% of Total</th></tr></thead>
-                      <tbody>{report.expensesByCategory.map((c) => (
-                        <tr key={c.name} className="border-t"><td className="px-4 py-2 font-medium">{c.name}</td><td className="px-4 py-2 text-right tabular-nums">{c.count}</td><td className="px-4 py-2 text-right tabular-nums font-semibold">{formatKes(c.total)}</td><td className="px-4 py-2 text-right tabular-nums">{report.cards.totalExpenses ? ((c.total / report.cards.totalExpenses) * 100).toFixed(1) : '0.0'}%</td></tr>
-                      ))}</tbody>
+                      <tbody>{report.expensesByCategory.map((c) => {
+                        const base = report.revenueBreakdown.expensesOnly ?? report.cards.totalExpenses
+                        return (
+                        <tr key={c.name} className="border-t"><td className="px-4 py-2 font-medium">{c.name}</td><td className="px-4 py-2 text-right tabular-nums">{c.count}</td><td className="px-4 py-2 text-right tabular-nums font-semibold">{formatKes(c.total)}</td><td className="px-4 py-2 text-right tabular-nums">{base ? ((c.total / base) * 100).toFixed(1) : '0.0'}%</td></tr>
+                      )})}</tbody>
                     </table>
                   </div>
                 )}
-                <p className="mt-2 text-xs text-muted-foreground">Supplier payments (Capital Invested) aren't counted here — see the card above.</p>
+                <p className="mt-2 text-xs text-muted-foreground">Supplier payments (Capital Invested) aren't counted here — see the card above. Salaries, and a full breakdown of every outflow, are on the <Link to="/reports/expenses-report" className="font-semibold text-secondary hover:underline">Expenses Report</Link>.</p>
               </div>
 
               <div>

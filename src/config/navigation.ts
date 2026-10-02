@@ -50,6 +50,7 @@ import {
   LuTrendingUp,
   LuBadgeDollarSign,
   LuPrinter,
+  LuHandCoins,
 } from 'react-icons/lu'
 
 export const PERMISSION_SECTIONS = ['OVERVIEW', 'RECEPTION', 'HOUSEKEEPING', 'SALES', 'KITCHEN', 'SERVICE_CENTER', 'INVENTORY', 'TEAM', 'FINANCE', 'REPORTS', 'SYSTEM'] as const
@@ -230,6 +231,7 @@ export const navigation: NavGroup[] = [
       { label: 'Products Report', href: '/reports/products-report', icon: LuTrendingUp },
       { label: 'Rooms Report', href: '/reports/rooms-report', icon: LuBedDouble, moduleKey: 'ROOMS' },
       { label: 'Assets Report', href: '/reports/assets-report', icon: LuArmchair },
+      { label: 'Expenses Report', href: '/reports/expenses-report', icon: LuHandCoins, moduleKey: 'ACCOUNTING' },
       { label: 'Tax Report', href: '/reports/tax-report', icon: LuBadgeDollarSign },
     ],
   },
