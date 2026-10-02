@@ -1095,6 +1095,7 @@ function QuickCustomerModal({ onClose, onCreated }: { onClose: () => void; onCre
   return (
     <ModalShell
       size="sm"
+      stacked
       kicker="Service centre"
       title="New customer"
       onClose={onClose}
