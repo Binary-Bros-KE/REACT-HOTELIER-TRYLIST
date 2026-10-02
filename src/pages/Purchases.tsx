@@ -322,7 +322,7 @@ export default function Purchases() {
 
   function openCreate() {
     setEditing(null)
-    setForm({ ...emptyForm, orderDate: todayInput(), locationId: locations.find((l) => l.type === 'STORE')?.id ?? '' })
+    setForm({ ...emptyForm, orderDate: todayInput() })
     setProductQuery('')
     setFormError('')
     setShowForm(true)
@@ -333,7 +333,7 @@ export default function Purchases() {
     setProductQuery('')
     setForm({
       supplierId: purchase.supplier.id,
-      locationId: purchase.location?.id ?? locations.find((l) => l.type === 'STORE')?.id ?? '',
+      locationId: purchase.location?.id ?? '',
       orderDate: toDateInput(purchase.orderDate),
       expectedDate: toDateInput(purchase.expectedDate),
       reference: purchase.reference ?? '',
@@ -918,7 +918,7 @@ function ReceiveGoodsModal({ purchase, locations, onClose, onReceived }: {
   onReceived: (result: { id: string; receiptNo: string; purchase: Purchase }) => void
 }) {
   const toast = useToast()
-  const [locationId, setLocationId] = useState(purchase.location?.id ?? locations.find((l) => l.type === 'STORE')?.id ?? '')
+  const [locationId, setLocationId] = useState(purchase.location?.id ?? '')
   const [receivedAt, setReceivedAt] = useState(todayInput())
   const [note, setNote] = useState('')
   const [lines, setLines] = useState<ReceiveLine[]>(() => purchase.items

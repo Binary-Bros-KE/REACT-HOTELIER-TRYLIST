@@ -73,9 +73,10 @@ type Requisition = {
 }
 type Summary = { total: number; byStatus: Record<Status, number>; awaitingReview: number }
 
-// The raiser only ever deals in product + quantity — no cost field here at
-// all. Cost gets set later, by whoever reviews it (see reviewCosts below).
-type LineRow = { productId: string; quantity: string }
+// The raiser prices their own line (estimatedUnitCost) — blank means "use
+// the product's current catalog cost" (the server fills that in). A
+// reviewer can still adjust it before approving (see reviewCosts below).
+type LineRow = { productId: string; quantity: string; estimatedUnitCost: string }
 type ReqForm = { requisitionDate: string; neededBy: string; purpose: string; suggestedSupplierId: string; notes: string; items: LineRow[] }
 const emptyForm: ReqForm = { requisitionDate: '', neededBy: '', purpose: '', suggestedSupplierId: '', notes: '', items: [] }
 
@@ -130,9 +131,12 @@ export default function PurchaseRequisitions() {
   // SUBMITTED requisition for review. The raiser never set these — this is
   // where a reviewer with REQUISITION_APPROVE fills them in before deciding.
   const [reviewCosts, setReviewCosts] = useState<Record<string, string>>({})
+  // A reviewer can correct quantity too (e.g. the storekeeper overstated
+  // what's actually available) — keyed by item id like reviewCosts.
+  const [reviewQty, setReviewQty] = useState<Record<string, string>>({})
   const reviewTotal = useMemo(
-    () => (detail?.items ?? []).reduce((sum, i) => sum + costUnits(Number(i.quantity), Number(i.product.packSize) || 0) * (Number(reviewCosts[i.id]) || 0), 0),
-    [detail, reviewCosts],
+    () => (detail?.items ?? []).reduce((sum, i) => sum + costUnits(Number(reviewQty[i.id] ?? i.quantity), Number(i.product.packSize) || 0) * (Number(reviewCosts[i.id]) || 0), 0),
+    [detail, reviewCosts, reviewQty],
   )
 
   const load = useCallback(async () => {
@@ -180,7 +184,7 @@ export default function PurchaseRequisitions() {
   }, [productQuery, products, form.items])
 
   function addProduct(p: Product) {
-    setForm((f) => (f.items.some((i) => i.productId === p.id) ? f : { ...f, items: [...f.items, { productId: p.id, quantity: '' }] }))
+    setForm((f) => (f.items.some((i) => i.productId === p.id) ? f : { ...f, items: [...f.items, { productId: p.id, quantity: '', estimatedUnitCost: '' }] }))
     setProductQuery('')
   }
 
@@ -200,7 +204,7 @@ export default function PurchaseRequisitions() {
       purpose: r.purpose ?? '',
       suggestedSupplierId: r.suggestedSupplier?.id ?? '',
       notes: r.notes ?? '',
-      items: r.items.map((i) => ({ productId: i.productId, quantity: String(Number(i.quantity)) })),
+      items: r.items.map((i) => ({ productId: i.productId, quantity: String(Number(i.quantity)), estimatedUnitCost: i.estimatedUnitCost != null ? String(Number(i.estimatedUnitCost)) : '' })),
     })
     setFormError('')
     setShowForm(true)
@@ -215,7 +219,7 @@ export default function PurchaseRequisitions() {
     event.preventDefault()
     const items = form.items
       .filter((r) => r.productId && Number(r.quantity) > 0)
-      .map((r) => ({ productId: r.productId, quantity: Number(r.quantity) }))
+      .map((r) => ({ productId: r.productId, quantity: Number(r.quantity), estimatedUnitCost: r.estimatedUnitCost.trim() ? Number(r.estimatedUnitCost) : undefined }))
     if (!items.length) { setFormError('Add at least one item with a quantity'); return }
     setSaving(true)
     setFormError('')
@@ -271,13 +275,43 @@ export default function PurchaseRequisitions() {
    * whatever the reviewer just entered per line (PATCH, allowed on a
    * SUBMITTED requisition for a REQUISITION_APPROVE holder), then moves the
    * requisition to APPROVED. */
+  /** Items as the reviewer has them right now — their quantity/cost edits
+   * where made, the raiser's original otherwise. Re-sent whole on every
+   * save since the server replaces the item set (see resetReviewState). */
+  function reviewItemsPayload(r: Requisition) {
+    return r.items.map((i) => ({ productId: i.productId, quantity: Number(reviewQty[i.id] ?? i.quantity), estimatedUnitCost: Number(reviewCosts[i.id]) || 0 }))
+  }
+
+  /** The server replaces every item (new ids) on a PATCH with `items` —
+   * re-key the per-line review state to match whatever just came back. */
+  function resetReviewState(r: Requisition) {
+    setReviewCosts(Object.fromEntries(r.items.map((i) => [i.id, i.estimatedUnitCost != null ? String(Number(i.estimatedUnitCost)) : ''])))
+    setReviewQty(Object.fromEntries(r.items.map((i) => [i.id, String(Number(i.quantity))])))
+  }
+
+  /** Persists the reviewer's quantity/cost edits without changing status —
+   * so a part-way-done review survives without forcing an approve/reject. */
+  async function saveReview(r: Requisition) {
+    setWorking(true)
+    try {
+      const { requisition } = await api<{ requisition: Requisition }>(`/purchase-requisitions/${r.id}`, { method: 'PATCH', body: JSON.stringify({ items: reviewItemsPayload(r) }) })
+      toast.success('Changes saved.')
+      setDetail(requisition)
+      resetReviewState(requisition)
+      await load()
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : 'Could not save changes')
+    } finally {
+      setWorking(false)
+    }
+  }
+
   async function approveWithCosts(r: Requisition) {
     if (!window.confirm(`Approve ${r.requisitionNo}?`)) return
     setWorking(true)
     setNotice('')
     try {
-      const items = r.items.map((i) => ({ productId: i.productId, quantity: Number(i.quantity), estimatedUnitCost: Number(reviewCosts[i.id]) || 0 }))
-      await api(`/purchase-requisitions/${r.id}`, { method: 'PATCH', body: JSON.stringify({ items }) })
+      await api(`/purchase-requisitions/${r.id}`, { method: 'PATCH', body: JSON.stringify({ items: reviewItemsPayload(r) }) })
       const { requisition } = await api<{ requisition: Requisition }>(`/purchase-requisitions/${r.id}/status`, { method: 'POST', body: JSON.stringify({ status: 'APPROVED' }) })
       setNotice(`${r.requisitionNo} is now approved.`)
       toast.success('Status updated.')
@@ -305,7 +339,7 @@ export default function PurchaseRequisitions() {
 
   function openDetail(r: Requisition) {
     setDetail(r)
-    setReviewCosts(Object.fromEntries(r.items.map((i) => [i.id, i.estimatedUnitCost != null ? String(Number(i.estimatedUnitCost)) : ''])))
+    resetReviewState(r)
   }
 
   function openConvert(r: Requisition) {
@@ -443,113 +477,123 @@ export default function PurchaseRequisitions() {
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <form onSubmit={saveRequisition} className="max-h-[90vh] w-full max-w-3xl overflow-y-auto border-2 border-foreground/25 bg-card p-6 shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
-            <div className="-mx-6 -mt-6 mb-5 border-b-4 border-accent bg-muted/60 px-6 py-4">
-              <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">{editing ? 'Edit requisition' : 'New requisition'}</p>
-              <h2 className="mt-1 font-display text-2xl font-semibold">{editing ? editing.requisitionNo : 'Raise a purchase requisition'}</h2>
+          <form onSubmit={saveRequisition} className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden border-2 border-foreground/25 bg-card shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+            <div className="flex shrink-0 items-start justify-between gap-4 border-b-4 border-accent bg-muted/60 px-6 py-4">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">{editing ? 'Edit requisition' : 'New requisition'}</p>
+                <h2 className="mt-1 font-display text-2xl font-semibold">{editing ? editing.requisitionNo : 'Raise a purchase requisition'}</h2>
+              </div>
+              <button type="button" onClick={() => setShowForm(false)} className="shrink-0 bg-black p-2 text-white transition hover:bg-black/80"><LuX className="size-5" /></button>
             </div>
 
-            <FieldGroup title="Details">
-              <Field label="Purpose"><input placeholder="e.g. Restock dry store for October" value={form.purpose} onChange={(e) => setForm({ ...form, purpose: e.target.value })} className="input" /></Field>
-              <Field label="Suggested Supplier">
-                <button
-                  type="button"
-                  onClick={() => setSupplierPickerFor('suggested')}
-                  className="flex min-h-12 w-full items-center justify-between rounded-sm border bg-background px-3 py-2 text-left text-sm hover:bg-muted"
-                >
-                  {suggestedSupplier ? (
-                    <span className="min-w-0">
-                      <span className="block truncate font-semibold">{suggestedSupplier.name}</span>
-                      {(suggestedSupplier.phone || suggestedSupplier.contactPerson) && <span className="mt-0.5 block truncate text-xs text-muted-foreground">{suggestedSupplier.phone ?? suggestedSupplier.contactPerson}</span>}
-                    </span>
-                  ) : (
-                    <span className="text-muted-foreground">No preference</span>
-                  )}
-                  <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-secondary">{suggestedSupplier ? 'Change' : 'Select'}</span>
-                </button>
-                {suggestedSupplier && (
-                  <button type="button" onClick={() => setForm({ ...form, suggestedSupplierId: '' })} className="mt-1 text-xs font-semibold text-muted-foreground hover:text-destructive">
-                    Clear preference
-                  </button>
-                )}
-              </Field>
-              <Field label="Requisition Date"><input type="date" value={form.requisitionDate} onChange={(e) => setForm({ ...form, requisitionDate: e.target.value })} className="input" /></Field>
-              <Field label="Needed By"><input type="date" value={form.neededBy} onChange={(e) => setForm({ ...form, neededBy: e.target.value })} className="input" /></Field>
-            </FieldGroup>
-
-            <div className="mt-6 border-t pt-5">
-              <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Items</p>
-
-              <div className="relative">
-                <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <input value={productQuery} onChange={(e) => setProductQuery(e.target.value)} placeholder="Search products to add…" className="w-full rounded-sm border bg-background py-2.5 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
-                {productQuery.trim() && (
-                  <div className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-sm border bg-card shadow-lg">
-                    {productMatches.length === 0 ? (
-                      <p className="px-3 py-2 text-sm text-muted-foreground">No matching products.</p>
-                    ) : productMatches.map((p) => (
-                      <button key={p.id} type="button" onClick={() => addProduct(p)} className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-muted">
-                        <span className="truncate">{p.name}</span>
-                        <span className="shrink-0 text-xs text-muted-foreground">{p.packSize ? p.packLabel ?? p.unit : p.unit}</span>
+            {/* Two independently-scrolling panes, so a long item list never
+                makes you scroll past the details or the search box to reach it. */}
+            <div className="grid min-h-0 flex-1 grid-cols-1 sm:grid-cols-[22rem_1fr]">
+              {/* Controls */}
+              <div className="min-h-0 overflow-y-auto border-b p-6 sm:border-b-0 sm:border-r">
+                <div className="space-y-4">
+                  <Field label="Purpose"><input placeholder="e.g. Restock dry store for October" value={form.purpose} onChange={(e) => setForm({ ...form, purpose: e.target.value })} className="input" /></Field>
+                  <Field label="Suggested Supplier">
+                    <button
+                      type="button"
+                      onClick={() => setSupplierPickerFor('suggested')}
+                      className="flex min-h-12 w-full items-center justify-between rounded-sm border bg-background px-3 py-2 text-left text-sm hover:bg-muted"
+                    >
+                      {suggestedSupplier ? (
+                        <span className="min-w-0">
+                          <span className="block truncate font-semibold">{suggestedSupplier.name}</span>
+                          {(suggestedSupplier.phone || suggestedSupplier.contactPerson) && <span className="mt-0.5 block truncate text-xs text-muted-foreground">{suggestedSupplier.phone ?? suggestedSupplier.contactPerson}</span>}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">No preference</span>
+                      )}
+                      <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-secondary">{suggestedSupplier ? 'Change' : 'Select'}</span>
+                    </button>
+                    {suggestedSupplier && (
+                      <button type="button" onClick={() => setForm({ ...form, suggestedSupplierId: '' })} className="mt-1 text-xs font-semibold text-muted-foreground hover:text-destructive">
+                        Clear preference
                       </button>
-                    ))}
+                    )}
+                  </Field>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Requisition Date"><input type="date" value={form.requisitionDate} onChange={(e) => setForm({ ...form, requisitionDate: e.target.value })} className="input" /></Field>
+                    <Field label="Needed By"><input type="date" value={form.neededBy} onChange={(e) => setForm({ ...form, neededBy: e.target.value })} className="input" /></Field>
                   </div>
-                )}
+                  <Field label="Notes"><textarea rows={3} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className="input" /></Field>
+                </div>
               </div>
 
-              {form.items.length === 0 ? (
-                <p className="mt-3 rounded-sm border border-dashed p-4 text-center text-sm text-muted-foreground">No items yet — search above to add products.</p>
-              ) : (
-                <div className="mt-3 space-y-2">
-                  <div className="hidden sm:grid grid-cols-[1fr_16rem_2rem] gap-2 px-1 text-xs font-medium text-muted-foreground">
-                    <span>Product</span><span>Qty</span><span />
-                  </div>
-                  {form.items.map((row, index) => {
-                    const product = productById(row.productId)
-                    const unitLabel = product?.packUnit?.name ?? product?.unit ?? ''
-                    const qtyInput = (
-                      <PackQtyInput
-                        value={row.quantity}
-                        onChange={(value) => setRow(index, { quantity: value })}
-                        packSize={Number(product?.packSize) || 0}
-                        packLabel={product?.packLabel ?? ''}
-                        unitName={unitLabel}
-                        className="input"
-                      />
-                    )
-                    return (
-                      <div key={row.productId} className="rounded-sm border p-3 sm:grid sm:grid-cols-[1fr_16rem_2rem] sm:items-start sm:gap-2 sm:border-0 sm:p-0">
-                        <div className="flex items-start justify-between gap-2 sm:block sm:min-w-0">
+              {/* Items */}
+              <div className="flex min-h-0 flex-col p-6">
+                <p className="mb-3 shrink-0 border-l-4 border-accent pl-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">Items</p>
+
+                <div className="relative shrink-0">
+                  <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <input value={productQuery} onChange={(e) => setProductQuery(e.target.value)} placeholder="Search products to add…" className="w-full rounded-sm border bg-background py-2.5 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
+                  {productQuery.trim() && (
+                    <div className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-sm border bg-card shadow-lg">
+                      {productMatches.length === 0 ? (
+                        <p className="px-3 py-2 text-sm text-muted-foreground">No matching products.</p>
+                      ) : productMatches.map((p) => (
+                        <button key={p.id} type="button" onClick={() => addProduct(p)} className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-muted">
+                          <span className="truncate">{p.name}</span>
+                          <span className="shrink-0 text-xs text-muted-foreground">{p.packSize ? p.packLabel ?? p.unit : p.unit}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {form.items.length === 0 ? (
+                  <p className="mt-3 rounded-sm border border-dashed p-4 text-center text-sm text-muted-foreground">No items yet — search above to add products.</p>
+                ) : (
+                  <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+                    <div className="hidden sm:grid grid-cols-[1fr_8rem_8rem_2rem] gap-2 px-1 text-xs font-medium text-muted-foreground">
+                      <span>Product</span><span>Qty</span><span>Unit cost</span><span />
+                    </div>
+                    {form.items.map((row, index) => {
+                      const product = productById(row.productId)
+                      const unitLabel = product?.packUnit?.name ?? product?.unit ?? ''
+                      return (
+                        <div key={row.productId} className="rounded-sm border p-3 sm:grid sm:grid-cols-[1fr_8rem_8rem_2rem] sm:items-start sm:gap-2 sm:border-0 sm:p-0">
                           <div className="min-w-0">
                             <p className="truncate text-sm font-medium">{product?.name ?? 'Unknown product'}</p>
                             {product?.unit && (
-                              <p className="text-xs text-muted-foreground">
-                                {product.packSize ? `request by ${product.packLabel || 'pack'}; stock in ${unitLabel}` : `per ${unitLabel}`}
+                              <p className="truncate text-xs text-muted-foreground">
+                                {product.packSize ? `by ${product.packLabel || 'pack'}; stock in ${unitLabel}` : `per ${unitLabel}`}
                               </p>
                             )}
                           </div>
-                          <button type="button" onClick={() => removeRow(index)} title="Remove" className="shrink-0 rounded-sm p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive sm:hidden"><LuX className="size-4" /></button>
+                          <div className="mt-2.5 flex items-start gap-2 sm:mt-0 sm:contents">
+                            <label className="flex-1 text-xs font-medium text-muted-foreground sm:hidden">Qty</label>
+                            <PackQtyInput
+                              value={row.quantity}
+                              onChange={(value) => setRow(index, { quantity: value })}
+                              packSize={Number(product?.packSize) || 0}
+                              packLabel={product?.packLabel ?? ''}
+                              unitName={unitLabel}
+                              className="input"
+                            />
+                            <input
+                              type="number" min="0" step="0.01" placeholder="Catalog cost"
+                              value={row.estimatedUnitCost}
+                              onChange={(e) => setRow(index, { estimatedUnitCost: e.target.value })}
+                              className="input"
+                            />
+                            <button type="button" onClick={() => removeRow(index)} title="Remove" className="shrink-0 rounded-sm p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><LuX className="size-4" /></button>
+                          </div>
                         </div>
-                        <label className="mt-2.5 block text-xs font-medium text-muted-foreground sm:mt-0 sm:hidden">Qty
-                          <span className="mt-1 block">{qtyInput}</span>
-                        </label>
-                        <div className="hidden sm:block">{qtyInput}</div>
-                        <button type="button" onClick={() => removeRow(index)} title="Remove" className="hidden rounded-sm p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive sm:block"><LuX className="size-4" /></button>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-              <p className="mt-3 text-xs text-muted-foreground">No cost here — whoever reviews this sets the estimated cost per item before approving.</p>
+                      )
+                    })}
+                  </div>
+                )}
+                <p className="mt-3 shrink-0 text-xs text-muted-foreground">Leave a unit cost blank to use the product's current catalog cost — whoever reviews this can still adjust it before approving.</p>
+              </div>
             </div>
 
-            <FieldGroup title="Notes">
-              <Field label="Notes" className="sm:col-span-2"><textarea rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className="input" /></Field>
-            </FieldGroup>
+            {formError && <div className="mx-6 mb-3 flex shrink-0 items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert />{formError}</div>}
 
-            {formError && <div className="mt-5 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert />{formError}</div>}
-
-            <div className="mt-6 flex justify-end gap-2 border-t pt-5">
+            <div className="flex shrink-0 justify-end gap-2 border-t-2 border-foreground/15 bg-muted/40 px-6 py-4">
               <button type="button" onClick={() => setShowForm(false)} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted">Cancel</button>
               <button disabled={saving} className="inline-flex items-center gap-2 bg-primary px-5 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground disabled:opacity-60">
                 {saving && <LuLoaderCircle className="animate-spin" />}
@@ -596,7 +640,20 @@ export default function PurchaseRequisitions() {
                         {detail.items.map((i) => (
                           <tr key={i.id} className="border-t">
                             <td className="px-4 py-2">{i.product.name}</td>
-                            <td className="px-4 py-2 text-right tabular-nums">{stockQty(Number(i.quantity), i.product)}</td>
+                            {reviewing ? (
+                              <td className="px-4 py-2 text-right">
+                                <PackQtyInput
+                                  value={reviewQty[i.id] ?? String(Number(i.quantity))}
+                                  onChange={(value) => setReviewQty((q) => ({ ...q, [i.id]: value }))}
+                                  packSize={Number(i.product.packSize) || 0}
+                                  packLabel={i.product.packLabel ?? ''}
+                                  unitName={i.product.packUnit?.name ?? i.product.unit}
+                                  className="input h-8 w-28 text-right text-sm"
+                                />
+                              </td>
+                            ) : (
+                              <td className="px-4 py-2 text-right tabular-nums">{stockQty(Number(i.quantity), i.product)}</td>
+                            )}
                             {reviewing ? (
                               <td className="px-4 py-2 text-right">
                                 <input
@@ -610,7 +667,7 @@ export default function PurchaseRequisitions() {
                               <td className="px-4 py-2 text-right tabular-nums">{formatCost(i.estimatedUnitCost)}</td>
                             )}
                             <td className="px-4 py-2 text-right tabular-nums">
-                              {reviewing ? formatKes(costUnits(Number(i.quantity), Number(i.product.packSize) || 0) * (Number(reviewCosts[i.id]) || 0)) : formatCost(i.lineTotal)}
+                              {reviewing ? formatKes(costUnits(Number(reviewQty[i.id] ?? i.quantity), Number(i.product.packSize) || 0) * (Number(reviewCosts[i.id]) || 0)) : formatCost(i.lineTotal)}
                             </td>
                           </tr>
                         ))}
@@ -648,6 +705,7 @@ export default function PurchaseRequisitions() {
               {detail.status === 'SUBMITTED' && canApprove && (
                 <>
                   <button onClick={() => void changeStatus(detail, 'REJECTED', { promptReason: true })} disabled={working} className="rounded-sm border px-4 py-2.5 text-sm font-semibold text-destructive hover:bg-destructive/10 disabled:opacity-60">Reject</button>
+                  <button onClick={() => void saveReview(detail)} disabled={working} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted disabled:opacity-60">Save</button>
                   <button onClick={() => void approveWithCosts(detail)} disabled={working} className="bg-primary px-5 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground disabled:opacity-60">Approve</button>
                 </>
               )}
@@ -726,15 +784,6 @@ export default function PurchaseRequisitions() {
           <DocumentViewer kind="requisition" data={printing} profile={profile} onClose={() => setPrinting(null)} />
         </Suspense>
       )}
-    </div>
-  )
-}
-
-function FieldGroup({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <div className="mt-6 border-t pt-5">
-      <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</p>
-      <div className="grid gap-4 sm:grid-cols-2">{children}</div>
     </div>
   )
 }
