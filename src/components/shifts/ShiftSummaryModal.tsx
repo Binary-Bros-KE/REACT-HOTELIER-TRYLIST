@@ -5,6 +5,8 @@ import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/Toast'
 import Avatar from '@/components/ui/Avatar'
 import { useAppSelector } from '@/store/hooks'
+import PrintReportButton from '@/components/documents/PrintReportButton'
+import type { ReportDocData } from '@/components/documents/pdf'
 
 export type ShiftSession = {
   id: string
@@ -21,6 +23,9 @@ export type ShiftSession = {
   employee: { id: string; firstName: string; lastName: string; jobTitle: string; supervisorId: string | null; isSupervisor: boolean }
 }
 
+export type CategoryRow = { id: string; label: string; detail: string | null; createdAt: string; total: number }
+export type CategorySummary = { total: number; count: number }
+
 export type ShiftSummary = {
   from: string
   to: string
@@ -32,6 +37,8 @@ export type ShiftSummary = {
   creditSales: number
   pendingOrders: number
   byPaymentMethod: { name: string; total: number; count: number }[]
+  byCategory?: { rooms: CategorySummary; food: CategorySummary; products: CategorySummary; services: CategorySummary; memberships: CategorySummary }
+  categorizedSales?: { rooms: CategoryRow[]; food: CategoryRow[]; products: CategoryRow[]; services: CategoryRow[]; memberships: CategoryRow[] }
   transactions: {
     id: string
     transactionNo: string
@@ -67,7 +74,57 @@ export type ShiftSummary = {
 export const formatKes = (value: number) => `KSh ${value.toLocaleString('en-KE', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
 const titleCase = (value: string) => value.charAt(0) + value.slice(1).toLowerCase().replaceAll('_', ' ')
 
+// Every employee's summary adapts to whatever they actually did this shift —
+// a receptionist who also books gym memberships and sells on the Products
+// POS sees Rooms, Memberships and Products all show up here, same as anyone
+// else who touched those, regardless of which location they're assigned to.
+const CATEGORY_LABEL: Record<'rooms' | 'food' | 'products' | 'services' | 'memberships', string> = {
+  rooms: 'Rooms', food: 'Food', products: 'Products', services: 'Services', memberships: 'Memberships',
+}
+const CATEGORY_BAR: Record<'rooms' | 'food' | 'products' | 'services' | 'memberships', string> = {
+  rooms: 'bg-secondary', food: 'bg-accent', products: 'bg-success', services: 'bg-warning', memberships: 'bg-primary',
+}
+
 export type ShiftDecision = { cashVariance?: number; varianceNote?: string }
+
+function buildShiftReportDoc(session: ShiftSession, summary: ShiftSummary): ReportDocData {
+  const name = `${session.employee.firstName} ${session.employee.lastName}`
+  const transactionsNet = summary.transactions.reduce((sum, t) => sum + (t.direction === 'IN' ? t.amount : -t.amount), 0)
+  const categories = (['rooms', 'food', 'products', 'services', 'memberships'] as const)
+    .map((key) => ({ key, label: CATEGORY_LABEL[key], summary: summary.byCategory?.[key], rows: summary.categorizedSales?.[key] ?? [] }))
+    .filter((c) => c.summary && c.summary.count > 0)
+  return {
+    reportTitle: `Shift Summary - ${name}`,
+    kicker: session.employee.jobTitle || 'Employee',
+    rangeLabel: `${summary.from ? new Date(summary.from).toLocaleString('en-KE', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-'} to ${summary.to ? new Date(summary.to).toLocaleString('en-KE', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-'} (${summary.hours.toFixed(2)}h)`,
+    generatedAt: new Date().toISOString(),
+    cards: [
+      { label: 'Sales', value: formatKes(summary.totalSales), hint: `${summary.sales.length} sale(s)` },
+      { label: 'Transactions', value: formatKes(transactionsNet), hint: `${summary.transactions.length} transaction(s)` },
+      { label: 'Collected', value: formatKes(summary.totalPaid) },
+      { label: 'Credit', value: formatKes(summary.creditSales) },
+      { label: 'Complimentary', value: formatKes(summary.complimentaryTotal) },
+      ...categories.map((c) => ({ label: c.label, value: formatKes(c.summary!.total), hint: `${c.summary!.count} sale(s)` })),
+    ],
+    sections: [
+      ...categories.map((c) => ({
+        title: c.label,
+        columns: [{ label: 'Item' }, { label: 'Detail' }, { label: 'Time' }, { label: 'Total', align: 'right' as const }],
+        rows: c.rows.map((r) => [r.label, r.detail ?? '-', new Date(r.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), formatKes(r.total)]),
+      })),
+      {
+        title: 'Sales by Payment Method',
+        columns: [{ label: 'Method' }, { label: 'Count', align: 'right' as const }, { label: 'Total', align: 'right' as const }],
+        rows: summary.byPaymentMethod.map((m) => [m.name, m.count, formatKes(m.total)]),
+      },
+      {
+        title: 'Transactions',
+        columns: [{ label: 'Reference' }, { label: 'Method' }, { label: 'Time' }, { label: 'Amount', align: 'right' as const }],
+        rows: summary.transactions.map((t) => [t.reference || t.transactionNo, t.paymentMethod ?? t.source, new Date(t.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), `${t.direction === 'IN' ? '+' : '-'}${formatKes(t.amount)}`]),
+      },
+    ],
+  }
+}
 
 // Super Admin implicitly holds every permission server-side; mirror that here
 // so the controls show even before a tenant's role rows list the newer ones.
@@ -139,7 +196,10 @@ export default function ShiftSummaryModal({
               <p className="text-sm text-muted-foreground">{session.employee.jobTitle || 'Employee'}</p>
             </div>
           </div>
-          <button onClick={onClose} className="flex shrink-0 items-center gap-1.5 bg-black px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-white transition hover:bg-black/80"><LuX className="size-4" /> Close</button>
+          <div className="flex shrink-0 items-center gap-2">
+            <PrintReportButton data={buildShiftReportDoc(session, summary)} />
+            <button onClick={onClose} className="flex shrink-0 items-center gap-1.5 bg-black px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-white transition hover:bg-black/80"><LuX className="size-4" /> Close</button>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 border-b bg-card text-sm sm:grid-cols-4">
@@ -173,6 +233,35 @@ export default function ShiftSummaryModal({
             <ShiftMiniStat label="Credit" value={formatKes(summary.creditSales)} bar="bg-warning" />
             <ShiftMiniStat label="Complimentary" value={formatKes(summary.complimentaryTotal)} bar="bg-accent" />
           </div>
+
+          {summary.byCategory && summary.categorizedSales && (() => {
+            const categories = (['rooms', 'food', 'products', 'services', 'memberships'] as const)
+              .map((key) => ({ key, label: CATEGORY_LABEL[key], summary: summary.byCategory![key], rows: summary.categorizedSales![key] }))
+              .filter((c) => c.summary.count > 0)
+            if (categories.length === 0) return null
+            return (
+              <div className="space-y-5">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">What they did this shift</p>
+                  <div className="mt-2 grid grid-cols-2 gap-3 lg:grid-cols-5">
+                    {categories.map((c) => <ShiftMiniStat key={c.key} label={c.label} value={formatKes(c.summary.total)} hint={`${c.summary.count} ${c.label.toLowerCase()} sale${c.summary.count === 1 ? '' : 's'}`} bar={CATEGORY_BAR[c.key]} />)}
+                  </div>
+                </div>
+                {categories.map((c) => (
+                  <ShiftSummaryTable key={c.key} title={c.label} empty="" columns={['Item', 'Detail', 'Time', 'Total']} right={[3]}>
+                    {c.rows.map((r) => (
+                      <tr key={r.id}>
+                        <td className="px-3 py-2 font-semibold">{r.label}</td>
+                        <td className="px-3 py-2 text-muted-foreground">{r.detail ?? '—'}</td>
+                        <td className="px-3 py-2 tabular-nums">{new Date(r.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                        <td className="px-3 py-2 text-right font-bold tabular-nums">{formatKes(r.total)}</td>
+                      </tr>
+                    ))}
+                  </ShiftSummaryTable>
+                ))}
+              </div>
+            )
+          })()}
 
           <ShiftSummaryTable title="Sales by payment method" empty="No payments collected." columns={['Method', 'Count', 'Total']} right={[1, 2]}>
             {summary.byPaymentMethod.map((m) => <tr key={m.name}><td className="px-3 py-2 font-medium">{m.name}</td><td className="px-3 py-2 text-right tabular-nums">{m.count}</td><td className="px-3 py-2 text-right font-bold tabular-nums">{formatKes(m.total)}</td></tr>)}

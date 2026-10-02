@@ -1541,7 +1541,7 @@ function ShiftProvider({ onReady, onLoaded, children }: { onReady: (ready: boole
 
 /** The signed-in employee's own shift card (start / end / live clock). */
 function ShiftControl() {
-  const { state, loaded, error, busyKey, isSuperAdmin, isSupervisor, ask, askEndOwnShift, post } = useShift()
+  const { state, loaded, error, busyKey, isSuperAdmin, isSupervisor, ask, askEndOwnShift, post, openSummary } = useShift()
   const now = useNow()
   if (isSuperAdmin) return null
   if (!loaded) return null
@@ -1603,6 +1603,14 @@ function ShiftControl() {
             run: () => post('/shifts/start-request', {}, 'start'),
           })} icon={<LuLogIn />}>{startText}</ShiftButton>}
           {session?.status === 'ACTIVE' && <ShiftButton loading={busyKey === 'end'} onClick={askEndOwnShift} icon={<LuLogOut />}>{endText}</ShiftButton>}
+          {session && state?.summary && (
+            <button
+              onClick={() => openSummary({ ...session, summary: state.summary }, 'Your Shift')}
+              className="inline-flex items-center gap-2 border px-4 py-2.5 text-sm font-semibold hover:bg-muted"
+            >
+              View full summary
+            </button>
+          )}
           {session?.status === 'REQUESTED_START' && <span className="border border-warning/40 bg-warning/10 px-3 py-2 text-sm font-semibold text-warning">Waiting for supervisor</span>}
           {session?.status === 'REQUESTED_END' && <span className="border border-warning/40 bg-warning/10 px-3 py-2 text-sm font-semibold text-warning">Waiting for handover approval</span>}
         </div>
