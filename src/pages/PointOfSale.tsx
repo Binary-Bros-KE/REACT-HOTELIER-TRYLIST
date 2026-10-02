@@ -395,6 +395,18 @@ export default function PointOfSale() {
   const otherActiveOrders = activeOrders.filter((o) => o.status !== 'READY').sort(updatedFirst)
   const readyCount = readyActiveOrders.length
   const updatedCount = activeOrders.filter((o) => updatedLines(o).length > 0).length
+  // Every stage an order passes through on its way to being served, shown as
+  // its own labelled group in Active Orders — not just READY's priority
+  // section — so a waiter can see what's still queued vs already cooking.
+  const STAGE_LABEL: Record<'OPEN' | 'PREPARING' | 'SERVED', string> = {
+    OPEN: 'Queued — not sent to the kitchen yet',
+    PREPARING: 'In the kitchen',
+    SERVED: 'Served — awaiting payment',
+  }
+  const STAGE_BADGE: Record<'OPEN' | 'PREPARING' | 'SERVED', string> = { OPEN: 'Queued', PREPARING: 'Cooking', SERVED: 'Served' }
+  const otherByStage = (['OPEN', 'PREPARING', 'SERVED'] as const)
+    .map((status) => ({ status, orders: otherActiveOrders.filter((o) => o.status === status) }))
+    .filter((group) => group.orders.length > 0)
   // Mirrors the server's rule (counter locations need POS_APPROVE_COUNTER to
   // confirm hand-over) purely to decide which button to show.
   const canConfirmUpdates = user?.role?.name === 'Super Admin' || Boolean(user?.role?.permissions.includes('POS_APPROVE_COUNTER')) || serveMode !== 'COUNTER'
@@ -807,41 +819,46 @@ export default function PointOfSale() {
                   </div>
                 </div>
               )}
-              {otherActiveOrders.length > 0 && (
-                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                  {otherActiveOrders.map((order) => {
-                    const compBadge = complementaryBadge(order)
-                    const pendingReturns = pendingReturnQuantity(order)
-                    const waiter = order.createdBy ? staffNames[order.createdBy] : undefined
-                    return (
-                    <article key={order.id} className={cn('rounded-sm border bg-card p-5 shadow-sm', compBadge && 'border-secondary/30', updatedLines(order).length > 0 && 'ring-2 ring-amber-400')}>
-                      <div className="flex items-start justify-between gap-2">
-                        <h3 className="font-semibold">Order #{order.orderNumber}</h3>
-                        <div className="flex flex-wrap justify-end gap-1.5">
-                          {pendingReturns > 0 && <span className="keep-round border border-dashed border-warning/70 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-warning">Return pending</span>}
-                          <span className="keep-round border border-dashed border-warning/70 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-warning">{order.status}</span>
+              {otherByStage.map(({ status, orders }) => (
+                <div key={status} className="mb-5 last:mb-0">
+                  <p className="mb-2 border-l-4 border-accent pl-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                    {STAGE_LABEL[status]} · {orders.length}
+                  </p>
+                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                    {orders.map((order) => {
+                      const compBadge = complementaryBadge(order)
+                      const pendingReturns = pendingReturnQuantity(order)
+                      const waiter = order.createdBy ? staffNames[order.createdBy] : undefined
+                      return (
+                      <article key={order.id} className={cn('rounded-sm border bg-card p-5 shadow-sm', compBadge && 'border-secondary/30', updatedLines(order).length > 0 && 'ring-2 ring-amber-400')}>
+                        <div className="flex items-start justify-between gap-2">
+                          <h3 className="font-semibold">Order #{order.orderNumber}</h3>
+                          <div className="flex flex-wrap justify-end gap-1.5">
+                            {pendingReturns > 0 && <span className="keep-round border border-dashed border-warning/70 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-warning">Return pending</span>}
+                            <span className="keep-round border border-dashed border-warning/70 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-warning">{STAGE_BADGE[status]}</span>
+                          </div>
                         </div>
-                      </div>
-                      {waiter && <p className="mt-1.5 flex items-center gap-1.5 text-xs font-bold text-amber-600"><LuUserRound className="size-3.5" /> Waiter: {waiter}</p>}
-                      <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground"><LuUserRound className="size-3.5" /> {order.customer ? `${order.customer.firstName} ${order.customer.lastName ?? ''}` : 'Walk-in'}</p>
-                      {compBadge && <p className={cn('mt-2 inline-flex keep-round border border-dashed px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', compBadge.cls)}>{compBadge.label}{order.complimentarySession ? ` - ${order.complimentarySession.title}` : ''}</p>}
-                      <p className="mt-1 text-xs text-muted-foreground">{order.table?.label ?? 'Takeaway'}</p>
-                      <p className="mt-3 text-lg font-bold">{formatKes(order.total)}</p>
-                      {pendingReturns > 0 && <p className="mt-1 text-xs font-semibold text-warning">{pendingReturns} item{pendingReturns === 1 ? '' : 's'} waiting return approval</p>}
-                      <UpdatedItemsStrip lines={updatedLines(order)} canConfirm={canConfirmUpdates} confirming={ackingId === order.id} onConfirm={() => void confirmUpdates(order.id)} />
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        <button onClick={() => setReceiptOrderId(order.id)} title="Receipt" className="inline-flex items-center justify-center rounded-sm border p-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"><LuPrinter className="size-3.5" /></button>
-                        <button onClick={() => setAddItemsOrder(order)} className="inline-flex items-center gap-1.5 rounded-sm border px-3 py-1.5 text-xs font-semibold hover:bg-muted"><LuPencil className="size-3.5" /> Manage</button>
-                        {order.status !== 'SERVED' && <button onClick={() => setRevertOrder(order)} className="inline-flex items-center gap-1.5 rounded-sm border border-destructive/30 px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/10"><LuTrash2 className="size-3.5" /> Revert</button>}
-                        {order.status === 'SERVED' && (
-                          <button onClick={() => setSettlementOrderId(order.id)} className="inline-flex items-center gap-1.5 rounded-sm bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"><LuReceiptText className="size-3.5" /> Complete & Pay</button>
-                        )}
-                      </div>
-                    </article>
-                    )
-                  })}
+                        {waiter && <p className="mt-1.5 flex items-center gap-1.5 text-xs font-bold text-amber-600"><LuUserRound className="size-3.5" /> Waiter: {waiter}</p>}
+                        <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground"><LuUserRound className="size-3.5" /> {order.customer ? `${order.customer.firstName} ${order.customer.lastName ?? ''}` : 'Walk-in'}</p>
+                        {compBadge && <p className={cn('mt-2 inline-flex keep-round border border-dashed px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', compBadge.cls)}>{compBadge.label}{order.complimentarySession ? ` - ${order.complimentarySession.title}` : ''}</p>}
+                        <p className="mt-1 text-xs text-muted-foreground">{order.table?.label ?? 'Takeaway'}</p>
+                        <p className="mt-3 text-lg font-bold">{formatKes(order.total)}</p>
+                        {pendingReturns > 0 && <p className="mt-1 text-xs font-semibold text-warning">{pendingReturns} item{pendingReturns === 1 ? '' : 's'} waiting return approval</p>}
+                        <UpdatedItemsStrip lines={updatedLines(order)} canConfirm={canConfirmUpdates} confirming={ackingId === order.id} onConfirm={() => void confirmUpdates(order.id)} />
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <button onClick={() => setReceiptOrderId(order.id)} title="Receipt" className="inline-flex items-center justify-center rounded-sm border p-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"><LuPrinter className="size-3.5" /></button>
+                          <button onClick={() => setAddItemsOrder(order)} className="inline-flex items-center gap-1.5 rounded-sm border px-3 py-1.5 text-xs font-semibold hover:bg-muted"><LuPencil className="size-3.5" /> Manage</button>
+                          {order.status !== 'SERVED' && <button onClick={() => setRevertOrder(order)} className="inline-flex items-center gap-1.5 rounded-sm border border-destructive/30 px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/10"><LuTrash2 className="size-3.5" /> Revert</button>}
+                          {order.status === 'SERVED' && (
+                            <button onClick={() => setSettlementOrderId(order.id)} className="inline-flex items-center gap-1.5 rounded-sm bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"><LuReceiptText className="size-3.5" /> Complete & Pay</button>
+                          )}
+                        </div>
+                      </article>
+                      )
+                    })}
+                  </div>
                 </div>
-              )}
+              ))}
             </>
           )}
         </section>

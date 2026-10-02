@@ -96,7 +96,21 @@ export default function OrderReceipt({ order, profile }: { order: ReceiptOrder; 
   const owed = Math.max(0, order.financials.total - paid)
   const creditOverdue = !isComplementary && owed > 0.01 && order.creditExpectedAt ? new Date(order.creditExpectedAt).getTime() < Date.now() : false
   const roomBilled = Boolean(order.billedToRoomAt)
-  const statusText = isComplementary ? 'Complementary' : roomBilled && owed > 0.01 ? 'Billed to room' : creditOverdue ? 'Overdue credit' : owed > 0.01 ? 'On credit' : order.status
+  // "On credit" means the order was already completed with money still
+  // owed — before that (still OPEN/PREPARING/READY/SERVED), nothing has
+  // been extended yet, it's just awaiting payment: "Pending", not a credit
+  // state, however this prints while the customer is about to go pay it.
+  const statusText = isComplementary
+    ? 'Complementary'
+    : roomBilled && owed > 0.01
+      ? 'Billed to room'
+      : creditOverdue
+        ? 'Overdue credit'
+        : order.status === 'COMPLETED' && owed > 0.01
+          ? 'On credit'
+          : owed > 0.01
+            ? 'Pending'
+            : order.status
   const approvedReturns = (order.returnRequests ?? []).filter((request) => request.status === 'APPROVED')
   const roomBillSettlement = roomBillSettlementText(order)
 
