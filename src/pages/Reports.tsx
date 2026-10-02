@@ -55,6 +55,7 @@ type RevenueBreakdown = {
   complimentaryValue: number
   complimentaryCogs: number
   completedSalesValue: number
+  totalSoldValue?: number
   cogs: number
   unresolvedCostLines: number
   netRevenue: number
@@ -282,9 +283,9 @@ export default function Reports() {
           </section>
           <section className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {([
-              ['Transactions', report.cards.transactions, <LuShoppingBag key="f" />],
-              ['Average Sale', formatKes(report.cards.averageSale), <LuTrendingUp key="g" />],
-              ['Items Sold', report.cards.itemsSold, <LuShoppingBag key="h" />],
+              ['POS Transactions', report.cards.transactions, <LuShoppingBag key="f" />],
+              ['Average POS Sale', formatKes(report.cards.averageSale), <LuTrendingUp key="g" />],
+              ['POS Items Sold', report.cards.itemsSold, <LuShoppingBag key="h" />],
               ['Menu Orders Completed', report.cards.menuOrdersCompleted, <LuReceiptText key="i" />],
             ] as const).map(([label, value, icon]) => <PlainStat key={label} label={label} value={value} icon={icon} />)}
           </section>
@@ -303,7 +304,7 @@ export default function Reports() {
                   {' + '}<span className="font-semibold">{formatKes(report.revenueBreakdown.serviceCenterCash)}</span> service-center
                   {' = '}<span className="font-semibold text-secondary">{formatKes(report.revenueBreakdown.totalRevenue)}</span>
                 </p>
-                <p className="mt-1 text-xs text-muted-foreground">Revenue is what was sold: money taken in for sales, plus sales given on credit. A customer later paying off credit isn't counted again{(report.revenueBreakdown.creditRepaymentsCash ?? 0) > 0 ? ` (${formatKes(report.revenueBreakdown.creditRepaymentsCash ?? 0)} of such repayments came in this period — shown in the payment-method table but not here)` : ''}.{report.revenueBreakdown.serviceCenterExcludedByLocationFilter && ' Service-center bookings aren\'t location-tagged yet, so they\'re left out of this location-filtered view.'}</p>
+                <p className="mt-1 text-xs text-muted-foreground">Revenue is what was sold: money taken in for sales, plus sales given on credit. A customer later paying off credit isn't counted again{(report.revenueBreakdown.creditRepaymentsCash ?? 0) > 0 ? ` (${formatKes(report.revenueBreakdown.creditRepaymentsCash ?? 0)} of such repayments came in this period — shown in the payment-method table but not here)` : ''}.{report.revenueBreakdown.serviceCenterExcludedByLocationFilter && ' Membership payments aren\'t tied to a location, so they\'re left out of this location-filtered view.'}</p>
                 <div className="mt-3 grid gap-2 sm:grid-cols-2">
                   <div className="rounded-sm border bg-card p-2.5">
                     <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tax Collected</p>
@@ -369,13 +370,15 @@ export default function Reports() {
               )}
 
               <div className="rounded-sm border bg-muted/30 p-3 text-sm">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Net Revenue — profit on goods sold</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Net Revenue — profit across every module</p>
                 <p className="mt-1">
-                  <span className="font-semibold">{formatKes(report.revenueBreakdown.completedSalesValue)}</span> sold this period
+                  <span className="font-semibold">{formatKes(report.revenueBreakdown.completedSalesValue)}</span> POS sold
+                  {' + '}<span className="font-semibold">{formatKes(report.revenueBreakdown.roomSalesValue ?? 0)}</span> room sold
+                  {' + '}<span className="font-semibold">{formatKes(report.revenueBreakdown.serviceCenterCash)}</span> memberships
                   {' − '}<span className="font-semibold">{formatKes(report.revenueBreakdown.cogs)}</span> cost of goods sold
                   {' = '}<span className="font-semibold text-secondary">{formatKes(report.revenueBreakdown.netRevenue)}</span>
                 </p>
-                <p className="mt-1 text-xs text-muted-foreground">Based on everything completed/sold this period, whether paid in cash or settled on credit — the same sales as Total Revenue above, less the cost of goods.{cogsNote ? ` ${cogsNote}` : ''}</p>
+                <p className="mt-1 text-xs text-muted-foreground">Covers POS, Rooms and Service-Center membership payments — whether paid in cash or settled on credit. An appointment that's been completed already counts here as a normal POS sale once it becomes one.{cogsNote ? ` ${cogsNote}` : ''}</p>
               </div>
 
               <div>
@@ -424,7 +427,7 @@ export default function Reports() {
                   <XAxis dataKey="date" tickFormatter={(d: string) => new Date(d).toLocaleDateString('en-KE', { month: 'short', day: 'numeric' })} tick={{ fontSize: 12 }} />
                   <YAxis tickFormatter={(v: number) => v.toLocaleString()} tick={{ fontSize: 12 }} width={70} />
                   <Tooltip formatter={(v) => formatKes(Number(v))} labelFormatter={(d) => new Date(String(d)).toLocaleDateString('en-KE', { weekday: 'short', month: 'short', day: 'numeric' })} />
-                  <Line type="monotone" dataKey="revenue" stroke="var(--secondary)" strokeWidth={2} dot={{ r: 3 }} />
+                  <Line type="linear" dataKey="revenue" stroke="var(--secondary)" strokeWidth={2} dot={{ r: 3 }} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
