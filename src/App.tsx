@@ -70,6 +70,7 @@ const Products = lazy(() => import("@/pages/Products"));
 const EmployeeSalaries = lazy(() => import("@/pages/EmployeeSalaries"));
 const Reports = lazy(() => import("@/pages/Reports"));
 const ExpensesReport = lazy(() => import("@/pages/ExpensesReport"));
+const PurchasesReport = lazy(() => import("@/pages/PurchasesReport"));
 const Purchases = lazy(() => import("@/pages/Purchases"));
 const PurchaseRequisitions = lazy(() => import("@/pages/PurchaseRequisitions"));
 
@@ -232,6 +233,7 @@ function App() {
         <Route path="/reports/rooms-report" element={<RoomsReport />} />
         <Route path="/reports/assets-report" element={<AssetsReport />} />
         <Route path="/reports/expenses-report" element={<ExpensesReport />} />
+        <Route path="/reports/purchases-report" element={<PurchasesReport />} />
         <Route path="/reports/tax-report" element={<TaxReport />} />
         <Route path="/business-information" element={<BusinessInformation />} />
         <Route path="/locations" element={<Locations />} />
