@@ -38,7 +38,7 @@ const STATUS_META: Record<Status, { label: string; className: string }> = {
 }
 
 type Supplier = SupplierOption
-type Product = { id: string; name: string; unit: string; packSize: string | null; packLabel: string | null; packUnit: { id: string; name: string } | null }
+type Product = { id: string; name: string; unit: string; packSize: string | null; packLabel: string | null; packUnit: { id: string; name: string } | null; unitCost: string | null }
 type Employee = { id: string; firstName: string; lastName: string }
 // Cost fields come back null from the API for anyone without
 // REQUISITION_APPROVE — the server redacts them, not just the UI.
@@ -100,6 +100,10 @@ export default function PurchaseRequisitions() {
   const permissions = useAppSelector((s) => s.auth.user?.role?.permissions) ?? []
   const canCreate = permissions.includes('REQUISITION_CREATE')
   const canApprove = permissions.includes('REQUISITION_APPROVE')
+  // Converting an approved requisition into a purchase isn't approve-only —
+  // the same storekeeper who raises requisitions is often the one who
+  // places the actual order too (matches the server's canCreateOrApproveRequisitions).
+  const canConvert = canCreate || canApprove
 
   const [rows, setRows] = useState<Requisition[]>([])
   const [summary, setSummary] = useState<Summary>({ total: 0, byStatus: { DRAFT: 0, SUBMITTED: 0, APPROVED: 0, REJECTED: 0, CONVERTED: 0, CANCELLED: 0 }, awaitingReview: 0 })
@@ -169,6 +173,14 @@ export default function PurchaseRequisitions() {
     const map = new Map(products.map((p) => [p.id, p]))
     return (id: string) => map.get(id)
   }, [products])
+  // What the storekeeper sees while building the request — blank cost falls
+  // back to the product's own catalog cost, same rule the server applies.
+  const lineTotal = (row: LineRow) => {
+    const product = productById(row.productId)
+    const cost = row.estimatedUnitCost.trim() ? Number(row.estimatedUnitCost) : Number(product?.unitCost) || 0
+    return costUnits(Number(row.quantity) || 0, Number(product?.packSize) || 0) * cost
+  }
+  const formTotal = useMemo(() => form.items.reduce((sum, row) => sum + lineTotal(row), 0), [form.items, products])
   const suggestedSupplier = useMemo(() => suppliers.find((supplier) => supplier.id === form.suggestedSupplierId) ?? null, [suppliers, form.suggestedSupplierId])
   const convertSupplier = useMemo(() => suppliers.find((supplier) => supplier.id === convertForm.supplierId) ?? null, [suppliers, convertForm.supplierId])
 
@@ -392,7 +404,7 @@ export default function PurchaseRequisitions() {
           </>
         ) : <span className="text-xs text-muted-foreground">Awaiting review</span>
       case 'APPROVED':
-        return canApprove ? <ActionButton tone="neutral" onClick={() => openConvert(r)} disabled={working}>Convert to purchase</ActionButton> : null
+        return canConvert ? <ActionButton tone="neutral" onClick={() => openConvert(r)} disabled={working}>Convert to purchase</ActionButton> : null
       case 'REJECTED':
         return canCreate ? <ActionButton tone="neutral" onClick={() => void changeStatus(r, 'DRAFT')} disabled={working}>Reopen</ActionButton> : null
       default:
@@ -548,15 +560,15 @@ export default function PurchaseRequisitions() {
                   <p className="mt-3 rounded-sm border border-dashed p-4 text-center text-sm text-muted-foreground">No items yet — search above to add products.</p>
                 ) : (
                   <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
-                    <div className="hidden sm:grid grid-cols-[1fr_8rem_8rem_2rem] gap-2 px-1 text-xs font-medium text-muted-foreground">
-                      <span>Product</span><span>Qty</span><span>Unit cost</span><span />
+                    <div className="hidden sm:grid grid-cols-[1fr_7rem_7rem_6rem_2rem] gap-2 px-1 text-xs font-medium text-muted-foreground">
+                      <span>Product</span><span>Qty</span><span>Unit cost</span><span className="text-right">Line total</span><span />
                     </div>
                     {form.items.map((row, index) => {
                       const product = productById(row.productId)
                       const unitLabel = product?.packUnit?.name ?? product?.unit ?? ''
                       return (
-                        <div key={row.productId} className="rounded-sm border p-3 sm:grid sm:grid-cols-[1fr_8rem_8rem_2rem] sm:items-start sm:gap-2 sm:border-0 sm:p-0">
-                          <div className="min-w-0">
+                        <div key={row.productId} className="rounded-sm border p-3 sm:grid sm:grid-cols-[1fr_7rem_7rem_6rem_2rem] sm:items-center sm:gap-2 sm:border-0 sm:p-0">
+                          <div className="min-w-0 sm:self-start">
                             <p className="truncate text-sm font-medium">{product?.name ?? 'Unknown product'}</p>
                             {product?.unit && (
                               <p className="truncate text-xs text-muted-foreground">
@@ -580,6 +592,7 @@ export default function PurchaseRequisitions() {
                               onChange={(e) => setRow(index, { estimatedUnitCost: e.target.value })}
                               className="input"
                             />
+                            <span className="shrink-0 pt-2 text-right text-sm font-semibold tabular-nums sm:pt-0">{formatKes(lineTotal(row))}</span>
                             <button type="button" onClick={() => removeRow(index)} title="Remove" className="shrink-0 rounded-sm p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><LuX className="size-4" /></button>
                           </div>
                         </div>
@@ -587,7 +600,15 @@ export default function PurchaseRequisitions() {
                     })}
                   </div>
                 )}
-                <p className="mt-3 shrink-0 text-xs text-muted-foreground">Leave a unit cost blank to use the product's current catalog cost — whoever reviews this can still adjust it before approving.</p>
+                <div className="mt-3 shrink-0 space-y-1.5">
+                  {form.items.length > 0 && (
+                    <div className="flex justify-between border-t pt-2 text-sm font-semibold">
+                      <span>Estimated total</span>
+                      <span className="tabular-nums">{formatKes(formTotal)}</span>
+                    </div>
+                  )}
+                  <p className="text-xs text-muted-foreground">Leave a unit cost blank to use the product's current catalog cost — whoever reviews this can still adjust it before approving.</p>
+                </div>
               </div>
             </div>
 
@@ -709,7 +730,7 @@ export default function PurchaseRequisitions() {
                   <button onClick={() => void approveWithCosts(detail)} disabled={working} className="bg-primary px-5 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground disabled:opacity-60">Approve</button>
                 </>
               )}
-              {detail.status === 'APPROVED' && canApprove && (
+              {detail.status === 'APPROVED' && canConvert && (
                 <button onClick={() => openConvert(detail)} disabled={working} className="bg-primary px-5 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground disabled:opacity-60">Convert to purchase</button>
               )}
               {detail.status === 'REJECTED' && canCreate && (
