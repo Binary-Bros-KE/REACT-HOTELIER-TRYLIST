@@ -134,7 +134,7 @@ function buildShiftReportDoc(session: ShiftSession, summary: ShiftSummary): Repo
           { label: 'Type' }, { label: 'Sold', align: 'right' as const }, { label: 'Charges', align: 'right' as const }, { label: 'Paid', align: 'right' as const }, { label: 'Owing', align: 'right' as const },
         ],
         rows: (summary.categorizedSales?.rooms ?? []).map((r) => [
-          r.guestName, `${r.roomNumber} (${r.reservationNo})`, shortDay(r.checkIn), shortDay(r.checkOut), r.nights,
+          r.guestName, r.roomNumber, shortDay(r.checkIn), shortDay(r.checkOut), r.nights,
           r.complimentary ? 'Complimentary' : 'Paid', formatKes(r.soldThisShift), formatKes(r.stayCharges), formatKes(r.paid), formatKes(r.owing),
         ]),
       })
@@ -319,7 +319,7 @@ export default function ShiftSummaryModal({
                   <ShiftSummaryTable key={c.key} title="Rooms" empty="" columns={['Guest / room', 'Stay', 'Nights', 'Type', 'Sold this shift', 'Charges', 'Paid', 'Owing']} right={[4, 5, 6, 7]}>
                     {(c.rows as RoomStayRow[]).map((r) => (
                       <tr key={r.id}>
-                        <td className="px-3 py-2"><p className="font-semibold">{r.guestName}</p><p className="text-[11px] text-muted-foreground">Room {r.roomNumber} · {r.reservationNo}</p></td>
+                        <td className="px-3 py-2"><p className="font-semibold">{r.guestName}</p><p className="text-[11px] text-muted-foreground">Room {r.roomNumber}</p></td>
                         <td className="px-3 py-2 text-xs tabular-nums">{shortDay(r.checkIn)} → {shortDay(r.checkOut)}</td>
                         <td className="px-3 py-2 tabular-nums">{r.nights}</td>
                         <td className="px-3 py-2">{r.complimentary ? <span className="border border-accent px-1.5 py-0.5 text-[11px] font-bold uppercase text-accent-foreground">Complimentary</span> : <span className="border border-success/50 px-1.5 py-0.5 text-[11px] font-bold uppercase text-success">Paid</span>}</td>
@@ -379,7 +379,7 @@ export default function ShiftSummaryModal({
                 <tr key={s.id}>
                   <td className="px-3 py-2">
                     <p className="font-semibold">{isFolio ? s.label : `Order #${s.orderNumber}`}</p>
-                    {isFolio && <p className="text-[11px] text-muted-foreground">Room {s.roomNumber} - {s.guestName} ({s.reservationNo})</p>}
+                    {isFolio && <p className="text-[11px] text-muted-foreground">Room {s.roomNumber} - {s.guestName}</p>}
                   </td>
                   <td className="px-3 py-2">{isFolio ? titleCase(s.source ?? 'FOLIO') : s.saleType === 'COMPLIMENTARY' ? `Complimentary${s.complimentaryRecipientName ? ` - ${s.complimentaryRecipientName}` : ''}` : s.paymentStatus}</td>
                   <td className="px-3 py-2 tabular-nums">{new Date(s.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
