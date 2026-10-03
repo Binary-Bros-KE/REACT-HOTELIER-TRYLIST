@@ -338,19 +338,23 @@ function DocumentEditor({ type, document, options, sources, fixedLocation, locat
               <ActionButton tone="neutral" icon={<LuPlus />} onClick={() => setForm((f) => ({ ...f, lines: [...f.lines, blankLine(options.tax)] }))}>Add line</ActionButton>
             </div>
             <div className="divide-y">
-              {form.lines.map((line, index) => <div key={index} className="grid gap-3 p-3 lg:grid-cols-[1.4fr_.55fr_.55fr_.7fr_.8fr_auto]">
+              {form.lines.map((line, index) => <div key={index} className="grid gap-3 p-3 lg:grid-cols-[1.4fr_.55fr_.55fr_.7fr_minmax(0,1.6fr)_auto]">
                 <input required value={line.description} onChange={(e) => setLine(index, { description: e.target.value })} placeholder="Description" className="input" />
                 <input required type="number" min="0.001" step="0.001" value={line.quantity} onChange={(e) => setLine(index, { quantity: e.target.value })} placeholder="Qty" className="input" />
                 <input value={line.unitLabel} onChange={(e) => setLine(index, { unitLabel: e.target.value })} placeholder="Unit" className="input" />
                 <input required type="number" min="0" step="0.01" value={line.unitPrice} onChange={(e) => setLine(index, { unitPrice: e.target.value })} placeholder="Unit price" className="input" />
-                <div className="grid grid-cols-3 gap-2"><input type="number" min="0" step="0.01" value={line.taxRate} onChange={(e) => setLine(index, { taxRate: e.target.value })} className="input" /><select value={line.taxMode} onChange={(e) => setLine(index, { taxMode: e.target.value as TaxMode })} className="input"><option value="INCLUSIVE">Inclusive</option><option value="EXCLUSIVE">Exclusive</option></select><select value={line.taxTreatment} onChange={(e) => setLine(index, { taxTreatment: e.target.value as TaxTreatment })} className="input"><option value="STANDARD">VAT</option><option value="ZERO_RATED">Zero-rated</option><option value="EXEMPT">Exempt</option></select></div>
+                <div className="grid grid-cols-[minmax(0,.7fr)_minmax(0,1fr)_minmax(0,1.2fr)] gap-2">
+                  <label className="text-xs font-medium text-muted-foreground">Tax %<input type="number" min="0" step="0.01" value={line.taxRate} onChange={(e) => setLine(index, { taxRate: e.target.value })} className="input mt-1 text-sm" /></label>
+                  <label className="text-xs font-medium text-muted-foreground">Prices<select value={line.taxMode} onChange={(e) => setLine(index, { taxMode: e.target.value as TaxMode })} className="input mt-1 text-sm"><option value="INCLUSIVE">Tax included</option><option value="EXCLUSIVE">Tax added</option></select></label>
+                  <label className="text-xs font-medium text-muted-foreground">Tax treatment<select value={line.taxTreatment} onChange={(e) => setLine(index, { taxTreatment: e.target.value as TaxTreatment })} className="input mt-1 text-sm"><option value="STANDARD">VAT</option><option value="ZERO_RATED">Zero-rated</option><option value="EXEMPT">Exempt</option></select></label>
+                </div>
                 <button type="button" onClick={() => setForm((f) => ({ ...f, lines: f.lines.filter((_, i) => i !== index) }))} disabled={form.lines.length === 1} className="rounded-sm border px-3 disabled:opacity-40"><LuTrash2 /></button>
                 <textarea value={line.details} onChange={(e) => setLine(index, { details: e.target.value })} placeholder="Optional line note" className="input lg:col-span-6" rows={1} />
               </div>)}
             </div>
           </div>
           <div className="flex flex-wrap items-end justify-between gap-4">
-            <Field label="Intro paragraph" className="min-w-0 flex-1 basis-96"><textarea rows={3} value={form.intro} onChange={(e) => setForm({ ...form, intro: e.target.value })} className="input" placeholder="Optional note shown at the bottom of the document, above the total." /></Field>
+            <Field label="Closing note" className="min-w-0 flex-1 basis-96"><textarea rows={3} value={form.intro} onChange={(e) => setForm({ ...form, intro: e.target.value })} className="input" placeholder="Optional note printed under the totals, e.g. payment terms or validity." /></Field>
             <div className="border bg-muted/30 px-4 py-3 text-right"><p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Quick total</p><p className="mt-1 text-xl font-semibold">{money(preview)}</p><p className="text-xs text-muted-foreground">Final tax is calculated by the server from each line.</p></div>
           </div>
         </div>

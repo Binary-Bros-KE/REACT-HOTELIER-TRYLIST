@@ -72,10 +72,9 @@ export default function CommercialDocument({ data, profile }: { data: Commercial
             { key: 'Status', value: data.status.replaceAll('_', ' ') },
           ]}
         />
-        {data.title || data.intro ? (
+        {data.title ? (
           <View style={{ marginBottom: 10 }}>
-            {data.title ? <Text style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>{data.title}</Text> : null}
-            {data.intro ? <Text style={s.note}>{data.intro}</Text> : null}
+            <Text style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>{data.title}</Text>
           </View>
         ) : null}
         <View style={s.table}>
@@ -108,6 +107,7 @@ export default function CommercialDocument({ data, profile }: { data: Commercial
           ]}
           grand={{ key: Number(data.balance) > 0 ? 'Balance' : 'Total', value: money(Number(data.balance) > 0 ? Number(data.balance) : Number(data.total), currency) }}
         />
+        {data.intro ? <Text style={s.note}>{data.intro}</Text> : null}
         {!isInvoice && Number(data.depositRequired) > 0 ? <Text style={s.note}>Required deposit: {money(Number(data.depositRequired), currency)}. Balance after required deposit: {money(Math.max(0, Number(data.total) - Number(data.depositRequired)), currency)}.</Text> : null}
         {data.payments.length ? <Text style={s.note}>Payments/deposits recorded: {data.payments.map((p) => `${p.paymentMethod.name} ${money(Number(p.amount), currency)}${p.reference ? ` (${p.reference})` : ''}`).join('; ')}</Text> : null}
         {data.footerText ? <Text style={s.note}>{data.footerText}</Text> : null}
