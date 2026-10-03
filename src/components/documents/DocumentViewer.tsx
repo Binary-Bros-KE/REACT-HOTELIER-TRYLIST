@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { api } from '@/lib/api'
 import { pdf } from '@react-pdf/renderer'
 import {
   LuChevronLeft,
@@ -39,6 +40,21 @@ export default function DocumentViewer({ kind, data, profile, onClose }: Props) 
   const [zoom, setZoom] = useState(100)
   const [error, setError] = useState('')
   const printFrame = useRef<HTMLIFrameElement | null>(null)
+  // Payments on a commercial document carry only the id of who took them;
+  // look the names up once so the payments table can show "Received by".
+  const [employeeNames, setEmployeeNames] = useState<Map<string, string> | null>(null)
+  useEffect(() => {
+    if (kind !== 'commercial-document') return
+    api<{ employees: { id: string; firstName: string; lastName: string | null }[] }>('/employees')
+      .then((r) => setEmployeeNames(new Map(r.employees.map((e) => [e.id, `${e.firstName} ${e.lastName ?? ''}`.trim()]))))
+      .catch(() => setEmployeeNames(new Map()))
+  }, [kind])
+  const viewData = useMemo<DocData>(() => {
+    if (kind !== 'commercial-document' || !employeeNames) return data
+    const doc = data as DocData & { payments?: { createdBy?: string | null }[] }
+    if (!doc.payments) return data
+    return { ...doc, payments: doc.payments.map((p) => ({ ...p, receivedBy: p.createdBy ? employeeNames.get(p.createdBy) ?? null : null })) } as DocData
+  }, [kind, data, employeeNames])
 
   useEffect(() => {
     let revoked: string | null = null
@@ -47,7 +63,7 @@ export default function DocumentViewer({ kind, data, profile, onClose }: Props) 
     setUrl(null)
     ;(async () => {
       try {
-        const blob = await pdf(buildDocument(kind, data, profile)).toBlob()
+        const blob = await pdf(buildDocument(kind, viewData, profile)).toBlob()
         if (cancelled) return
         const objectUrl = URL.createObjectURL(blob)
         revoked = objectUrl
@@ -61,7 +77,7 @@ export default function DocumentViewer({ kind, data, profile, onClose }: Props) 
       cancelled = true
       if (revoked) URL.revokeObjectURL(revoked)
     }
-  }, [kind, data, profile])
+  }, [kind, viewData, profile])
 
   const clampZoom = (z: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z))
 

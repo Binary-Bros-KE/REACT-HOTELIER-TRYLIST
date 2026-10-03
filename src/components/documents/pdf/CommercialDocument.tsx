@@ -1,4 +1,5 @@
-import { Document, Page, Text, View } from '@react-pdf/renderer'
+import { Document, Page, StyleSheet, Text, View } from '@react-pdf/renderer'
+import { palette } from './theme'
 import { s, money, shortDate } from './theme'
 import type { DocProfile } from './theme'
 import { Footer, Letterhead, MetaGrid, Party, SignatureBlock, Totals } from './parts'
@@ -21,8 +22,8 @@ export type CommercialDocData = {
   prospectEmail: string | null
   prospectAddress: string | null
   location: { name: string } | null
-  lines: { description: string; details: string | null; quantity: string | number; unitLabel: string | null; unitPrice: string | number; lineTotal: string | number; taxRate: string | number; taxMode: string; taxTreatment: string }[]
-  payments: { amount: string | number; kind: string; reference: string | null; paidAt: string; paymentMethod: { name: string } }[]
+  lines: { description: string; details: string | null; quantity: string | number; unitLabel: string | null; unitPrice: string | number; lineTotal: string | number; netAmount?: string | number; taxAmount?: string | number; taxRate: string | number; taxMode: string; taxTreatment: string }[]
+  payments: { amount: string | number; kind: string; reference: string | null; paidAt: string; paymentMethod: { name: string }; receivedBy?: string | null }[]
   subtotal: string | number
   net: string | number
   taxAmount: string | number
@@ -109,11 +110,94 @@ export default function CommercialDocument({ data, profile }: { data: Commercial
         />
         {data.intro ? <Text style={s.note}>{data.intro}</Text> : null}
         {!isInvoice && Number(data.depositRequired) > 0 ? <Text style={s.note}>Required deposit: {money(Number(data.depositRequired), currency)}. Balance after required deposit: {money(Math.max(0, Number(data.total) - Number(data.depositRequired)), currency)}.</Text> : null}
-        {data.payments.length ? <Text style={s.note}>Payments/deposits recorded: {data.payments.map((p) => `${p.paymentMethod.name} ${money(Number(p.amount), currency)}${p.reference ? ` (${p.reference})` : ''}`).join('; ')}</Text> : null}
+        {data.payments.length ? <PaymentsTable payments={data.payments} currency={currency} /> : null}
+        {data.lines.length ? <TaxBreakdownTable lines={data.lines} currency={currency} /> : null}
         {data.footerText ? <Text style={s.note}>{data.footerText}</Text> : null}
         <SignatureBlock columns={[{ role: 'Issued by' }, { role: isInvoice ? 'Received by' : 'Accepted by' }]} />
         <Footer profile={profile} />
       </Page>
     </Document>
+  )
+}
+
+const pt = StyleSheet.create({
+  wrap: { marginTop: 14 },
+  table: { marginTop: 6, borderWidth: 1, borderColor: palette.line },
+  th: { flexDirection: 'row', backgroundColor: palette.shade, borderBottomWidth: 1, borderBottomColor: palette.line },
+  thText: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: palette.muted, letterSpacing: 0.6, paddingVertical: 5, paddingHorizontal: 6 },
+  tr: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: palette.hairline },
+  td: { fontSize: 8.5, paddingVertical: 5, paddingHorizontal: 6 },
+  right: { textAlign: 'right' },
+  colDate: { width: 80 },
+  colMethod: { width: 90 },
+  colRef: { flex: 1 },
+  colBy: { width: 110 },
+  colAmount: { width: 96, textAlign: 'right' },
+})
+
+function PaymentsTable({ payments, currency }: { payments: CommercialDocData['payments']; currency: string }) {
+  return (
+    <View style={pt.wrap} wrap={false}>
+      <Text style={s.sectionLabel}>PAYMENTS MADE</Text>
+      <View style={pt.table}>
+        <View style={pt.th}>
+          <Text style={[pt.thText, pt.colDate]}>DATE</Text>
+          <Text style={[pt.thText, pt.colMethod]}>METHOD</Text>
+          <Text style={[pt.thText, pt.colRef]}>REFERENCE</Text>
+          <Text style={[pt.thText, pt.colBy]}>RECEIVED BY</Text>
+          <Text style={[pt.thText, pt.colAmount]}>AMOUNT</Text>
+        </View>
+        {payments.map((p, i) => (
+          <View key={i} style={pt.tr}>
+            <Text style={[pt.td, pt.colDate]}>{shortDate(p.paidAt)}</Text>
+            <Text style={[pt.td, pt.colMethod]}>{p.paymentMethod.name}</Text>
+            <Text style={[pt.td, pt.colRef]}>{p.reference || '-'}</Text>
+            <Text style={[pt.td, pt.colBy]}>{p.receivedBy || '-'}</Text>
+            <Text style={[pt.td, pt.colAmount]}>{money(Number(p.amount), currency)}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  )
+}
+
+function taxCategoryLabel(line: CommercialDocData['lines'][number]) {
+  if (line.taxTreatment === 'EXEMPT') return 'Exempt'
+  if (line.taxTreatment === 'ZERO_RATED') return 'Zero-rated'
+  return `Standard (${Number(line.taxRate)}%) — ${line.taxMode === 'EXCLUSIVE' ? 'Exclusive' : 'Inclusive'}`
+}
+
+function TaxBreakdownTable({ lines, currency }: { lines: CommercialDocData['lines']; currency: string }) {
+  const groups = new Map<string, { net: number; tax: number; gross: number }>()
+  for (const line of lines) {
+    const key = taxCategoryLabel(line)
+    const g = groups.get(key) ?? { net: 0, tax: 0, gross: 0 }
+    const gross = Number(line.lineTotal)
+    const tax = Number(line.taxAmount ?? 0)
+    g.gross += gross
+    g.tax += tax
+    g.net += line.netAmount != null ? Number(line.netAmount) : gross - tax
+    groups.set(key, g)
+  }
+  return (
+    <View style={pt.wrap} wrap={false}>
+      <Text style={s.sectionLabel}>TAX BREAKDOWN</Text>
+      <View style={pt.table}>
+        <View style={pt.th}>
+          <Text style={[pt.thText, pt.colRef]}>CATEGORY</Text>
+          <Text style={[pt.thText, pt.colBy]}>NET</Text>
+          <Text style={[pt.thText, pt.colBy]}>TAX</Text>
+          <Text style={[pt.thText, pt.colAmount]}>GROSS</Text>
+        </View>
+        {[...groups.entries()].map(([label, g]) => (
+          <View key={label} style={pt.tr}>
+            <Text style={[pt.td, pt.colRef]}>{label}</Text>
+            <Text style={[pt.td, pt.colBy]}>{money(g.net, currency)}</Text>
+            <Text style={[pt.td, pt.colBy]}>{money(g.tax, currency)}</Text>
+            <Text style={[pt.td, pt.colAmount]}>{money(g.gross, currency)}</Text>
+          </View>
+        ))}
+      </View>
+    </View>
   )
 }
