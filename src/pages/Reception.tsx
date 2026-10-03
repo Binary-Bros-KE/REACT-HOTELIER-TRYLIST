@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import type { FormEvent, ReactNode } from "react";
 import {
   LuBan,
@@ -287,6 +288,17 @@ export default function Reception() {
       setBizTax(r.profile);
     }).catch(() => {});
   }, []);
+
+  // A link from an invoice opens its stay: /reception?stay=<reservation id>.
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    const stayId = searchParams.get("stay");
+    if (!stayId || bookings.length === 0) return;
+    const booking = bookings.find((b) => b.id === stayId);
+    if (booking) setStayOpen(booking);
+    setSearchParams({}, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookings]);
 
   // Keep the open stay panel's data fresh against the latest load, and close
   // it automatically once the reservation reaches a terminal state.
@@ -954,6 +966,35 @@ function CancelModal({ reservation, at, onClose, onCancelled }: { reservation: R
   );
 }
 
+/** Adults and children on a stay. Changing them re-prices a per-person room and
+ * brings its folio and invoice along. */
+function HeadcountEditor({ reservation, at, onChanged }: { reservation: Reservation; at: ApiAt; onChanged: () => void }) {
+  const toast = useToast();
+  const [adults, setAdults] = useState(String(reservation.adults));
+  const [children, setChildren] = useState(String(reservation.children));
+  const [saving, setSaving] = useState(false);
+  const changed = Number(adults) !== reservation.adults || Number(children) !== reservation.children;
+  async function save() {
+    setSaving(true);
+    try {
+      await at(`/reception/reservations/${reservation.id}/guests-count`, { method: "PATCH", body: JSON.stringify({ adults: Number(adults), children: Number(children) }) });
+      toast.success("Guests updated. The room charge and invoice have been updated to match.");
+      onChanged();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not update the guests");
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <div className="flex flex-wrap items-end gap-2 rounded-sm border p-3">
+      <label className="text-xs font-medium">Adults<input type="number" min="1" className="input mt-1 w-24" value={adults} onChange={(e) => setAdults(e.target.value)} /></label>
+      <label className="text-xs font-medium">Children<input type="number" min="0" className="input mt-1 w-24" value={children} onChange={(e) => setChildren(e.target.value)} /></label>
+      <button type="button" disabled={!changed || saving || Number(adults) < 1} onClick={() => void save()} className="rounded-sm bg-secondary px-3 py-2 text-xs font-semibold text-secondary-foreground disabled:opacity-60">Save guests</button>
+    </div>
+  );
+}
+
 function StayModal({ reservation, rooms, at, onClose, onChanged, onCheckedOut }: { reservation: Reservation; rooms: Room[]; at: ApiAt; onClose: () => void; onChanged: () => void; onCheckedOut: () => void }) {
   const toast = useToast();
   const [services, setServices] = useState<Service[]>([]);
@@ -1438,6 +1479,7 @@ function StayModal({ reservation, rooms, at, onClose, onChanged, onCheckedOut }:
 
           {tab === "guests" && (
             <div className="space-y-4">
+              <HeadcountEditor reservation={reservation} at={at} onChanged={onChanged} />
               <form onSubmit={addGuest} className="flex gap-2">
                 <input placeholder="Guest name" className="input flex-1" value={guestName} onChange={(e) => setGuestName(e.target.value)} />
                 <input placeholder="ID/Passport (optional)" className="input flex-1" value={guestIdNumber} onChange={(e) => setGuestIdNumber(e.target.value)} />

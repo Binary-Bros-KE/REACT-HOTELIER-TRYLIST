@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import { LuCheck, LuCircleAlert, LuCreditCard, LuFileText, LuLoaderCircle, LuPencil, LuPlus, LuPrinter, LuRefreshCw, LuSearch, LuSend, LuSignature, LuTrash2 } from 'react-icons/lu'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
 import { useToast } from '@/components/ui/Toast'
 import PageBanner from '@/components/ui/PageBanner'
@@ -30,6 +30,7 @@ type SourceOrder = { id: string; orderNumber: number; channel: string; customerN
 type SourceOptions = { roomRates: SourceLine[]; services: SourceLine[]; folios: SourceFolio[]; orders: SourceOrder[] }
 type DocumentRow = {
   id: string; documentNo: string; type: DocType; status: Status; title: string | null; intro: string | null; headerText: string | null; footerText: string | null
+  source: string; linkedStay?: { reservationId: string; reservationNo: string; roomNumber: string; folioNo: string; checkIn: string; checkOut: string; guestName: string } | null
   customerId: string | null; customer: Customer | null; prospectName: string | null; prospectPhone: string | null; prospectEmail: string | null; prospectAddress: string | null
   locationId: string | null; location: Location | null; issuedAt: string | null; expiresAt: string | null; dueAt: string | null; depositRequired: string | number
   subtotal: string | number; net: string | number; taxAmount: string | number; total: string | number; paidAmount: string | number; balance: string | number
@@ -46,6 +47,7 @@ const blankLine = (tax?: Options['tax']): Line => ({ source: 'CUSTOM', sourceRef
 const statusTone = (s: Status) => s === 'PAID' || s === 'ACCEPTED' ? 'success' : s === 'OVERDUE' || s === 'REJECTED' || s === 'VOID' ? 'danger' : s === 'PARTIALLY_PAID' || s === 'SENT' || s === 'ISSUED' ? 'warning' : s === 'CONVERTED' ? 'secondary' : 'muted'
 
 export default function CommercialDocuments({ type }: { type: DocType }) {
+  const navigate = useNavigate()
   const toast = useToast()
   const path = useLocation().pathname
   const isInvoice = type === 'INVOICE'
@@ -147,14 +149,14 @@ export default function CommercialDocuments({ type }: { type: DocType }) {
                 {documents.map((doc) => (
                   <tr key={doc.id} className="even:bg-muted/30">
                     <td className="px-5 py-3.5"><button onClick={() => setPrinting(doc)} className="font-semibold text-secondary hover:underline">{doc.documentNo}</button><p className="text-xs text-muted-foreground">{doc.title || (isInvoice ? 'Invoice' : 'Quotation')}{doc.sourceDocument ? ` from ${doc.sourceDocument.documentNo}` : ''}</p></td>
-                    <td className="px-5 py-3.5">{clientName(doc)}{doc.location && <p className="text-xs text-muted-foreground">{doc.location.name}</p>}</td>
+                    <td className="px-5 py-3.5">{clientName(doc)}{doc.location && <p className="text-xs text-muted-foreground">{doc.location.name}</p>}{doc.linkedStay && <p className="text-xs text-muted-foreground">Stay {doc.linkedStay.reservationNo} · Room {doc.linkedStay.roomNumber} · Folio {doc.linkedStay.folioNo}</p>}</td>
                     <td className="px-5 py-3.5 text-xs text-muted-foreground">{isInvoice ? `Due ${doc.dueAt ? new Date(doc.dueAt).toLocaleDateString('en-KE') : '-'}` : `Expires ${doc.expiresAt ? new Date(doc.expiresAt).toLocaleDateString('en-KE') : '-'}`}</td>
                     <td className="px-5 py-3.5 text-right font-semibold tabular-nums">{money(Number(doc.total))}</td>
                     <td className="px-5 py-3.5 text-right tabular-nums">{money(Number(doc.balance))}</td>
                     <td className="px-5 py-3.5"><StatusPill tone={statusTone(doc.status)}>{doc.status.replaceAll('_', ' ')}</StatusPill></td>
                     <td className="px-5 py-3.5"><div className="flex justify-end gap-1.5">
                       <ActionButton tone="neutral" icon={<LuPrinter />} title="Print / download" onClick={() => setPrinting(doc)} />
-                      {['DRAFT', 'SENT', 'ISSUED'].includes(doc.status) && <ActionButton tone="neutral" icon={<LuPencil />} title="Edit" onClick={() => setEditor(doc)} />}
+                      {doc.source === 'HOTEL_STAY' && doc.linkedStay ? <ActionButton tone="neutral" icon={<LuFileText />} title={`Open stay ${doc.linkedStay.reservationNo}`} onClick={() => navigate(`/reception?stay=${doc.linkedStay!.reservationId}`)} /> : ['DRAFT', 'SENT', 'ISSUED'].includes(doc.status) && <ActionButton tone="neutral" icon={<LuPencil />} title="Edit" onClick={() => setEditor(doc)} />}
                       {doc.type === 'QUOTATION' && doc.status === 'DRAFT' && <ActionButton tone="neutral" icon={<LuSend />} title="Mark sent" onClick={() => void setDocStatus(doc, 'SENT')} />}
                       {doc.type === 'QUOTATION' && ['SENT', 'DRAFT'].includes(doc.status) && <ActionButton tone="neutral" icon={<LuCheck />} title="Accept" onClick={() => void setDocStatus(doc, 'ACCEPTED')} />}
                       {doc.type === 'QUOTATION' && doc.status === 'ACCEPTED' && <ActionButton tone="primary" icon={<LuRefreshCw />} title="Convert to invoice" onClick={() => void convert(doc)} />}
