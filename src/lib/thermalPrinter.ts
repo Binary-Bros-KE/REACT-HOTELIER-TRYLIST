@@ -34,6 +34,10 @@ export type ThermalSettings = {
   /** characters per line */
   columns: number
   autoPrint: boolean
+  /** The printer (NODE Printer id) this device's receipts are sent to. Set once, kept until changed. */
+  workingPrinterId: string
+  /** The printer this computer physically drives and prints jobs for. Empty = it prints no one else's jobs. */
+  hostPrinterId: string
 }
 
 export const PRINTER_MODELS: { value: string; label: string }[] = [
@@ -74,6 +78,8 @@ const DEFAULTS: ThermalSettings = {
   bridgeUrl: DEFAULT_BRIDGE_URL,
   columns: 42,
   autoPrint: true,
+  workingPrinterId: '',
+  hostPrinterId: '',
 }
 
 export function getThermalSettings(): ThermalSettings {
@@ -579,7 +585,8 @@ export async function printReceipt(order?: ReceiptOrder | null, profile?: Receip
   }
 
   if (s.connection === 'relay') {
-    const job = await createPrintJob(order.id)
+    if (!s.workingPrinterId) throw new Error('Choose the printer your receipts go to in Printer Settings first')
+    const job = await createPrintJob(order.id, s.workingPrinterId)
     return { method: 'relay', jobId: job.id }
   }
 

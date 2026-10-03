@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { useAppSelector, useAppDispatch } from '@/store/hooks'
+import { useAppDispatch } from '@/store/hooks'
 import { api } from '@/lib/api'
 import { getThermalSettings, buildDispatchSlipBytes, buildReceiptBytes, sendLocal } from '@/lib/thermalPrinter'
 import { listPendingPrintJobs, claimPrintJob, completePrintJob, failPrintJob } from '@/lib/printRelay'
@@ -22,27 +22,23 @@ const POLL_MS = 3000
  */
 export function usePrintRelayHost(): void {
   const dispatch = useAppDispatch()
-  const user = useAppSelector((s) => s.auth.user)
-  const locationId = user?.locations.length === 1 ? user.locations[0].id : (user?.defaultLocation?.id ?? null)
   const profileRef = useRef<ReceiptProfile | undefined>(undefined)
   const runningRef = useRef(false)
 
   useEffect(() => {
-    if (!locationId) return
-
     let cancelled = false
     const timer = window.setInterval(() => { void tick() }, POLL_MS)
 
     async function tick() {
       if (cancelled || runningRef.current) return
       const s = getThermalSettings()
-      if (!s.enabled || s.connection === 'relay' || s.connection === 'dialog') {
+      if (!s.enabled || !s.hostPrinterId || s.connection === 'relay' || s.connection === 'dialog') {
         dispatch(setPrintJobCounts({ pendingCount: 0, nudgedCount: 0 }))
         return
       }
       runningRef.current = true
       try {
-        const jobs = await listPendingPrintJobs(locationId!)
+        const jobs = await listPendingPrintJobs(s.hostPrinterId)
         dispatch(setPrintJobCounts({ pendingCount: jobs.length, nudgedCount: jobs.filter((j) => j.nudgedAt).length }))
         for (const job of jobs) {
           if (cancelled) break
@@ -76,5 +72,5 @@ export function usePrintRelayHost(): void {
     }
 
     return () => { cancelled = true; window.clearInterval(timer); dispatch(setPrintJobCounts({ pendingCount: 0, nudgedCount: 0 })) }
-  }, [locationId, dispatch])
+  }, [dispatch])
 }

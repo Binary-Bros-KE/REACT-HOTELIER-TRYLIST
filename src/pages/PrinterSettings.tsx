@@ -5,6 +5,7 @@ import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
 import PageBanner from '@/components/ui/PageBanner'
 import ActionButton from '@/components/ui/ActionButton'
+import PrinterRouting from '@/components/printers/PrinterRouting'
 import {
   getThermalSettings, saveThermalSettings, pairUsbPrinter, pairBluetoothPrinter,
   webUsbAvailable, webBluetoothAvailable, PRINTER_MODELS, recommendedColumns,
@@ -87,6 +88,8 @@ export default function PrinterSettings() {
     <div className="dashboard-square mx-auto max-w-3xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
       <PageBanner kicker="Sales" title="Printer Settings" />
       <p className="mb-6 mt-5 max-w-2xl text-sm text-muted-foreground">How receipts print from this device. Every device sets its own — if a printer stops working here, this is always the place to check, whoever's on shift.</p>
+
+      <PrinterRouting settings={s} onChange={patch} />
 
       <section className="border border-border bg-card p-6 shadow-sm">
         <div className="flex items-center gap-2.5">
