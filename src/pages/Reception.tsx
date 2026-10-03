@@ -1276,7 +1276,7 @@ function StayModal({ reservation, rooms, at, onClose, onChanged, onCheckedOut }:
                 {totals.tax && totals.tax.taxAmount > 0.005 && (
                   <p className="mt-1 text-xs text-muted-foreground">Includes {formatKes(totals.tax.taxAmount)} tax</p>
                 )}
-                {totals.balance > 0.01 && (
+                {totals.balance > 0.01 && !linkedInvoices.some((doc) => doc.status !== "CANCELLED" && doc.status !== "VOID") && (
                   <button type="button" onClick={() => void generateInvoice()} disabled={busy} className="mt-3 inline-flex items-center gap-2 rounded-sm border bg-card px-3 py-2 text-xs font-semibold hover:bg-muted disabled:opacity-60">
                     {busy ? <LuLoaderCircle className="animate-spin" /> : <LuFileText />} Generate invoice
                   </button>

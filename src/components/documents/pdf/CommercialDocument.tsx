@@ -24,6 +24,7 @@ export type CommercialDocData = {
   location: { name: string } | null
   lines: { description: string; details: string | null; quantity: string | number; unitLabel: string | null; unitPrice: string | number; lineTotal: string | number; netAmount?: string | number; taxAmount?: string | number; taxRate: string | number; taxMode: string; taxTreatment: string }[]
   payments: { amount: string | number; kind: string; reference: string | null; paidAt: string; paymentMethod: { name: string }; receivedBy?: string | null }[]
+  linkedStay?: { reservationNo: string; roomNumber: string; folioNo: string; checkIn: string; checkOut: string; guestName: string } | null
   subtotal: string | number
   net: string | number
   taxAmount: string | number
@@ -108,6 +109,7 @@ export default function CommercialDocument({ data, profile }: { data: Commercial
           ]}
           grand={{ key: Number(data.balance) > 0 ? 'Balance' : 'Total', value: money(Number(data.balance) > 0 ? Number(data.balance) : Number(data.total), currency) }}
         />
+        {data.linkedStay ? <Text style={s.note}>Stay: {data.linkedStay.reservationNo} · Room {data.linkedStay.roomNumber} · Folio {data.linkedStay.folioNo} · {shortDate(data.linkedStay.checkIn)} to {shortDate(data.linkedStay.checkOut)}</Text> : null}
         {data.intro ? <Text style={s.note}>{data.intro}</Text> : null}
         {!isInvoice && Number(data.depositRequired) > 0 ? <Text style={s.note}>Required deposit: {money(Number(data.depositRequired), currency)}. Balance after required deposit: {money(Math.max(0, Number(data.total) - Number(data.depositRequired)), currency)}.</Text> : null}
         {data.payments.length ? <PaymentsTable payments={data.payments} currency={currency} /> : null}
