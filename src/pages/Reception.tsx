@@ -289,7 +289,7 @@ export default function Reception() {
     }).catch(() => {});
   }, []);
 
-  // A link from an invoice opens its stay: /reception?stay=<reservation id>.
+  // A link from an invoice opens its stay: /reservations?stay=<reservation id>.
   const [searchParams, setSearchParams] = useSearchParams();
   useEffect(() => {
     const stayId = searchParams.get("stay");
