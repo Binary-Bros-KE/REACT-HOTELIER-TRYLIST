@@ -344,10 +344,23 @@ function DocumentEditor({ type, document, options, sources, fixedLocation, locat
                 <input value={line.unitLabel} onChange={(e) => setLine(index, { unitLabel: e.target.value })} placeholder="Unit" className="input" />
                 <input required type="number" min="0" step="0.01" value={line.unitPrice} onChange={(e) => setLine(index, { unitPrice: e.target.value })} placeholder="Unit price" className="input" />
                 <button type="button" onClick={() => setForm((f) => ({ ...f, lines: f.lines.filter((_, i) => i !== index) }))} disabled={form.lines.length === 1} className="rounded-sm border px-3 disabled:opacity-40"><LuTrash2 /></button>
-                <div className="grid gap-2 sm:grid-cols-3 lg:col-span-5">
-                  <label className="text-xs font-medium text-muted-foreground">Tax %<input type="number" min="0" step="0.01" value={line.taxRate} onChange={(e) => setLine(index, { taxRate: e.target.value })} className="input mt-1 text-sm" /></label>
-                  <label className="text-xs font-medium text-muted-foreground">Prices<select value={line.taxMode} onChange={(e) => setLine(index, { taxMode: e.target.value as TaxMode })} className="input mt-1 text-sm"><option value="INCLUSIVE">Tax included</option><option value="EXCLUSIVE">Tax added</option></select></label>
-                  <label className="text-xs font-medium text-muted-foreground">Tax treatment<select value={line.taxTreatment} onChange={(e) => setLine(index, { taxTreatment: e.target.value as TaxTreatment })} className="input mt-1 text-sm"><option value="STANDARD">VAT</option><option value="ZERO_RATED">Zero-rated</option><option value="EXEMPT">Exempt</option></select></label>
+                <div className="grid gap-2 sm:grid-cols-[minmax(0,.5fr)_minmax(0,1fr)] lg:col-span-5">
+                  <label className="text-xs font-medium text-muted-foreground">Rate %<input type="number" min="0" step="0.01" value={line.taxRate} onChange={(e) => setLine(index, { taxRate: e.target.value })} className="input mt-1 text-sm" /></label>
+                  <label className="text-xs font-medium text-muted-foreground">Tax
+                    <select
+                      value={line.taxTreatment === 'STANDARD' ? `STANDARD|${line.taxMode}` : line.taxTreatment}
+                      onChange={(e) => {
+                        const [treatment, mode] = e.target.value.split('|')
+                        setLine(index, { taxTreatment: treatment as TaxTreatment, taxMode: (mode ?? 'INCLUSIVE') as TaxMode })
+                      }}
+                      className="input mt-1 text-sm"
+                    >
+                      <option value="STANDARD|INCLUSIVE">Standard {Number(line.taxRate) || 0}% Included</option>
+                      <option value="STANDARD|EXCLUSIVE">Standard {Number(line.taxRate) || 0}% Excluded</option>
+                      <option value="ZERO_RATED">Zero-rated</option>
+                      <option value="EXEMPT">Exempt</option>
+                    </select>
+                  </label>
                 </div>
                 <textarea value={line.details} onChange={(e) => setLine(index, { details: e.target.value })} placeholder="Optional line note" className="input lg:col-span-5" rows={1} />
               </div>)}
