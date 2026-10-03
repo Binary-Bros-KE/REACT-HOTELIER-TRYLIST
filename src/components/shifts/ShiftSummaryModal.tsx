@@ -42,6 +42,7 @@ export type RoomStayRow = {
 
 const shortDay = (iso: string) => new Date(iso).toLocaleDateString('en-KE', { day: '2-digit', month: 'short' })
 export type CategorySummary = { total: number; count: number }
+export type ItemSummary = { name: string; quantity: number; total: number }
 
 export type ShiftSummary = {
   from: string
@@ -55,6 +56,7 @@ export type ShiftSummary = {
   pendingOrders: number
   byPaymentMethod: { name: string; total: number; count: number }[]
   byCategory?: { rooms: CategorySummary; food: CategorySummary; products: CategorySummary; services: CategorySummary; memberships: CategorySummary }
+  categorizedItems?: { food: ItemSummary[]; products: ItemSummary[]; services: ItemSummary[] }
   categorizedSales?: { rooms: RoomStayRow[]; food: CategoryRow[]; products: CategoryRow[]; services: CategoryRow[]; memberships: CategoryRow[] }
   transactions: {
     id: string
@@ -107,41 +109,77 @@ export type ShiftDecision = { cashVariance?: number; varianceNote?: string }
 function buildShiftReportDoc(session: ShiftSession, summary: ShiftSummary): ReportDocData {
   const name = `${session.employee.firstName} ${session.employee.lastName}`
   const transactionsNet = summary.transactions.reduce((sum, t) => sum + (t.direction === 'IN' ? t.amount : -t.amount), 0)
+  const rejected = session.status === 'REJECTED_START' || session.status === 'REJECTED_END'
+  const statusLabel = rejected ? 'Rejected' : session.status === 'ENDED' ? 'Cleared' : session.status === 'REQUESTED_END' ? 'Awaiting review' : session.status === 'ACTIVE' ? 'In progress' : 'Pending'
+  const variance = session.cashVariance != null ? Number(session.cashVariance) : 0
   const categories = (['rooms', 'food', 'products', 'services', 'memberships'] as const)
-    .map((key) => ({ key, label: CATEGORY_LABEL[key], summary: summary.byCategory?.[key], rows: summary.categorizedSales?.[key] ?? [] }))
+    .map((key) => ({ key, label: CATEGORY_LABEL[key], summary: summary.byCategory?.[key] }))
     .filter((c) => c.summary && c.summary.count > 0)
+  const items = summary.categorizedItems
+  const time = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const lines = (count: number) => `${count} line${count === 1 ? '' : 's'}`
+  const itemSection = (title: string, rows: ItemSummary[] | undefined) => ({
+    title,
+    columns: [{ label: 'Item' }, { label: 'Qty', align: 'right' as const }, { label: 'Total', align: 'right' as const }],
+    rows: (rows ?? []).map((r) => [r.name, r.quantity, formatKes(r.total)]),
+  })
+  const sections: ReportDocData['sections'] = []
+  for (const c of categories) {
+    if (c.key === 'rooms') {
+      sections.push({
+        title: 'Rooms',
+        note: 'One row per stay. Charges, paid and owing cover the whole stay, not just what was rung up this shift.',
+        columns: [
+          { label: 'Guest' }, { label: 'Room' }, { label: 'Check-in' }, { label: 'Check-out' }, { label: 'Nights', align: 'right' as const },
+          { label: 'Type' }, { label: 'Sold', align: 'right' as const }, { label: 'Charges', align: 'right' as const }, { label: 'Paid', align: 'right' as const }, { label: 'Owing', align: 'right' as const },
+        ],
+        rows: (summary.categorizedSales?.rooms ?? []).map((r) => [
+          r.guestName, `${r.roomNumber} (${r.reservationNo})`, shortDay(r.checkIn), shortDay(r.checkOut), r.nights,
+          r.complimentary ? 'Complimentary' : 'Paid', formatKes(r.soldThisShift), formatKes(r.stayCharges), formatKes(r.paid), formatKes(r.owing),
+        ]),
+      })
+    } else if (c.key === 'food') {
+      sections.push(itemSection(`Food sold (${lines(c.summary!.count)})`, items?.food))
+    } else if (c.key === 'products') {
+      sections.push(itemSection(`Products sold (${lines(c.summary!.count)})`, items?.products))
+    } else if (c.key === 'services') {
+      sections.push(itemSection(`Services sold (${lines(c.summary!.count)})`, items?.services))
+    } else {
+      sections.push({
+        title: 'Memberships',
+        columns: [{ label: 'Item' }, { label: 'Detail' }, { label: 'Time' }, { label: 'Total', align: 'right' as const }],
+        rows: (summary.categorizedSales?.memberships ?? []).map((r) => [r.label, r.detail ?? '-', time(r.createdAt), formatKes(r.total)]),
+      })
+    }
+  }
   return {
     reportTitle: `Shift Summary - ${name}`,
     kicker: session.employee.jobTitle || 'Employee',
     rangeLabel: `${summary.from ? new Date(summary.from).toLocaleString('en-KE', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-'} to ${summary.to ? new Date(summary.to).toLocaleString('en-KE', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-'} (${summary.hours.toFixed(2)}h)`,
     generatedAt: new Date().toISOString(),
     cards: [
+      { label: 'Status', value: statusLabel, hint: rejected ? (session.rejectionReason ?? undefined) : undefined },
+      ...(Math.abs(variance) > 0.005 ? [{ label: 'Cash variance', value: `${variance > 0 ? 'Over' : 'Short'} ${formatKes(Math.abs(variance))}`, hint: session.varianceNote ?? undefined }] : []),
       { label: 'Sales', value: formatKes(summary.totalSales), hint: `${summary.sales.length} sale(s)` },
       { label: 'Transactions', value: formatKes(transactionsNet), hint: `${summary.transactions.length} transaction(s)` },
       { label: 'Collected', value: formatKes(summary.totalPaid) },
       { label: 'Credit', value: formatKes(summary.creditSales) },
       { label: 'Complimentary', value: formatKes(summary.complimentaryTotal) },
-      ...categories.map((c) => ({ label: c.label, value: formatKes(c.summary!.total), hint: `${c.summary!.count} sale(s)` })),
+      ...categories.map((c) => ({ label: c.label, value: formatKes(c.summary!.total), hint: c.key === 'rooms' ? `${c.summary!.count} stay(s)` : `${c.summary!.count} sale(s)` })),
     ],
     sections: [
-      ...categories.map((c) => c.key === 'rooms'
-        ? {
-          title: 'Rooms',
-          note: 'One row per stay. Charges, paid and owing cover the whole stay, not just what was rung up this shift.',
-          columns: [
-            { label: 'Guest' }, { label: 'Room' }, { label: 'Check-in' }, { label: 'Check-out' }, { label: 'Nights', align: 'right' as const },
-            { label: 'Type' }, { label: 'Sold this shift', align: 'right' as const }, { label: 'Charges', align: 'right' as const }, { label: 'Paid', align: 'right' as const }, { label: 'Owing', align: 'right' as const },
-          ],
-          rows: (c.rows as RoomStayRow[]).map((r) => [
-            r.guestName, `${r.roomNumber} (${r.reservationNo})`, shortDay(r.checkIn), shortDay(r.checkOut), r.nights,
-            r.complimentary ? 'Complimentary' : 'Paid', formatKes(r.soldThisShift), formatKes(r.stayCharges), formatKes(r.paid), formatKes(r.owing),
-          ]),
-        }
-        : {
-          title: c.label,
-          columns: [{ label: 'Item' }, { label: 'Detail' }, { label: 'Time' }, { label: 'Total', align: 'right' as const }],
-          rows: (c.rows as CategoryRow[]).map((r) => [r.label, r.detail ?? '-', new Date(r.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), formatKes(r.total)]),
+      ...sections,
+      {
+        title: 'Sales',
+        columns: [{ label: 'Sale' }, { label: 'Status' }, { label: 'Time' }, { label: 'Total', align: 'right' as const }],
+        rows: summary.sales.map((s) => {
+          if (s.kind === 'FOLIO') {
+            return [`${s.label ?? 'Room charge'} - Room ${s.roomNumber ?? ''} (${s.guestName ?? ''})`, titleCase(s.source ?? 'FOLIO'), time(s.createdAt), formatKes(s.total)]
+          }
+          const status = s.saleType === 'COMPLIMENTARY' ? `Complimentary${s.complimentaryRecipientName ? ` - ${s.complimentaryRecipientName}` : ''}` : (s.paymentStatus ?? '-')
+          return [`Order #${s.orderNumber}`, status, time(s.createdAt), formatKes(s.total)]
         }),
+      },
       {
         title: 'Sales by Payment Method',
         columns: [{ label: 'Method' }, { label: 'Count', align: 'right' as const }, { label: 'Total', align: 'right' as const }],
@@ -150,7 +188,7 @@ function buildShiftReportDoc(session: ShiftSession, summary: ShiftSummary): Repo
       {
         title: 'Transactions',
         columns: [{ label: 'Reference' }, { label: 'Method' }, { label: 'Time' }, { label: 'Amount', align: 'right' as const }],
-        rows: summary.transactions.map((t) => [t.reference || t.transactionNo, t.paymentMethod ?? t.source, new Date(t.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), `${t.direction === 'IN' ? '+' : '-'}${formatKes(t.amount)}`]),
+        rows: summary.transactions.map((t) => [t.reference || t.transactionNo, t.paymentMethod ?? t.source, time(t.createdAt), `${t.direction === 'IN' ? '+' : '-'}${formatKes(t.amount)}`]),
       },
     ],
   }
@@ -292,13 +330,23 @@ export default function ShiftSummaryModal({
                       </tr>
                     ))}
                   </ShiftSummaryTable>
-                ) : (
+                ) : c.key === 'memberships' ? (
                   <ShiftSummaryTable key={c.key} title={c.label} empty="" columns={['Item', 'Detail', 'Time', 'Total']} right={[3]}>
                     {(c.rows as CategoryRow[]).map((r) => (
                       <tr key={r.id}>
                         <td className="px-3 py-2 font-semibold">{r.label}</td>
                         <td className="px-3 py-2 text-muted-foreground">{r.detail ?? '—'}</td>
                         <td className="px-3 py-2 tabular-nums">{new Date(r.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                        <td className="px-3 py-2 text-right font-bold tabular-nums">{formatKes(r.total)}</td>
+                      </tr>
+                    ))}
+                  </ShiftSummaryTable>
+                ) : (
+                  <ShiftSummaryTable key={c.key} title={`${c.label} sold`} empty="" columns={['Item', 'Qty', 'Total']} right={[1, 2]}>
+                    {(summary.categorizedItems?.[c.key] ?? []).map((r) => (
+                      <tr key={r.name}>
+                        <td className="px-3 py-2 font-semibold">{r.name}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{r.quantity}</td>
                         <td className="px-3 py-2 text-right font-bold tabular-nums">{formatKes(r.total)}</td>
                       </tr>
                     ))}
