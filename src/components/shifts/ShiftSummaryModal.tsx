@@ -24,6 +24,23 @@ export type ShiftSession = {
 }
 
 export type CategoryRow = { id: string; label: string; detail: string | null; createdAt: string; total: number }
+// One room stay (folio), not one folio line - see the backend's roomStays.
+export type RoomStayRow = {
+  id: string
+  reservationNo: string
+  guestName: string
+  roomNumber: string
+  checkIn: string
+  checkOut: string
+  nights: number
+  complimentary: boolean
+  soldThisShift: number
+  stayCharges: number
+  paid: number
+  owing: number
+}
+
+const shortDay = (iso: string) => new Date(iso).toLocaleDateString('en-KE', { day: '2-digit', month: 'short' })
 export type CategorySummary = { total: number; count: number }
 
 export type ShiftSummary = {
@@ -38,7 +55,7 @@ export type ShiftSummary = {
   pendingOrders: number
   byPaymentMethod: { name: string; total: number; count: number }[]
   byCategory?: { rooms: CategorySummary; food: CategorySummary; products: CategorySummary; services: CategorySummary; memberships: CategorySummary }
-  categorizedSales?: { rooms: CategoryRow[]; food: CategoryRow[]; products: CategoryRow[]; services: CategoryRow[]; memberships: CategoryRow[] }
+  categorizedSales?: { rooms: RoomStayRow[]; food: CategoryRow[]; products: CategoryRow[]; services: CategoryRow[]; memberships: CategoryRow[] }
   transactions: {
     id: string
     transactionNo: string
@@ -107,11 +124,24 @@ function buildShiftReportDoc(session: ShiftSession, summary: ShiftSummary): Repo
       ...categories.map((c) => ({ label: c.label, value: formatKes(c.summary!.total), hint: `${c.summary!.count} sale(s)` })),
     ],
     sections: [
-      ...categories.map((c) => ({
-        title: c.label,
-        columns: [{ label: 'Item' }, { label: 'Detail' }, { label: 'Time' }, { label: 'Total', align: 'right' as const }],
-        rows: c.rows.map((r) => [r.label, r.detail ?? '-', new Date(r.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), formatKes(r.total)]),
-      })),
+      ...categories.map((c) => c.key === 'rooms'
+        ? {
+          title: 'Rooms',
+          note: 'One row per stay. Charges, paid and owing cover the whole stay, not just what was rung up this shift.',
+          columns: [
+            { label: 'Guest' }, { label: 'Room' }, { label: 'Check-in' }, { label: 'Check-out' }, { label: 'Nights', align: 'right' as const },
+            { label: 'Type' }, { label: 'Sold this shift', align: 'right' as const }, { label: 'Charges', align: 'right' as const }, { label: 'Paid', align: 'right' as const }, { label: 'Owing', align: 'right' as const },
+          ],
+          rows: (c.rows as RoomStayRow[]).map((r) => [
+            r.guestName, `${r.roomNumber} (${r.reservationNo})`, shortDay(r.checkIn), shortDay(r.checkOut), r.nights,
+            r.complimentary ? 'Complimentary' : 'Paid', formatKes(r.soldThisShift), formatKes(r.stayCharges), formatKes(r.paid), formatKes(r.owing),
+          ]),
+        }
+        : {
+          title: c.label,
+          columns: [{ label: 'Item' }, { label: 'Detail' }, { label: 'Time' }, { label: 'Total', align: 'right' as const }],
+          rows: (c.rows as CategoryRow[]).map((r) => [r.label, r.detail ?? '-', new Date(r.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), formatKes(r.total)]),
+        }),
       {
         title: 'Sales by Payment Method',
         columns: [{ label: 'Method' }, { label: 'Count', align: 'right' as const }, { label: 'Total', align: 'right' as const }],
@@ -244,12 +274,27 @@ export default function ShiftSummaryModal({
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">What they did this shift</p>
                   <div className="mt-2 grid grid-cols-2 gap-3 lg:grid-cols-5">
-                    {categories.map((c) => <ShiftMiniStat key={c.key} label={c.label} value={formatKes(c.summary.total)} hint={`${c.summary.count} ${c.label.toLowerCase()} sale${c.summary.count === 1 ? '' : 's'}`} bar={CATEGORY_BAR[c.key]} />)}
+                    {categories.map((c) => <ShiftMiniStat key={c.key} label={c.label} value={formatKes(c.summary.total)} hint={c.key === 'rooms' ? `${c.summary.count} stay${c.summary.count === 1 ? '' : 's'}` : `${c.summary.count} sale${c.summary.count === 1 ? '' : 's'}`} bar={CATEGORY_BAR[c.key]} />)}
                   </div>
                 </div>
-                {categories.map((c) => (
+                {categories.map((c) => c.key === 'rooms' ? (
+                  <ShiftSummaryTable key={c.key} title="Rooms" empty="" columns={['Guest / room', 'Stay', 'Nights', 'Type', 'Sold this shift', 'Charges', 'Paid', 'Owing']} right={[4, 5, 6, 7]}>
+                    {(c.rows as RoomStayRow[]).map((r) => (
+                      <tr key={r.id}>
+                        <td className="px-3 py-2"><p className="font-semibold">{r.guestName}</p><p className="text-[11px] text-muted-foreground">Room {r.roomNumber} · {r.reservationNo}</p></td>
+                        <td className="px-3 py-2 text-xs tabular-nums">{shortDay(r.checkIn)} → {shortDay(r.checkOut)}</td>
+                        <td className="px-3 py-2 tabular-nums">{r.nights}</td>
+                        <td className="px-3 py-2">{r.complimentary ? <span className="border border-accent px-1.5 py-0.5 text-[11px] font-bold uppercase text-accent-foreground">Complimentary</span> : <span className="border border-success/50 px-1.5 py-0.5 text-[11px] font-bold uppercase text-success">Paid</span>}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{formatKes(r.soldThisShift)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{formatKes(r.stayCharges)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">{formatKes(r.paid)}</td>
+                        <td className={cn('px-3 py-2 text-right font-bold tabular-nums', r.owing > 0.01 && 'text-warning')}>{formatKes(r.owing)}</td>
+                      </tr>
+                    ))}
+                  </ShiftSummaryTable>
+                ) : (
                   <ShiftSummaryTable key={c.key} title={c.label} empty="" columns={['Item', 'Detail', 'Time', 'Total']} right={[3]}>
-                    {c.rows.map((r) => (
+                    {(c.rows as CategoryRow[]).map((r) => (
                       <tr key={r.id}>
                         <td className="px-3 py-2 font-semibold">{r.label}</td>
                         <td className="px-3 py-2 text-muted-foreground">{r.detail ?? '—'}</td>
