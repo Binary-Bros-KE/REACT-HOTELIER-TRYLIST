@@ -73,8 +73,8 @@ export default function CommercialDocument({ data, profile }: { data: Commercial
           ]}
         />
         {data.title ? (
-          <View style={{ marginBottom: 10 }}>
-            <Text style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>{data.title}</Text>
+          <View style={{ marginTop: 14 }}>
+            <Text style={{ fontSize: 12, fontWeight: 700 }}>{data.title}</Text>
           </View>
         ) : null}
         <View style={s.table}>
