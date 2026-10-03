@@ -196,7 +196,7 @@ export default function PurchaseRequisitions() {
   }, [productQuery, products, form.items])
 
   function addProduct(p: Product) {
-    setForm((f) => (f.items.some((i) => i.productId === p.id) ? f : { ...f, items: [...f.items, { productId: p.id, quantity: '', estimatedUnitCost: '' }] }))
+    setForm((f) => (f.items.some((i) => i.productId === p.id) ? f : { ...f, items: [...f.items, { productId: p.id, quantity: '', estimatedUnitCost: p.unitCost != null ? String(Number(p.unitCost)) : '' }] }))
     setProductQuery('')
   }
 
@@ -607,7 +607,7 @@ export default function PurchaseRequisitions() {
                       <span className="tabular-nums">{formatKes(formTotal)}</span>
                     </div>
                   )}
-                  <p className="text-xs text-muted-foreground">Leave a unit cost blank to use the product's current catalog cost — whoever reviews this can still adjust it before approving.</p>
+                  <p className="text-xs text-muted-foreground">Unit costs start at each product's current catalog cost — change them if you expect a different price. Whoever reviews this can still adjust it before approving.</p>
                 </div>
               </div>
             </div>
