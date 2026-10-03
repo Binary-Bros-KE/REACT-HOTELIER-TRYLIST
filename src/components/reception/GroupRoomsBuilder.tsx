@@ -129,7 +129,7 @@ export default function GroupRoomsBuilder({ rooms, customers, rows, onChange, gr
             if (!room) return null
             const gross = groupRowGross(room, row, nights)
             const terms = row.ownTerms ? row.terms : groupTerms
-            const off = termsDiscount(terms, gross)
+            const off = termsDiscount(terms, gross, nights)
             return (
               <div key={row.key} className="border bg-card p-3">
                 <div className="flex items-start justify-between gap-3">
@@ -171,7 +171,7 @@ export default function GroupRoomsBuilder({ rooms, customers, rows, onChange, gr
                   <input type="checkbox" checked={row.ownTerms} onChange={(e) => update(row.key, { ownTerms: e.target.checked, terms: e.target.checked && row.terms.roomSaleType === 'PAID' && row.terms.discountType === 'NONE' ? { ...groupTerms } : row.terms })} />
                   This room has its own terms (different discount, or complimentary)
                 </label>
-                {row.ownTerms && <div className="mt-3"><RoomTermsFields value={row.terms} onChange={(terms) => update(row.key, { terms })} roomTotal={nights > 0 ? gross : undefined} /></div>}
+                {row.ownTerms && <div className="mt-3"><RoomTermsFields value={row.terms} onChange={(terms) => update(row.key, { terms })} roomTotal={nights > 0 ? gross : undefined} units={nights || 1} /></div>}
               </div>
             )
           })}

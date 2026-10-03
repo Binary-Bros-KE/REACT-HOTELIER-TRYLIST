@@ -8,10 +8,12 @@ export type RoomTerms = {
   complimentaryReason: string
   discountType: 'NONE' | 'PERCENT' | 'AMOUNT'
   discountValue: string
+  /** For a fixed amount: off the whole stay once, or once per unit (person, night). */
+  discountBasis: 'TOTAL' | 'PER_UNIT'
   discountReason: string
 }
 
-export const defaultTerms = (): RoomTerms => ({ roomSaleType: 'PAID', complimentaryReason: '', discountType: 'NONE', discountValue: '', discountReason: '' })
+export const defaultTerms = (): RoomTerms => ({ roomSaleType: 'PAID', complimentaryReason: '', discountType: 'NONE', discountValue: '', discountBasis: 'TOTAL', discountReason: '' })
 
 /** Terms as the API wants them. */
 export function termsPayload(t: RoomTerms) {
@@ -19,28 +21,30 @@ export function termsPayload(t: RoomTerms) {
   const discounted = t.discountType !== 'NONE' && Number(t.discountValue) > 0
   return {
     roomSaleType: 'PAID' as const,
-    ...(discounted ? { discountType: t.discountType, discountValue: Number(t.discountValue), discountReason: t.discountReason.trim() || undefined } : {}),
+    ...(discounted ? { discountType: t.discountType, discountValue: Number(t.discountValue), discountBasis: t.discountType === 'AMOUNT' ? t.discountBasis : undefined, discountReason: t.discountReason.trim() || undefined } : {}),
   }
 }
 
 /** Terms from a saved reservation, to edit them. */
-export function termsFromReservation(r: { roomSaleType?: 'PAID' | 'COMPLIMENTARY'; complimentaryReason?: string | null; discountType?: 'PERCENT' | 'AMOUNT' | null; discountValue?: string | number; discountReason?: string | null }): RoomTerms {
+export function termsFromReservation(r: { roomSaleType?: 'PAID' | 'COMPLIMENTARY'; complimentaryReason?: string | null; discountType?: 'PERCENT' | 'AMOUNT' | null; discountValue?: string | number; discountBasis?: 'TOTAL' | 'PER_UNIT' | null; discountReason?: string | null }): RoomTerms {
   return {
     roomSaleType: r.roomSaleType ?? 'PAID',
     complimentaryReason: r.complimentaryReason ?? '',
     discountType: r.discountType ?? 'NONE',
     discountValue: r.discountType && Number(r.discountValue) > 0 ? String(Number(r.discountValue)) : '',
+    discountBasis: r.discountBasis ?? 'TOTAL',
     discountReason: r.discountReason ?? '',
   }
 }
 
-/** How much a set of terms takes off a room total (the whole total when complimentary). */
-export function termsDiscount(t: RoomTerms, roomTotal: number): number {
+/** How much a set of terms takes off a room total (the whole total when complimentary).
+ * `units` is how many billing units the total covers (people for a per-person rate, nights otherwise); only a PER_UNIT amount uses it. */
+export function termsDiscount(t: RoomTerms, roomTotal: number, units = 1): number {
   if (roomTotal <= 0) return 0
   if (t.roomSaleType === 'COMPLIMENTARY') return roomTotal
   const value = Number(t.discountValue)
   if (t.discountType === 'PERCENT' && value > 0) return Math.round(roomTotal * Math.min(value, 100)) / 100
-  if (t.discountType === 'AMOUNT' && value > 0) return Math.min(value, roomTotal)
+  if (t.discountType === 'AMOUNT' && value > 0) return Math.min(t.discountBasis === 'PER_UNIT' ? value * Math.max(1, units) : value, roomTotal)
   return 0
 }
 
@@ -52,9 +56,9 @@ export function termsInvalid(t: RoomTerms): string | null {
 const seg = (active: boolean, tone: 'secondary' | 'accent' = 'secondary') =>
   cn('px-3 py-2 text-xs font-bold uppercase tracking-wider transition', active ? (tone === 'accent' ? 'bg-accent text-accent-foreground' : 'bg-secondary text-secondary-foreground') : 'bg-card hover:bg-muted')
 
-export default function RoomTermsFields({ value, onChange, roomTotal }: { value: RoomTerms; onChange: (next: RoomTerms) => void; roomTotal?: number }) {
+export default function RoomTermsFields({ value, onChange, roomTotal, units = 1, unitWord = 'night' }: { value: RoomTerms; onChange: (next: RoomTerms) => void; roomTotal?: number; units?: number; unitWord?: string }) {
   const set = (patch: Partial<RoomTerms>) => onChange({ ...value, ...patch })
-  const off = roomTotal != null ? termsDiscount(value, roomTotal) : 0
+  const off = roomTotal != null ? termsDiscount(value, roomTotal, units) : 0
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 border-2 border-foreground/20">
@@ -80,6 +84,14 @@ export default function RoomTermsFields({ value, onChange, roomTotal }: { value:
               <input type="number" min="0" max={value.discountType === 'PERCENT' ? 100 : undefined} step="0.01" className="input mt-1.5" value={value.discountValue} onChange={(e) => set({ discountValue: e.target.value })} />
             </label>
           )}
+          {value.discountType === 'AMOUNT' && (
+            <label className="block text-sm font-medium sm:col-span-2">Applies to
+              <select className="input mt-1.5" value={value.discountBasis} onChange={(e) => set({ discountBasis: e.target.value as RoomTerms['discountBasis'] })}>
+                <option value="TOTAL">The whole stay, once</option>
+                <option value="PER_UNIT">Each {unitWord} (e.g. per person)</option>
+              </select>
+            </label>
+          )}
           {value.discountType !== 'NONE' && (
             <label className="block text-sm font-medium sm:col-span-2">Reason <span className="font-normal text-muted-foreground">(optional)</span>
               <input className="input mt-1.5" value={value.discountReason} onChange={(e) => set({ discountReason: e.target.value })} placeholder="e.g. Loyal guest, corporate rate" maxLength={255} />
@@ -88,7 +100,7 @@ export default function RoomTermsFields({ value, onChange, roomTotal }: { value:
         </div>
       )}
       {termsInvalid(value) && <p className="text-xs font-semibold text-destructive">{termsInvalid(value)}</p>}
-      {roomTotal != null && off > 0 && <p className="text-xs text-muted-foreground">Takes KSh {off.toLocaleString('en-KE', { maximumFractionDigits: 2 })} off the room charges.</p>}
+      {roomTotal != null && off > 0 && <p className="text-xs text-muted-foreground">Takes KSh {off.toLocaleString('en-KE', { maximumFractionDigits: 2 })} off the room charges{value.discountType === 'AMOUNT' && value.discountBasis === 'PER_UNIT' ? ` (KSh ${Number(value.discountValue).toLocaleString('en-KE')} × ${units} ${unitWord}${units === 1 ? '' : 's'})` : ''}.</p>}
     </div>
   )
 }

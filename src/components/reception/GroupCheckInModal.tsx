@@ -56,7 +56,7 @@ export default function GroupCheckInModal({ customers, rooms, at, onClose, onDon
       if (!room) continue
       const rowGross = groupRowGross(room, row, nights)
       gross += rowGross
-      off += termsDiscount(row.ownTerms ? row.terms : groupTerms, rowGross)
+      off += termsDiscount(row.ownTerms ? row.terms : groupTerms, rowGross, nights)
       people += Math.max(parseOccupants(row.occupants).length, Number(row.adults) + Number(row.children) || 1)
     }
     return { gross, off, net: gross - off, people }
@@ -223,7 +223,7 @@ export default function GroupCheckInModal({ customers, rooms, at, onClose, onDon
                     const room = roomById.get(row.roomId)
                     if (!room) return null
                     const gross = groupRowGross(room, row, nights)
-                    const total = gross - termsDiscount(row.ownTerms ? row.terms : groupTerms, gross)
+                    const total = gross - termsDiscount(row.ownTerms ? row.terms : groupTerms, gross, nights)
                     const people = parseOccupants(row.occupants)
                     return (
                       <tr key={row.key}>

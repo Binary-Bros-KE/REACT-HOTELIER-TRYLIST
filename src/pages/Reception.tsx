@@ -108,6 +108,7 @@ type Reservation = {
   roomSaleType?: "PAID" | "COMPLIMENTARY";
   complimentaryReason?: string | null;
   discountType?: "PERCENT" | "AMOUNT" | null;
+  discountBasis?: "TOTAL" | "PER_UNIT" | null;
   discountValue?: string | number;
   discountReason?: string | null;
 };
@@ -621,7 +622,7 @@ function NewGuestModal({ customers, rooms, at, onClose, onDone, onCustomerCreate
   const qty = pricing?.quantity ?? 0;
   const roomGross = pricing?.total ?? 0;
   const needsRate = Boolean(room) && hasVariants(room!) && !rateId;
-  const roomOff = termsDiscount(terms, roomGross);
+  const roomOff = termsDiscount(terms, roomGross, qty);
   const guestValid = mode === "existing"
     ? Boolean(customerId)
     : (guest.customerType === "BUSINESS" ? Boolean(guest.businessName.trim()) : Boolean(guest.firstName.trim())) && guest.phone.trim().length >= 5;
@@ -838,7 +839,7 @@ function NewGuestModal({ customers, rooms, at, onClose, onDone, onCustomerCreate
               )}
             </Section>
             <Section title="Room terms">
-              <div className="sm:col-span-2"><RoomTermsFields value={terms} onChange={setTerms} roomTotal={room ? roomGross : undefined} /></div>
+              <div className="sm:col-span-2"><RoomTermsFields value={terms} onChange={setTerms} roomTotal={room ? roomGross : undefined} units={qty || 1} unitWord={unitWord(pricing?.unitName)} /></div>
             </Section>
             <Section title="Stay">
               <label className="text-sm font-medium">{hourly ? "Start" : "Check-in date"}<input type={hourly ? "datetime-local" : "date"} className="input mt-1.5" value={checkIn} onChange={(e) => setCheckIn(e.target.value)} /></label>
@@ -1303,12 +1304,12 @@ function StayModal({ reservation, rooms, at, onClose, onChanged, onCheckedOut }:
 
               <div className="rounded-sm border p-3">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm"><span className="font-semibold">Room sale:</span> {reservation.roomSaleType === "COMPLIMENTARY" ? "Complimentary" : reservation.discountType && Number(reservation.discountValue) > 0 ? `Paid — ${reservation.discountType === "PERCENT" ? `${Number(reservation.discountValue)}%` : formatKes(Number(reservation.discountValue))} discount` : "Paid"}</p>
+                  <p className="text-sm"><span className="font-semibold">Room sale:</span> {reservation.roomSaleType === "COMPLIMENTARY" ? "Complimentary" : reservation.discountType && Number(reservation.discountValue) > 0 ? `Paid — ${reservation.discountType === "PERCENT" ? `${Number(reservation.discountValue)}%` : `${formatKes(Number(reservation.discountValue))}${reservation.discountBasis === "PER_UNIT" ? " per unit" : ""}`} discount` : "Paid"}</p>
                   <button type="button" onClick={() => { setTerms(termsFromReservation(reservation)); setTermsOpen((v) => !v); }} className="text-xs font-semibold text-secondary hover:underline">{termsOpen ? "Close" : "Change room terms"}</button>
                 </div>
                 {termsOpen && (
                   <div className="mt-3 space-y-3">
-                    <RoomTermsFields value={terms} onChange={setTerms} roomTotal={totals.charges > 0 ? reservation.folio?.lineItems.filter((l) => l.source === "ROOM").reduce((sum, l) => sum + Number(l.amount) * l.quantity, 0) : undefined} />
+                    <RoomTermsFields value={terms} onChange={setTerms} roomTotal={totals.charges > 0 ? reservation.folio?.lineItems.filter((l) => l.source === "ROOM").reduce((sum, l) => sum + Number(l.amount) * l.quantity, 0) : undefined} units={reservation.folio?.lineItems.filter((l) => l.source === "ROOM").reduce((sum, l) => sum + Number(l.quantity), 0) || 1} unitWord="night" />
                     <button type="button" disabled={busy} onClick={() => void saveTerms()} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-60">{busy && <LuLoaderCircle className="animate-spin" />} Save room terms</button>
                   </div>
                 )}
