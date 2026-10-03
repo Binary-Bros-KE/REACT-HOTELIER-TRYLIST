@@ -117,7 +117,7 @@ function SectionTable({ section }: { section: ReportSection }) {
 export default function ReportDocument({ data, profile }: { data: ReportDocData; profile: DocProfile }) {
   return (
     <Document title={data.reportTitle} author={profile?.businessName ?? 'HOTELIER'}>
-      <Page size="A4" orientation="landscape" style={s.page}>
+      <Page size="A4" style={s.page}>
         <ReportHeader profile={profile} data={data} />
         <Cards cards={data.cards} />
         {data.sections.map((section, i) => <SectionTable key={i} section={section} />)}
