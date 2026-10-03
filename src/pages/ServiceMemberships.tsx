@@ -23,6 +23,7 @@ import PageBanner from "@/components/ui/PageBanner";
 import ActionButton from "@/components/ui/ActionButton";
 import ModalShell from "@/components/ui/ModalShell";
 import SearchableSelect from "@/components/ui/SearchableSelect";
+import QuickCustomerModal from "@/components/customers/QuickCustomerModal";
 import { cn } from "@/lib/utils";
 
 type Status = "ACTIVE" | "PAUSED" | "EXPIRED" | "CANCELLED";
@@ -500,7 +501,7 @@ export default function ServiceMemberships() {
         <GroupsModal groups={groups} onClose={() => setManagingGroups(false)} onChanged={load} />
       )}
       {quickCustomer && (
-        <QuickCustomerModal
+        <QuickCustomerModal<Customer>
           onClose={() => setQuickCustomer(false)}
           onCreated={(c) => {
             setCustomers((cur) => [...cur, c].sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`)));
@@ -1064,52 +1065,6 @@ function PlansModal({ plans, onClose, onChanged }: { plans: CatalogPlan[]; onClo
           ))}
         </ul>
       </div>
-    </ModalShell>
-  );
-}
-function QuickCustomerModal({ onClose, onCreated }: { onClose: () => void; onCreated: (customer: Customer) => void }) {
-  const toast = useToast();
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [saving, setSaving] = useState(false);
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    if (!firstName.trim() || !phone.trim()) return;
-    setSaving(true);
-    try {
-      const { customer } = await api<{ customer: Customer }>("/customers", {
-        method: "POST",
-        body: JSON.stringify({ firstName: firstName.trim(), lastName: lastName.trim() || undefined, phone: phone.trim() }),
-      });
-      toast.success("Customer created.");
-      onCreated(customer);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not create customer");
-    } finally {
-      setSaving(false);
-    }
-  }
-  return (
-    <ModalShell
-      size="sm"
-      stacked
-      kicker="Service centre"
-      title="New customer"
-      onClose={onClose}
-      footer={
-        <button form="quick-customer-form" disabled={saving || !firstName.trim() || !phone.trim()} className="inline-flex items-center gap-2 bg-primary px-5 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground disabled:opacity-60">
-          {saving && <LuLoaderCircle className="animate-spin" />}
-          Create
-        </button>
-      }
-    >
-      <form id="quick-customer-form" onSubmit={submit} className="grid gap-4 p-5 sm:grid-cols-2">
-        <Field label="First name" required><input required autoFocus className="input" value={firstName} onChange={(e) => setFirstName(e.target.value)} placeholder="e.g. Faith" /></Field>
-        <Field label="Last name"><input className="input" value={lastName} onChange={(e) => setLastName(e.target.value)} placeholder="e.g. Wanjiru" /></Field>
-        <Field label="Phone" required className="sm:col-span-2"><input required type="tel" className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="e.g. 0712 345 678" /></Field>
-        <p className="text-xs text-muted-foreground sm:col-span-2">They're selected for you as soon as they're created — add email, ID or a service group later from Customers.</p>
-      </form>
     </ModalShell>
   );
 }

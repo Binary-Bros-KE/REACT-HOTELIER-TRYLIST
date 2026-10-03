@@ -8,7 +8,9 @@ import PageBanner from '@/components/ui/PageBanner'
 import StatCard from '@/components/ui/StatCard'
 import ActionButton from '@/components/ui/ActionButton'
 import ModalShell from '@/components/ui/ModalShell'
+import SearchableSelect from '@/components/ui/SearchableSelect'
 import StatusPill from '@/components/ui/StatusPill'
+import QuickCustomerModal from '@/components/customers/QuickCustomerModal'
 import DocumentViewer from '@/components/documents/DocumentViewer'
 import type { DocProfile } from '@/components/documents/pdf'
 import { useWorkingLocation } from '@/lib/useWorkingLocation'
@@ -145,7 +147,7 @@ export default function CommercialDocuments({ type }: { type: DocType }) {
                 {documents.map((doc) => (
                   <tr key={doc.id} className="even:bg-muted/30">
                     <td className="px-5 py-3.5"><button onClick={() => setPrinting(doc)} className="font-semibold text-secondary hover:underline">{doc.documentNo}</button><p className="text-xs text-muted-foreground">{doc.title || (isInvoice ? 'Invoice' : 'Quotation')}{doc.sourceDocument ? ` from ${doc.sourceDocument.documentNo}` : ''}</p></td>
-                    <td className="px-5 py-3.5">{clientName(doc)}<p className="text-xs text-muted-foreground">{doc.location?.name ?? 'No location'}</p></td>
+                    <td className="px-5 py-3.5">{clientName(doc)}{doc.location && <p className="text-xs text-muted-foreground">{doc.location.name}</p>}</td>
                     <td className="px-5 py-3.5 text-xs text-muted-foreground">{isInvoice ? `Due ${doc.dueAt ? new Date(doc.dueAt).toLocaleDateString('en-KE') : '-'}` : `Expires ${doc.expiresAt ? new Date(doc.expiresAt).toLocaleDateString('en-KE') : '-'}`}</td>
                     <td className="px-5 py-3.5 text-right font-semibold tabular-nums">{money(Number(doc.total))}</td>
                     <td className="px-5 py-3.5 text-right tabular-nums">{money(Number(doc.balance))}</td>
@@ -233,6 +235,8 @@ function DocumentEditor({ type, document, options, sources, fixedLocation, locat
   const isInvoice = type === 'INVOICE'
   const [saving, setSaving] = useState(false)
   const [locationId, setLocationId] = useState(fixedLocation?.id ?? document?.locationId ?? selectedLocationId ?? '')
+  const [customers, setCustomers] = useState(options.customers)
+  const [quickCustomer, setQuickCustomer] = useState(false)
   const [form, setForm] = useState(() => ({
     customerId: document?.customerId ?? '',
     prospectName: document?.prospectName ?? '',
@@ -288,16 +292,37 @@ function DocumentEditor({ type, document, options, sources, fixedLocation, locat
   }
   return (
     <ModalShell size="xl" kicker={document ? 'Edit document' : isInvoice ? 'New invoice' : 'New quotation'} title={document?.documentNo ?? (isInvoice ? 'Create invoice' : 'Create quotation')} onClose={onClose} footer={<><button type="button" onClick={onClose} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted">Cancel</button><button form="commercial-doc-form" disabled={saving} className="inline-flex items-center gap-2 bg-primary px-5 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground disabled:opacity-60">{saving && <LuLoaderCircle className="animate-spin" />}Save</button></>}>
-      <form id="commercial-doc-form" onSubmit={save} className="grid max-h-[72vh] gap-5 overflow-y-auto p-5 xl:grid-cols-[minmax(0,1fr)_280px]">
+      <form id="commercial-doc-form" onSubmit={save} className="max-h-[72vh] overflow-y-auto p-5">
         <div className="space-y-5">
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Customer" required={isInvoice}><select required={isInvoice} value={form.customerId} onChange={(e) => setForm({ ...form, customerId: e.target.value })} className="input"><option value="">{isInvoice ? 'Select customer' : 'Walk-in / prospect'}</option>{options.customers.map((c) => <option key={c.id} value={c.id}>{c.businessName || `${c.firstName} ${c.lastName ?? ''}`}</option>)}</select></Field>
-            <Field label="Location">{fixedLocation ? <div className="input bg-muted/50">{fixedLocation.name}</div> : <select value={locationId} onChange={(e) => { setLocationId(e.target.value); setLocation(e.target.value) }} className="input"><option value="">Select location</option>{locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</select>}</Field>
+            <div className="block text-sm font-medium sm:col-span-2">
+              <div className="mb-1.5 flex items-center justify-between">
+                <span>{isInvoice ? 'Customer' : 'Customer (optional)'}{isInvoice && <span className="text-destructive"> *</span>}</span>
+                <button type="button" onClick={() => setQuickCustomer(true)} className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-secondary hover:underline"><LuPlus className="size-3.5" /> New customer</button>
+              </div>
+              <SearchableSelect
+                value={form.customerId}
+                onChange={(id) => setForm({ ...form, customerId: id })}
+                placeholder={isInvoice ? 'Select customer' : 'Walk-in / prospect'}
+                searchPlaceholder="Search by name or phone…"
+                emptyText="No customers match."
+                options={[
+                  ...(isInvoice ? [] : [{ value: '', label: 'Walk-in / prospect' }]),
+                  ...customers.map((c) => ({
+                    value: c.id,
+                    label: c.businessName || `${c.firstName} ${c.lastName ?? ''}`.trim(),
+                    keywords: [c.phone, c.billingPhone, c.email, c.billingEmail].filter(Boolean).join(' ') || undefined,
+                  })),
+                ]}
+              />
+            </div>
+            {isInvoice && (
+              <Field label="Location" required>{fixedLocation ? <div className="input bg-muted/50">{fixedLocation.name}</div> : <select required value={locationId} onChange={(e) => { setLocationId(e.target.value); setLocation(e.target.value) }} className="input"><option value="">Select location</option>{locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</select>}</Field>
+            )}
             {!isInvoice && !form.customerId && <><Field label="Prospect name" required><input required value={form.prospectName} onChange={(e) => setForm({ ...form, prospectName: e.target.value })} className="input" /></Field><Field label="Prospect phone"><input value={form.prospectPhone} onChange={(e) => setForm({ ...form, prospectPhone: e.target.value })} className="input" /></Field></>}
             <Field label="Title"><input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="e.g. Wedding quotation" className="input" /></Field>
             <Field label={isInvoice ? 'Due date' : 'Expiry date'}><input type="date" min={today()} value={isInvoice ? form.dueAt : form.expiresAt} onChange={(e) => setForm({ ...form, [isInvoice ? 'dueAt' : 'expiresAt']: e.target.value })} className="input" /></Field>
             {!isInvoice && <Field label="Required deposit"><input type="number" min="0" step="0.01" value={form.depositRequired} onChange={(e) => setForm({ ...form, depositRequired: e.target.value })} className="input" /></Field>}
-            <Field label="Intro paragraph" className="sm:col-span-2"><textarea rows={3} value={form.intro} onChange={(e) => setForm({ ...form, intro: e.target.value })} className="input" placeholder="Optional note shown above the lines." /></Field>
           </div>
           <div className="overflow-hidden border">
             <div className="flex flex-col gap-3 border-b bg-muted/40 p-3 lg:flex-row lg:items-center">
@@ -324,12 +349,22 @@ function DocumentEditor({ type, document, options, sources, fixedLocation, locat
               </div>)}
             </div>
           </div>
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <Field label="Intro paragraph" className="min-w-0 flex-1 basis-96"><textarea rows={3} value={form.intro} onChange={(e) => setForm({ ...form, intro: e.target.value })} className="input" placeholder="Optional note shown at the bottom of the document, above the total." /></Field>
+            <div className="border bg-muted/30 px-4 py-3 text-right"><p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Quick total</p><p className="mt-1 text-xl font-semibold">{money(preview)}</p><p className="text-xs text-muted-foreground">Final tax is calculated by the server from each line.</p></div>
+          </div>
         </div>
-        <aside className="space-y-3">
-          <div className="border bg-muted/30 p-4"><p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Quick total</p><p className="mt-2 text-2xl font-semibold">{money(preview)}</p><p className="mt-1 text-xs text-muted-foreground">Final tax is calculated by the server from each line.</p></div>
-          <div className="border bg-muted/30 p-4"><p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Rule</p><p className="mt-2 text-sm">{isInvoice ? 'Invoices require a saved customer. No walk-ins.' : 'Quotations can be for a customer or a walk-in prospect.'}</p></div>
-        </aside>
       </form>
+      {quickCustomer && (
+        <QuickCustomerModal<Customer>
+          onClose={() => setQuickCustomer(false)}
+          onCreated={(c) => {
+            setCustomers((cur) => [...cur, c].sort((a, b) => `${a.firstName} ${a.lastName ?? ''}`.localeCompare(`${b.firstName} ${b.lastName ?? ''}`)))
+            setForm((f) => ({ ...f, customerId: c.id }))
+            setQuickCustomer(false)
+          }}
+        />
+      )}
     </ModalShell>
   )
 }

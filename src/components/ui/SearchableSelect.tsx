@@ -43,11 +43,15 @@ export default function SearchableSelect({
   const rootRef = useRef<HTMLDivElement>(null)
 
   const selected = options.find((o) => o.value === value) ?? null
-  const filtered = useMemo(() => {
+  // Thousands of options (e.g. a customer list) only render a window at a time;
+  // typing narrows the list, so nothing is unreachable.
+  const RESULT_LIMIT = 200
+  const matches = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q) return options
     return options.filter((o) => `${o.label} ${o.hint ?? ''} ${o.keywords ?? ''}`.toLowerCase().includes(q))
   }, [options, query])
+  const filtered = matches.length > RESULT_LIMIT ? matches.slice(0, RESULT_LIMIT) : matches
 
   useEffect(() => {
     if (!open) return
@@ -134,6 +138,9 @@ export default function SearchableSelect({
                 {o.value === value && <LuCheck className="size-3.5 shrink-0" />}
               </button>
             ))}
+            {matches.length > RESULT_LIMIT && (
+              <p className="px-3 py-2 text-xs text-muted-foreground">Showing the first {RESULT_LIMIT} of {matches.length} — keep typing to narrow down.</p>
+            )}
           </div>
         </div>
       )}
