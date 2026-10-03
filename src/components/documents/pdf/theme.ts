@@ -10,8 +10,8 @@ export const palette = {
   navy: '#0b1e3d',
   muted: '#6b7280',
   faint: '#9ca3af',
-  line: '#d1d5db',
-  hairline: '#e5e7eb',
+  line: '#8b93a1',
+  hairline: '#c3c9d3',
   shade: '#f3f4f6',
   white: '#ffffff',
   danger: '#b91c1c',
@@ -62,7 +62,7 @@ export const s = StyleSheet.create({
   rule: { borderBottomWidth: 1.4, borderBottomColor: palette.navy, marginTop: 12, marginBottom: 14 },
 
   sectionLabel: { fontSize: 7.5, color: palette.faint, letterSpacing: 1.2, fontFamily: 'Helvetica-Bold', marginBottom: 3 },
-  partyName: { fontSize: 12, fontFamily: 'Helvetica-Bold', color: palette.ink },
+  partyName: { fontSize: 12, fontFamily: 'Helvetica-Bold', color: palette.ink, marginBottom: 3 },
 
   // Meta grid (bordered cells in a row)
   metaGrid: { flexDirection: 'row', borderWidth: 1, borderColor: palette.line, marginTop: 14 },
