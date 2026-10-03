@@ -616,7 +616,7 @@ function NewGuestModal({ customers, rooms, at, onClose, onDone, onCustomerCreate
   const available = rooms.filter((r) => r.status === "VACANT" && r.cleanliness === "CLEAN");
   const room = rooms.find((r) => r.id === roomId);
   const chosenCustomer = customers.find((c) => c.id === customerId);
-  const pricing = room ? roomPricing(room, rateId, checkIn, checkOut) : null;
+  const pricing = room ? roomPricing(room, rateId, checkIn, checkOut, Number(adults) + Number(children)) : null;
   const hourly = Boolean(pricing?.hourly);
   const qty = pricing?.quantity ?? 0;
   const roomGross = pricing?.total ?? 0;
@@ -1018,7 +1018,7 @@ function StayModal({ reservation, rooms, at, onClose, onChanged, onCheckedOut }:
   const selectedPayMethod = paymentMethods.find((m) => m.id === payMethodId);
   const vacantRooms = rooms.filter((r) => r.id !== reservation.room.id && r.status === "VACANT" && r.cleanliness === "CLEAN");
   const moveRoom = rooms.find((r) => r.id === moveRoomId);
-  const movePricing = moveRoom ? roomPricing(moveRoom, moveRateId, moveDate, reservation.checkOut.slice(0, 10)) : null;
+  const movePricing = moveRoom ? roomPricing(moveRoom, moveRateId, moveDate, reservation.checkOut.slice(0, 10), reservation.adults + reservation.children) : null;
   const moveNeedsRate = Boolean(moveRoom) && hasVariants(moveRoom!) && !moveRateId;
   const canReplaceRoomCharge = (reservation.folio?.payments.length ?? 0) === 0;
   const localDateKey = (value: string | Date) => {
@@ -1029,7 +1029,7 @@ function StayModal({ reservation, rooms, at, onClose, onChanged, onCheckedOut }:
   const checkInKey = localDateKey(reservation.checkIn);
   const canCorrectCheckInRoom = canReplaceRoomCharge && todayKey === checkInKey;
   const replacementRoom = rooms.find((r) => r.id === replacementRoomId) ?? reservation.room;
-  const roomChargePricing = roomPricing(replacementRoom, roomRateId, reservation.checkIn, reservation.checkOut);
+  const roomChargePricing = roomPricing(replacementRoom, roomRateId, reservation.checkIn, reservation.checkOut, reservation.adults + reservation.children);
   const roomChargeNeedsRate = hasVariants(replacementRoom) && !roomRateId;
   const upgradeMin = new Date(new Date(reservation.checkIn).getTime() + 86_400_000).toISOString().slice(0, 10);
   const upgradeMax = new Date(new Date(reservation.checkOut).getTime() - 86_400_000).toISOString().slice(0, 10);

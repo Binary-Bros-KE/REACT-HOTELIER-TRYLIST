@@ -17,7 +17,7 @@ export const isHourlyUnit = (unit: RateUnit | null | undefined) => unit?.measure
 export const hasVariants = (room: RatedRoom) => (room.roomType.rates?.length ?? 0) > 0
 
 /** Hours for the HOUR unit, otherwise 24-hour days; at least 1 once the dates are valid, 0 if not. */
-export function unitQuantity(unit: RateUnit | null | undefined, checkIn: string, checkOut: string): number {
+export function unitQuantity(unit: RateUnit | null | undefined, checkIn: string, checkOut: string, headcount = 1): number {
   const ms = new Date(checkOut).getTime() - new Date(checkIn).getTime()
   if (!Number.isFinite(ms) || ms <= 0) return 0
   switch (unit?.measurementKind) {
@@ -26,6 +26,7 @@ export function unitQuantity(unit: RateUnit | null | undefined, checkIn: string,
     case 'MINUTES':
       return Math.max(1, ms / 60_000)
     case 'HEADCOUNT':
+      return Math.max(1, headcount)
     case 'EACH':
       return 1
     case 'DAYS':
@@ -43,13 +44,13 @@ export type RoomPricing = { unitPrice: number; unitName: string | null; quantity
  * The price of a stay. Returns null while a variant room has no variant picked
  * (the caller must force a choice); variant-less rooms use the room's own price.
  */
-export function roomPricing(room: RatedRoom, rateId: string, checkIn: string, checkOut: string): RoomPricing | null {
+export function roomPricing(room: RatedRoom, rateId: string, checkIn: string, checkOut: string, headcount = 1): RoomPricing | null {
   const rates = room.roomType.rates ?? []
   const rate = rates.length > 0 ? rates.find((r) => r.id === rateId) : undefined
   if (rates.length > 0 && !rate) return null
   const unitPrice = rate ? Number(rate.price) : Number(room.nightlyRate)
   const unit = rate ? rate.unit : room.roomType.priceUnit ?? null
-  const quantity = unitQuantity(unit, checkIn, checkOut)
+  const quantity = unitQuantity(unit, checkIn, checkOut, headcount)
   return { unitPrice, unitName: unit?.name ?? null, quantity, total: unitPrice * quantity, rateName: rate?.name ?? null, hourly: isHourlyUnit(unit) }
 }
 /** Date-only stays go as-is; date+time (hourly) values go as full ISO so the server sees the intended instant. */
