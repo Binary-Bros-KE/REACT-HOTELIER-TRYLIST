@@ -59,6 +59,9 @@ type RevenueBreakdown = {
   complimentaryCogs: number
   completedSalesValue: number
   totalSoldValue?: number
+  grossPosSales?: number
+  roomGross?: number
+  cashCollected?: number
   cogs: number
   unresolvedCostLines: number
   netRevenue: number
@@ -158,7 +161,7 @@ function buildReportDoc(report: SalesReport, startHour: number): ReportDocData {
     rangeLabel: rangeLabel(report.range.period, report.range.start, report.range.end, startHour),
     generatedAt: new Date().toISOString(),
     cards: [
-      { label: 'Total Revenue', value: formatKes(c.totalRevenue), hint: 'Cash received + credit sales' },
+      { label: 'Total Revenue', value: formatKes(c.totalRevenue), hint: 'Everything sold, gross, before discounts' },
       { label: 'Net Revenue', value: formatKes(c.netRevenue), hint: 'Sold - cost of goods' },
       { label: 'Total Expenses', value: formatKes(c.totalExpenses), hint: 'Expenses + Salaries' },
       { label: 'Net Profit', value: formatKes(c.netProfit), hint: 'Net revenue - expenses' },
@@ -168,7 +171,7 @@ function buildReportDoc(report: SalesReport, startHour: number): ReportDocData {
       { label: 'POS Items Sold', value: String(c.itemsSold) },
       { label: 'Debtors', value: formatKes(report.debtors.total), hint: 'Owed to you - live' },
       { label: 'Creditors', value: formatKes(report.creditors.total), hint: 'Owed to suppliers - live' },
-      { label: 'Expected Profit', value: formatKes(report.expectedProfit), hint: 'Net profit + debtors - creditors' },
+      { label: 'Expected Profit', value: formatKes(report.expectedProfit), hint: 'Net revenue after expenses' },
     ],
     sections: [
       {
@@ -363,16 +366,14 @@ export default function Reports() {
             <header className="border-b border-l-4 border-l-accent p-4"><h2 className="font-display text-lg font-semibold leading-tight">Revenue &amp; Expense Breakdown</h2><p className="text-xs text-muted-foreground">Every figure above traces back to something real — here's exactly where it comes from.</p></header>
             <div className="space-y-5 p-4">
               <div className="rounded-sm border bg-muted/30 p-3 text-sm">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total Revenue — where it came from</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total Revenue — everything sold, gross</p>
                 <p className="mt-1">
-                  <span className="font-semibold">{formatKes(report.revenueBreakdown.posSalesCash - (report.revenueBreakdown.creditRepaymentsCash ?? 0))}</span> POS sales paid
-                  {' + '}<span className="font-semibold">{formatKes(report.revenueBreakdown.creditGiven ?? 0)}</span> sold on credit
-                  {' + '}<span className="font-semibold">{formatKes(report.revenueBreakdown.folioDepositsCash)}</span> room deposits
-                  {' + '}<span className="font-semibold">{formatKes(report.revenueBreakdown.folioSettlementsCash)}</span> room checkouts
-                  {' + '}<span className="font-semibold">{formatKes(report.revenueBreakdown.serviceCenterCash)}</span> service-center
-                  {' = '}<span className="font-semibold text-secondary">{formatKes(report.revenueBreakdown.totalRevenue)}</span>
+                  <span className="font-semibold">{formatKes(report.revenueBreakdown.grossPosSales ?? 0)}</span> POS and services sold
+                  {' + '}<span className="font-semibold">{formatKes(report.revenueBreakdown.roomGross ?? 0)}</span> room charges
+                  {' + '}<span className="font-semibold">{formatKes(report.revenueBreakdown.serviceCenterCash)}</span> memberships
+                  {' = '}<span className="font-semibold text-secondary">{formatKes(report.revenueBreakdown.totalSoldValue ?? 0)}</span>
                 </p>
-                <p className="mt-1 text-xs text-muted-foreground">Revenue is what was sold: money taken in for sales, plus sales given on credit. A customer later paying off credit isn't counted again{(report.revenueBreakdown.creditRepaymentsCash ?? 0) > 0 ? ` (${formatKes(report.revenueBreakdown.creditRepaymentsCash ?? 0)} of such repayments came in this period — shown in the payment-method table but not here)` : ''}.{report.revenueBreakdown.serviceCenterExcludedByLocationFilter && ' Membership payments aren\'t tied to a location, so they\'re left out of this location-filtered view.'}</p>
+                <p className="mt-1 text-xs text-muted-foreground">Gross, before discounts. Paid or not. Complimentary rooms and complimentary orders are left out. Cash actually collected in this period: {formatKes(report.revenueBreakdown.cashCollected ?? 0)}.</p>
                 <div className="mt-3 grid gap-2 sm:grid-cols-2">
                   <div className="rounded-sm border bg-card p-2.5">
                     <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tax Collected</p>
@@ -438,15 +439,14 @@ export default function Reports() {
               )}
 
               <div className="rounded-sm border bg-muted/30 p-3 text-sm">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Net Revenue — profit across every module</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Net Revenue — after cost of goods and expenses</p>
                 <p className="mt-1">
-                  <span className="font-semibold">{formatKes(report.revenueBreakdown.completedSalesValue)}</span> POS sold
-                  {' + '}<span className="font-semibold">{formatKes(report.revenueBreakdown.roomSalesValue ?? 0)}</span> room sold
-                  {' + '}<span className="font-semibold">{formatKes(report.revenueBreakdown.serviceCenterCash)}</span> memberships
+                  <span className="font-semibold">{formatKes(report.revenueBreakdown.totalSoldValue ?? 0)}</span> total revenue
                   {' − '}<span className="font-semibold">{formatKes(report.revenueBreakdown.cogs)}</span> cost of goods sold
+                  {' − '}<span className="font-semibold">{formatKes(report.cards.totalExpenses)}</span> expenses and salaries
                   {' = '}<span className="font-semibold text-secondary">{formatKes(report.revenueBreakdown.netRevenue)}</span>
                 </p>
-                <p className="mt-1 text-xs text-muted-foreground">Covers POS, Rooms and Service-Center membership payments — whether paid in cash or settled on credit. An appointment that's been completed already counts here as a normal POS sale once it becomes one.{cogsNote ? ` ${cogsNote}` : ''}</p>
+                <p className="mt-1 text-xs text-muted-foreground">Total revenue is gross sales. Net revenue is what the business keeps after cost of goods and expenses.{cogsNote ? ` ${cogsNote}` : ''}</p>
               </div>
 
               <div>

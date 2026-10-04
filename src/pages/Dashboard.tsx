@@ -182,10 +182,10 @@ function RevenueDashboard({ variant, pickerSlot }: { variant: 'operations' | 'fi
       <section className="mt-7">
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Today's financial overview</p>
         <div className="mt-2.5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard index={0} label="Total Revenue" value={formatKes(report.cards.totalRevenue)} icon={<LuWallet className="size-4" />} hint="Cash received + credit sales" />
-          <StatCard index={1} label="Net Revenue" value={formatKes(report.cards.netRevenue)} icon={<LuTrendingUp className="size-4" />} hint="Sold − cost of goods" />
+          <StatCard index={0} label="Total Revenue" value={formatKes(report.cards.totalRevenue)} icon={<LuWallet className="size-4" />} hint="Everything sold, gross, before discounts" />
+          <StatCard index={1} label="Net Revenue" value={formatKes(report.cards.netRevenue)} icon={<LuTrendingUp className="size-4" />} hint="After cost of goods and expenses" />
           <StatCard index={2} label="Total Expenses" value={formatKes(report.cards.totalExpenses)} icon={<LuReceiptText className="size-4" />} />
-          <StatCard index={3} label="Net Profit" value={formatKes(report.cards.netProfit)} icon={<LuBanknote className="size-4" />} hint="Net revenue − expenses" />
+          <StatCard index={3} label="Net Profit" value={formatKes(report.cards.netProfit)} icon={<LuBanknote className="size-4" />} hint="Same as Net Revenue" />
         </div>
       </section>
 
@@ -247,7 +247,7 @@ function RevenueDashboard({ variant, pickerSlot }: { variant: 'operations' | 'fi
             <div className={cn('rounded-sm border p-3.5', report.expectedProfit >= 0 ? 'bg-success/5' : 'bg-destructive/5')}>
               <p className={cn('flex items-center gap-2 text-xs font-semibold uppercase tracking-wide', report.expectedProfit >= 0 ? 'text-success' : 'text-destructive')}><LuTrendingUp className="size-3.5" /> Expected Profit</p>
               <p className="mt-1 text-xl font-semibold">{formatKes(report.expectedProfit)}</p>
-              <p className="text-xs text-muted-foreground">Net Profit + debtors − creditors</p>
+              <p className="text-xs text-muted-foreground">Net revenue after expenses</p>
             </div>
           </div>
           {(report.debtors.customers.top.length > 0 || report.debtors.unsettledFolios.top.length > 0 || report.creditors.top.length > 0) && (
