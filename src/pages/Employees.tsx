@@ -54,6 +54,7 @@ type Employee = {
   supervisor: { id: string; firstName: string; lastName: string } | null
   isSupervisor: boolean
   roleId: string | null
+  hasSystemAccess: boolean
   role: { id: string; name: string } | null
   locations: { id: string; name: string }[]
   salaryType: SalaryType
@@ -102,6 +103,7 @@ type EmployeeForm = {
   nssfNumber: string
   shaNumber: string
   employeeCode: string
+  hasSystemAccess: boolean
   pin: string
   confirmPin: string
   emergencyContactName: string
@@ -114,7 +116,7 @@ const emptyForm: EmployeeForm = {
   departmentId: '', jobTitle: '', employmentType: 'FULL_TIME', status: 'ACTIVE', dateHired: '', supervisorId: '', isSupervisor: false, roleId: '', locationIds: [],
   salaryType: 'MONTHLY', salaryAmount: '', paymentMethod: 'BANK_TRANSFER', bankName: '', bankAccountNumber: '', mpesaNumber: '',
   kraPin: '', nssfNumber: '', shaNumber: '',
-  employeeCode: '', pin: '', confirmPin: '',
+  employeeCode: '', hasSystemAccess: true, pin: '', confirmPin: '',
   emergencyContactName: '', emergencyContactPhone: '',
 }
 
@@ -216,6 +218,7 @@ export default function Employees() {
       supervisorId: employee.supervisorId ?? '',
       isSupervisor: employee.isSupervisor,
       roleId: employee.roleId ?? '',
+      hasSystemAccess: employee.hasSystemAccess,
       locationIds: employee.locations.map((l) => l.id),
       salaryType: employee.salaryType,
       salaryAmount: employee.salaryAmount,
@@ -238,12 +241,12 @@ export default function Employees() {
 
   async function saveEmployee(event: FormEvent) {
     event.preventDefault()
-    if (form.pin && form.pin !== form.confirmPin) { setError("PIN and confirmation don't match"); return }
+    if (form.hasSystemAccess && form.pin && form.pin !== form.confirmPin) { setError("PIN and confirmation don't match"); return }
     setSaving(true)
     setError('')
     try {
       const { confirmPin: _confirmPin, ...rest } = form
-      const payload = { ...rest, ...(editing && !form.pin ? { pin: undefined } : {}) }
+      const payload = { ...rest, ...(form.hasSystemAccess && editing && !form.pin ? { pin: undefined } : {}), ...(!form.hasSystemAccess ? { pin: undefined } : {}) }
       await api(editing ? `/employees/${editing.id}` : '/employees', {
         method: editing ? 'PATCH' : 'POST',
         body: JSON.stringify(payload),
@@ -348,7 +351,7 @@ export default function Employees() {
                         </span>
                         <div>
                           <p className="font-semibold">{employee.firstName} {employee.lastName}</p>
-                          <p className="text-xs text-muted-foreground">{employee.employeeCode}</p>
+                          <p className="text-xs text-muted-foreground">{employee.employeeCode}{!employee.hasSystemAccess && <span className="ml-2 font-bold uppercase text-muted-foreground">· No system access</span>}</p>
                         </div>
                       </div>
                     </td>
@@ -453,8 +456,8 @@ export default function Employees() {
                     : 'Can approve shift starts and handovers'}
                 </label>
               </Field>
-              <Field label="Role" required>
-                <select required value={form.roleId} onChange={(e) => setForm({ ...form, roleId: e.target.value })} className="input">
+              <Field label={form.hasSystemAccess ? 'Role' : 'Role (optional)'} required={form.hasSystemAccess}>
+                <select required={form.hasSystemAccess} value={form.roleId} onChange={(e) => setForm({ ...form, roleId: e.target.value })} className="input">
                   <option value="" disabled>Select a role</option>
                   {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
                 </select>
@@ -507,20 +510,31 @@ export default function Employees() {
               <Field label="SHA / NHIF Number"><input placeholder="e.g. 987654321" value={form.shaNumber} onChange={(e) => setForm({ ...form, shaNumber: e.target.value })} className="input" /></Field>
             </FieldGroup>
 
-            <FieldGroup title="Till Login">
+            <FieldGroup title="System Access">
+              <label className="flex cursor-pointer items-start gap-2.5 border bg-muted/40 p-3 sm:col-span-2">
+                <input type="checkbox" checked={form.hasSystemAccess} onChange={(e) => setForm({ ...form, hasSystemAccess: e.target.checked, pin: '', confirmPin: '' })} className="mt-0.5 size-4 accent-secondary" />
+                <span>
+                  <span className="block text-sm font-semibold">Can sign in to the system</span>
+                  <span className="block text-xs text-muted-foreground">Off for support staff such as gatemen and cleaners — they get no PIN and no login, but are still recorded for attendance and payroll.</span>
+                </span>
+              </label>
               <Field label="Employee Code" required>
                 <input required placeholder="e.g. EMP-001" value={form.employeeCode} onChange={(e) => setForm({ ...form, employeeCode: e.target.value })} className="input" />
               </Field>
               <div />
-              <Field label={editing ? 'New PIN (optional)' : 'Login PIN'} required={!editing}>
-                <PinInput required={!editing} placeholder="e.g. 4821" value={form.pin} onChange={(v) => setForm({ ...form, pin: v })} className="input" />
-              </Field>
-              <Field label={editing ? 'Confirm New PIN' : 'Confirm PIN'} required={!editing || form.pin !== ''}>
-                <PinInput required={!editing || form.pin !== ''} placeholder="Re-enter the PIN" value={form.confirmPin} onChange={(v) => setForm({ ...form, confirmPin: v })} className="input" />
-                {form.pin && form.confirmPin && form.pin !== form.confirmPin && (
-                  <span className="mt-1 block text-xs text-destructive">Doesn't match the PIN above.</span>
-                )}
-              </Field>
+              {form.hasSystemAccess && (
+                <>
+                  <Field label={editing ? 'New PIN (optional)' : 'Login PIN'} required={!editing}>
+                    <PinInput required={!editing} placeholder="e.g. 4821" value={form.pin} onChange={(v) => setForm({ ...form, pin: v })} className="input" />
+                  </Field>
+                  <Field label={editing ? 'Confirm New PIN' : 'Confirm PIN'} required={!editing || form.pin !== ''}>
+                    <PinInput required={!editing || form.pin !== ''} placeholder="Re-enter the PIN" value={form.confirmPin} onChange={(v) => setForm({ ...form, confirmPin: v })} className="input" />
+                    {form.pin && form.confirmPin && form.pin !== form.confirmPin && (
+                      <span className="mt-1 block text-xs text-destructive">Doesn't match the PIN above.</span>
+                    )}
+                  </Field>
+                </>
+              )}
             </FieldGroup>
 
             <FieldGroup title="Emergency Contact">
