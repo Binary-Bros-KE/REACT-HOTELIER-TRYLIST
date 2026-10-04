@@ -33,7 +33,6 @@ type Location = { id: string; name: string }
 
 type Cards = {
   totalRevenue: number
-  netRevenue: number
   totalExpenses: number
   netProfit: number
   capitalInvested: number
@@ -64,8 +63,9 @@ type RevenueBreakdown = {
   cashCollected?: number
   cogs: number
   unresolvedCostLines: number
-  netRevenue: number
-  serviceCenterExcludedByLocationFilter: boolean
+  discountsAll?: number
+  soldNetValue?: number
+  unpaidValue?: number
   expensesOnly?: number
   salariesPaid?: number
 }
@@ -83,7 +83,7 @@ type LocationBucket = {
   netProfit: number
   profitPercent: number
 }
-type MethodBucket = { name: string; count: number; total: number; percentOfTotal: number }
+type MethodBucket = { name: string; count: number; total: number; percentOfTotal: number; locationName?: string | null }
 type EmployeeBucket = { employeeId: string | null; name: string; branch: string; count: number; total: number; percentOfTotal: number }
 type Debtors = {
   total: number
@@ -162,16 +162,15 @@ function buildReportDoc(report: SalesReport, startHour: number): ReportDocData {
     generatedAt: new Date().toISOString(),
     cards: [
       { label: 'Total Revenue', value: formatKes(c.totalRevenue), hint: 'Everything sold, gross, before discounts' },
-      { label: 'Net Revenue', value: formatKes(c.netRevenue), hint: 'Sold - cost of goods' },
       { label: 'Total Expenses', value: formatKes(c.totalExpenses), hint: 'Expenses + Salaries' },
-      { label: 'Net Profit', value: formatKes(c.netProfit), hint: 'Net revenue - expenses' },
+      { label: 'Net Profit', value: formatKes(c.netProfit), hint: 'Sold after discounts, less cost of goods and expenses' },
       { label: 'Capital Invested', value: formatKes(c.capitalInvested), hint: 'Supplier payments - not an expense' },
       { label: 'POS Transactions', value: String(c.transactions) },
       { label: 'Average POS Sale', value: formatKes(c.averageSale) },
       { label: 'POS Items Sold', value: String(c.itemsSold) },
       { label: 'Debtors', value: formatKes(report.debtors.total), hint: 'Owed to you - live' },
       { label: 'Creditors', value: formatKes(report.creditors.total), hint: 'Owed to suppliers - live' },
-      { label: 'Expected Profit', value: formatKes(report.expectedProfit), hint: 'Net revenue after expenses' },
+      { label: 'Expected Profit', value: formatKes(report.expectedProfit), hint: 'Same as Net Profit' },
     ],
     sections: [
       {
@@ -187,7 +186,7 @@ function buildReportDoc(report: SalesReport, startHour: number): ReportDocData {
       {
         title: 'Sales by Payment Method',
         columns: [{ label: 'Method' }, { label: 'Count', align: 'right' }, { label: '% of Total', align: 'right' }, { label: 'Total', align: 'right' }],
-        rows: report.byPaymentMethod.map((m) => [m.name, m.count, `${m.percentOfTotal.toFixed(1)}%`, formatKes(m.total)]),
+        rows: report.byPaymentMethod.map((m) => [m.locationName ? `${m.name} (${m.locationName})` : m.name, m.count || '—', `${m.percentOfTotal.toFixed(1)}%`, formatKes(m.total)]),
       },
       {
         title: 'Sales by Employee',
@@ -343,10 +342,9 @@ export default function Reports() {
         <div className="mt-7 flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><LuLoaderCircle className="animate-spin" /> Loading report…</div>
       ) : (
         <>
-          <section className="mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <section className="mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {([
               ['Total Revenue', formatKes(report.cards.totalRevenue), <LuWallet key="a" />],
-              ['Net Revenue', formatKes(report.cards.netRevenue), <LuTrendingUp key="b" />],
               ['Total Expenses', formatKes(report.cards.totalExpenses), <LuReceiptText key="c" />],
               ['Net Profit', formatKes(report.cards.netProfit), <LuBanknote key="d" />],
               ['Capital Invested', formatKes(report.cards.capitalInvested), <LuHandCoins key="e" />],
@@ -439,14 +437,15 @@ export default function Reports() {
               )}
 
               <div className="rounded-sm border bg-muted/30 p-3 text-sm">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Net Revenue — after cost of goods and expenses</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Net Profit — after discounts, cost of goods and expenses</p>
                 <p className="mt-1">
                   <span className="font-semibold">{formatKes(report.revenueBreakdown.totalSoldValue ?? 0)}</span> total revenue
+                  {' − '}<span className="font-semibold">{formatKes(report.revenueBreakdown.discountsAll ?? 0)}</span> discounts
                   {' − '}<span className="font-semibold">{formatKes(report.revenueBreakdown.cogs)}</span> cost of goods sold
                   {' − '}<span className="font-semibold">{formatKes(report.cards.totalExpenses)}</span> expenses and salaries
-                  {' = '}<span className="font-semibold text-secondary">{formatKes(report.revenueBreakdown.netRevenue)}</span>
+                  {' = '}<span className="font-semibold text-secondary">{formatKes(report.cards.netProfit)}</span>
                 </p>
-                <p className="mt-1 text-xs text-muted-foreground">Total revenue is gross sales. Net revenue is what the business keeps after cost of goods and expenses.{cogsNote ? ` ${cogsNote}` : ''}</p>
+                <p className="mt-1 text-xs text-muted-foreground">Total revenue is gross sales. Net profit is what the business keeps after discounts, cost of goods and expenses.{cogsNote ? ` ${cogsNote}` : ''}</p>
               </div>
 
               <div>
@@ -531,13 +530,13 @@ export default function Reports() {
           {/* Sales by Payment Method */}
           <BreakdownSection
             title="Sales by Payment Method"
-            note="Cash/mobile-money/etc. rows are new-sale collections; credit repayments are excluded so credit is not counted twice. Credit and Complimentary are sold value that was not collected in cash."
+            note="Collected this period by method (credit repayments excluded so they aren't counted twice). Unpaid is sold but not collected yet: credit, open room folios and unpaid orders. Complimentary is given away, not sold."
             rows={report.byPaymentMethod.map((m) => ({ key: m.name, label: m.name, value: m.total, percent: m.percentOfTotal }))}
           >
             <table className="w-full text-left text-sm">
               <thead className="bg-primary text-xs uppercase text-primary-foreground"><tr><th className="px-4 py-2.5">Method</th><th className="px-4 py-2.5 text-right">Payments</th><th className="px-4 py-2.5 text-right">Total</th><th className="px-4 py-2.5 text-right">% of Total</th></tr></thead>
               <tbody>{report.byPaymentMethod.map((m) => (
-                <tr key={m.name} className="border-t"><td className="px-4 py-2.5 font-medium">{m.name}</td><td className="px-4 py-2.5 text-right tabular-nums">{m.count}</td><td className="px-4 py-2.5 text-right tabular-nums font-semibold">{formatKes(m.total)}</td><td className="px-4 py-2.5 text-right tabular-nums">{m.percentOfTotal.toFixed(1)}%</td></tr>
+                <tr key={m.name} className="border-t"><td className="px-4 py-2.5 font-medium">{m.name}{m.locationName && <span className="ml-2 rounded-sm bg-muted px-1.5 py-0.5 text-[11px] font-normal text-muted-foreground">{m.locationName}</span>}</td><td className="px-4 py-2.5 text-right tabular-nums">{m.count || '—'}</td><td className="px-4 py-2.5 text-right tabular-nums font-semibold">{formatKes(m.total)}</td><td className="px-4 py-2.5 text-right tabular-nums">{m.percentOfTotal.toFixed(1)}%</td></tr>
               ))}</tbody>
             </table>
           </BreakdownSection>
@@ -545,6 +544,7 @@ export default function Reports() {
           {/* Sales by Employee */}
           <BreakdownSection
             title="Sales by Employee"
+            note="Sold this period, credited to whoever created the sale. Collecting an older room bill isn't counted here."
             rows={report.byEmployee.map((e) => ({ key: e.name, label: e.name, value: e.total, percent: e.percentOfTotal }))}
           >
             <table className="w-full text-left text-sm">

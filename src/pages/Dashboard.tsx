@@ -38,7 +38,7 @@ const formatKes = (value: number) => `KSh ${value.toLocaleString('en-KE', { mini
 // pinned to one branch is locked to it, and one pinned to several gets a
 // picker restricted to just those — same convention as Receipts/Tables/POS. ----
 
-type Cards = { totalRevenue: number; netRevenue: number; totalExpenses: number; netProfit: number }
+type Cards = { totalRevenue: number; totalExpenses: number; netProfit: number }
 type TopItem = { name: string; qty: number; revenue: number }
 type CountBucket = { name: string; count: number; total: number }
 type LocationBucket = { locationId: string | null; name: string; revenue: number; percentOfTotal: number }
@@ -181,11 +181,10 @@ function RevenueDashboard({ variant, pickerSlot }: { variant: 'operations' | 'fi
       {locationPicker && pickerSlot && createPortal(locationPicker, pickerSlot)}
       <section className="mt-7">
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Today's financial overview</p>
-        <div className="mt-2.5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-2.5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <StatCard index={0} label="Total Revenue" value={formatKes(report.cards.totalRevenue)} icon={<LuWallet className="size-4" />} hint="Everything sold, gross, before discounts" />
-          <StatCard index={1} label="Net Revenue" value={formatKes(report.cards.netRevenue)} icon={<LuTrendingUp className="size-4" />} hint="After cost of goods and expenses" />
           <StatCard index={2} label="Total Expenses" value={formatKes(report.cards.totalExpenses)} icon={<LuReceiptText className="size-4" />} />
-          <StatCard index={3} label="Net Profit" value={formatKes(report.cards.netProfit)} icon={<LuBanknote className="size-4" />} hint="Same as Net Revenue" />
+          <StatCard index={3} label="Net Profit" value={formatKes(report.cards.netProfit)} icon={<LuBanknote className="size-4" />} hint="Sold after discounts, less cost and expenses" />
         </div>
       </section>
 
@@ -247,7 +246,7 @@ function RevenueDashboard({ variant, pickerSlot }: { variant: 'operations' | 'fi
             <div className={cn('rounded-sm border p-3.5', report.expectedProfit >= 0 ? 'bg-success/5' : 'bg-destructive/5')}>
               <p className={cn('flex items-center gap-2 text-xs font-semibold uppercase tracking-wide', report.expectedProfit >= 0 ? 'text-success' : 'text-destructive')}><LuTrendingUp className="size-3.5" /> Expected Profit</p>
               <p className="mt-1 text-xl font-semibold">{formatKes(report.expectedProfit)}</p>
-              <p className="text-xs text-muted-foreground">Net revenue after expenses</p>
+              <p className="text-xs text-muted-foreground">Same as Net Profit</p>
             </div>
           </div>
           {(report.debtors.customers.top.length > 0 || report.debtors.unsettledFolios.top.length > 0 || report.creditors.top.length > 0) && (
