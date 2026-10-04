@@ -25,6 +25,7 @@ import ModalShell from "@/components/ui/ModalShell";
 import SearchableSelect from "@/components/ui/SearchableSelect";
 import QuickCustomerModal from "@/components/customers/QuickCustomerModal";
 import { cn } from "@/lib/utils";
+import { useWorkingLocation } from "@/lib/useWorkingLocation";
 
 type Status = "ACTIVE" | "PAUSED" | "EXPIRED" | "CANCELLED";
 type Customer = {
@@ -190,6 +191,12 @@ export default function ServiceMemberships() {
   const [managingPlans, setManagingPlans] = useState(false);
   const [managingGroups, setManagingGroups] = useState(false);
 
+  const [locations, setLocations] = useState<LocationOption[]>([]);
+  const [paymentLocationId, setPaymentLocationId] = useState("");
+  useEffect(() => {
+    api<{ locations: LocationOption[] }>("/locations").then((r) => setLocations(r.locations ?? [])).catch(() => setLocations([]));
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -324,6 +331,7 @@ export default function ServiceMemberships() {
           body: JSON.stringify({
             membershipId: result.membership.id,
             paymentMethodId: form.paymentMethodId,
+            locationId: paymentLocationId || undefined,
             reference: form.paymentReference || undefined,
             status: "PAID",
           }),
@@ -514,7 +522,7 @@ export default function ServiceMemberships() {
         <MembershipAttendanceModal membership={attendanceFor} onClose={() => setAttendanceFor(null)} onChanged={load} />
       )}
       {walletFor && (
-        <MembershipWalletModal membership={walletFor} plans={plans} paymentMethods={paymentMethods} onClose={() => setWalletFor(null)} onChanged={load} />
+        <MembershipWalletModal membership={walletFor} plans={plans} paymentMethods={paymentMethods} locations={locations} onClose={() => setWalletFor(null)} onChanged={load} />
       )}
       {open && (
         <ModalShell
@@ -670,6 +678,7 @@ export default function ServiceMemberships() {
             )}
             {!editing && form.recordPayment && (
               <>
+                <PaymentLocationField locations={locations} onChange={setPaymentLocationId} />
                 <Field label="Payment method" required>
                   <select required className="input" value={form.paymentMethodId} onChange={(e) => setForm({ ...form, paymentMethodId: e.target.value })}>
                     <option value="">Choose method</option>
@@ -806,10 +815,11 @@ function MembershipAttendanceModal({ membership, onClose, onChanged }: { members
   );
 }
 
-function MembershipWalletModal({ membership, plans, paymentMethods, onClose, onChanged }: { membership: Membership; plans: CatalogPlan[]; paymentMethods: PaymentMethod[]; onClose: () => void; onChanged: () => Promise<void> }) {
+function MembershipWalletModal({ membership, plans, paymentMethods, locations, onClose, onChanged }: { membership: Membership; plans: CatalogPlan[]; paymentMethods: PaymentMethod[]; locations: LocationOption[]; onClose: () => void; onChanged: () => Promise<void> }) {
   const toast = useToast();
   const [tab, setTab] = useState<WalletTab>("payment");
   const [paymentMethodId, setPaymentMethodId] = useState("");
+  const [paymentLocationId, setPaymentLocationId] = useState("");
   const [reference, setReference] = useState("");
   const [paidAt, setPaidAt] = useState(new Date().toISOString().slice(0, 16));
   const [planId, setPlanId] = useState(membership.planId ?? "");
@@ -852,6 +862,7 @@ function MembershipWalletModal({ membership, plans, paymentMethods, onClose, onC
         body: JSON.stringify({
           membershipId: membership.id,
           paymentMethodId,
+          locationId: paymentLocationId || undefined,
           amount,
           paidAt: new Date(paidAt),
           reference: reference || null,
@@ -908,6 +919,7 @@ function MembershipWalletModal({ membership, plans, paymentMethods, onClose, onC
                 </>
               )}
             </div>
+            <PaymentLocationField locations={locations} onChange={setPaymentLocationId} />
             <Field label="Payment method" required>
               <select required className="input" value={paymentMethodId} onChange={(e) => setPaymentMethodId(e.target.value)}>
                 <option value="">Choose method</option>
@@ -1136,6 +1148,26 @@ function GroupsModal({ groups, onClose, onChanged }: { groups: CustomerGroup[]; 
     </ModalShell>
   );
 }
+type LocationOption = { id: string; name: string; isActive?: boolean };
+
+/** Where the payment is taken. One pinned location is locked; several give a picker. */
+function PaymentLocationField({ locations, onChange }: { locations: LocationOption[]; onChange: (id: string) => void }) {
+  const { fixed, options, selectedId, setLocation, effectiveId } = useWorkingLocation(locations, { persist: false });
+  useEffect(() => { onChange(effectiveId); }, [effectiveId, onChange]);
+  if (fixed) {
+    return <Field label="Location"><p className="text-sm">{fixed.name} <span className="text-xs text-muted-foreground">· locked to your location</span></p></Field>;
+  }
+  if (!options.length) return null;
+  return (
+    <Field label="Location" required>
+      <select required className="input" value={selectedId} onChange={(e) => setLocation(e.target.value)}>
+        <option value="">Choose location</option>
+        {options.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+      </select>
+    </Field>
+  );
+}
+
 function Field({ label, required, children, className }: { label: string; required?: boolean; children: ReactNode; className?: string }) {
   return (
     <label className={`block text-sm font-medium ${className ?? ""}`}>
