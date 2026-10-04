@@ -999,11 +999,12 @@ function StayModal({ reservation, rooms, at, onClose, onChanged, onCheckedOut }:
   const toast = useToast();
   const [services, setServices] = useState<Service[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
-  const [tab, setTab] = useState<"folio" | "room" | "extend" | "shorten" | "guests" | "checkout" | "activity">("folio");
+  const [tab, setTab] = useState<"folio" | "room" | "extend" | "guests" | "checkout" | "activity">("folio");
   const [extendDate, setExtendDate] = useState(reservation.checkOut.slice(0, 10));
-  const [shortenDate, setShortenDate] = useState("");
   const signedInUser = useAppSelector((s) => s.auth.user);
-  const canShorten = signedInUser?.role?.name === "Super Admin" || Boolean(signedInUser?.isSupervisor);
+  // Moving check-out earlier takes nights off the folio: admins and supervisors only.
+  const canMoveBack = signedInUser?.role?.name === "Super Admin" || Boolean(signedInUser?.isSupervisor);
+  const movingBack = extendDate < reservation.checkOut.slice(0, 10);
   const [serviceId, setServiceId] = useState("");
   const [serviceQty, setServiceQty] = useState("1");
   const [adHocLabel, setAdHocLabel] = useState("");
@@ -1100,27 +1101,12 @@ function StayModal({ reservation, rooms, at, onClose, onChanged, onCheckedOut }:
     }
   }
 
-  async function shorten(e: FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    try {
-      await at(`/reception/reservations/${reservation.id}/shorten`, { method: "PATCH", body: JSON.stringify({ checkOut: shortenDate }) });
-      toast.success("Check-out date moved back.");
-      setShortenDate("");
-      onChanged();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not shorten stay");
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function extend(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
     try {
       await at(`/reception/reservations/${reservation.id}/extend`, { method: "PATCH", body: JSON.stringify({ checkOut: extendDate }) });
-      toast.success("Stay extended.");
+      toast.success(movingBack ? "Check-out date moved back." : "Stay extended.");
       onChanged();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not extend stay");
@@ -1291,7 +1277,7 @@ function StayModal({ reservation, rooms, at, onClose, onChanged, onCheckedOut }:
       onClose={onClose}
     >
         <div className="flex border-b bg-muted/40">
-          {([["folio", "Folio"], ["room", "Room"], ["extend", "Extend"], ["shorten", "Shorten"], ["guests", "Guests"], ["checkout", "Checkout"], ["activity", "Activity"]] as const).filter(([value]) => value !== "shorten" || canShorten).map(([value, label]) => (
+          {([["folio", "Folio"], ["room", "Room"], ["extend", "Extend"], ["guests", "Guests"], ["checkout", "Checkout"], ["activity", "Activity"]] as const).map(([value, label]) => (
             <button key={value} onClick={() => setTab(value)} className={cn("flex-1 border-b-4 px-3 py-2.5 text-xs font-bold uppercase tracking-wider transition", tab === value ? "border-secondary bg-card text-foreground" : "border-transparent text-muted-foreground hover:bg-muted hover:text-foreground")}>
               {label}
             </button>
@@ -1486,24 +1472,11 @@ function StayModal({ reservation, rooms, at, onClose, onChanged, onCheckedOut }:
             <form onSubmit={extend} className="space-y-3">
               <label className="block text-sm font-medium">
                 New check-out date
-                <input type="date" required min={reservation.checkOut.slice(0, 10)} className="input mt-1.5" value={extendDate} onChange={(e) => setExtendDate(e.target.value)} />
+                <input type="date" required min={reservation.checkIn.slice(0, 10)} className="input mt-1.5" value={extendDate} onChange={(e) => setExtendDate(e.target.value)} />
               </label>
-              <p className="text-xs text-muted-foreground">Current check-out: {new Date(reservation.checkOut).toLocaleDateString('en-KE')}</p>
-              <button disabled={busy} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
-                {busy && <LuLoaderCircle className="animate-spin" />} Extend stay
-              </button>
-            </form>
-          )}
-
-          {tab === "shorten" && canShorten && (
-            <form onSubmit={shorten} className="space-y-3">
-              <label className="block text-sm font-medium">
-                Move check-out back to
-                <input type="date" required min={reservation.checkIn.slice(0, 10)} max={new Date(new Date(reservation.checkOut).getTime() - 86_400_000).toISOString().slice(0, 10)} className="input mt-1.5" value={shortenDate} onChange={(e) => setShortenDate(e.target.value)} />
-              </label>
-              <p className="text-xs text-muted-foreground">Current check-out: {new Date(reservation.checkOut).toLocaleDateString('en-KE')}. The nights after the new date are taken off the room charges, and the room discount is recalculated. Refund anything already paid for those nights first.</p>
-              <button disabled={busy || !shortenDate} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
-                {busy && <LuLoaderCircle className="animate-spin" />} Shorten stay
+              <p className="text-xs text-muted-foreground">Current check-out: {new Date(reservation.checkOut).toLocaleDateString('en-KE')}. A later date extends the stay. An earlier date takes the nights after it off the room charges and recalculates the room discount{canMoveBack ? '' : ' (admins and supervisors only)'}. Refund anything already paid for those nights first.</p>
+              <button disabled={busy || (movingBack && !canMoveBack) || extendDate === reservation.checkOut.slice(0, 10)} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+                {busy && <LuLoaderCircle className="animate-spin" />} {movingBack ? 'Move check-out back' : 'Extend stay'}
               </button>
             </form>
           )}
