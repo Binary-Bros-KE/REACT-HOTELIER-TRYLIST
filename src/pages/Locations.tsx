@@ -73,6 +73,7 @@ type LocationRow = {
   canSellProducts: boolean
   serveMode: ServeMode
   requireStoreDispatch: boolean
+  allowOutOfStockSale: boolean
   dispatchAutoPrint: boolean
   dispatchFromLocationId: string | null
   receiptHeader: string | null
@@ -101,6 +102,7 @@ type LocationForm = {
   canSellProducts: boolean
   serveMode: ServeMode
   requireStoreDispatch: boolean
+  allowOutOfStockSale: boolean
   dispatchAutoPrint: boolean
   dispatchFromLocationId: string
   receiptHeader: string
@@ -117,6 +119,7 @@ const emptyLocationForm: LocationForm = {
   canSellRooms: true, canSellMenu: true, canSellServices: true, canSellProducts: true,
   serveMode: 'KITCHEN',
   requireStoreDispatch: false,
+  allowOutOfStockSale: false,
   dispatchAutoPrint: true,
   dispatchFromLocationId: '',
   receiptHeader: '', receiptFooter: '', invoiceHeader: '', invoiceFooter: '', quotationHeader: '', quotationFooter: '',
@@ -184,6 +187,7 @@ export default function Locations() {
       canSellProducts: location.canSellProducts,
       serveMode: location.serveMode,
       requireStoreDispatch: location.requireStoreDispatch,
+      allowOutOfStockSale: location.allowOutOfStockSale,
       dispatchAutoPrint: location.dispatchAutoPrint,
       dispatchFromLocationId: location.dispatchFromLocationId ?? '',
       receiptHeader: location.receiptHeader ?? '',
@@ -459,6 +463,13 @@ export default function Locations() {
                     )
                   })}
                 </div>
+                <label className={cn('mt-3 flex cursor-pointer items-start gap-2.5 border p-3 transition-colors', form.allowOutOfStockSale ? 'border-secondary bg-secondary/10' : 'bg-muted/40')}>
+                  <input type="checkbox" checked={form.allowOutOfStockSale} onChange={(e) => setForm({ ...form, allowOutOfStockSale: e.target.checked })} className="mt-0.5 size-4 accent-secondary" />
+                  <span>
+                    <span className="block text-sm font-semibold">Allow selling when out of stock</span>
+                    <span className="block text-xs text-muted-foreground">Items post even when the balance isn't there. The balance goes negative and the gap shows in the stock ledger, so the count can be corrected later.</span>
+                  </span>
+                </label>
                 {form.serveMode === 'KITCHEN' && (
                   <div className={cn('mt-3 border p-3 transition-colors', form.requireStoreDispatch ? 'border-secondary bg-secondary/10' : 'bg-muted/40')}>
                     <label className="flex cursor-pointer items-start gap-2.5">
