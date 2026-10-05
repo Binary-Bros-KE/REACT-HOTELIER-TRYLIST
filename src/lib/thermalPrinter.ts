@@ -458,6 +458,9 @@ export type DispatchSlip = {
   requestedByName: string | null
   requestedAt: string
   note: string | null
+  rungUpBy: string | null
+  // Each dish on the order, with what it takes from the store. Read first, then the pick list.
+  dishes: { name: string; quantity: number; ingredients: { name: string; quantity: number; unit: string }[] }[]
   items: { name: string; quantity: number; unit: string }[]
 }
 
@@ -481,6 +484,7 @@ export function buildDispatchSlipBytes(slip: DispatchSlip, profile: ReceiptProfi
   e.line(rule)
   e.line(`Request:  ${slip.requestNo}`)
   e.line(`Order:    #${slip.orderNumber}${slip.table ? ` (${slip.table})` : ''}`)
+  if (slip.rungUpBy) e.line(`Rung up by: ${slip.rungUpBy}`)
   e.line(`For:      ${slip.to}`)
   e.line(`From:     ${slip.from}`)
   if (slip.requestedByName) e.line(`By:       ${slip.requestedByName}`)
@@ -488,6 +492,16 @@ export function buildDispatchSlipBytes(slip: DispatchSlip, profile: ReceiptProfi
   e.line(rule)
   const qtyW = compact ? 12 : 16
   const nameW = cols - qtyW - 1
+  for (const dish of slip.dishes ?? []) {
+    e.bold(true)
+    e.line(`${qtyText(dish.quantity)} x ${dish.name}`)
+    e.bold(false)
+    for (const ing of dish.ingredients) e.line(`   ${ing.name}  ${qtyText(ing.quantity)} ${ing.unit}`)
+  }
+  e.line(rule)
+  e.bold(true)
+  e.line(center('PICK LIST', cols))
+  e.bold(false)
   e.bold(true)
   e.table([{ width: nameW, align: 'left' }, { width: qtyW, align: 'right' }], [['ITEM', 'QTY']])
   e.bold(false)
@@ -507,6 +521,7 @@ export function buildDispatchSlipBytes(slip: DispatchSlip, profile: ReceiptProfi
 /** Browser print sheet with the slip, for a store computer without a thermal printer. */
 function printSlipViaWindow(slip: DispatchSlip): void {
   const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string)
+  const dishes = (slip.dishes ?? []).map((d) => `<div style="margin-top:6px"><b>${qtyText(d.quantity)} x ${esc(d.name)}</b></div>${d.ingredients.map((g) => `<div style="padding-left:12px">${esc(g.name)} <span style="float:right">${qtyText(g.quantity)} ${esc(g.unit)}</span></div>`).join('')}`).join('')
   const rows = slip.items.map((i) => `<tr><td>${esc(i.name)}</td><td style="text-align:right;white-space:nowrap">${qtyText(i.quantity)} ${esc(i.unit)}</td></tr>`).join('')
   const win = window.open('', '_blank', 'width=420,height=640')
   if (!win) throw new Error('Allow pop-ups to print the slip')
@@ -514,7 +529,9 @@ function printSlipViaWindow(slip: DispatchSlip): void {
 <h1>STORE DISPATCH REQUEST</h1><hr>
 <div>Request: ${esc(slip.requestNo)}</div><div>Order: #${slip.orderNumber}${slip.table ? ' (' + esc(slip.table) + ')' : ''}</div>
 <div>For: ${esc(slip.to)}</div><div>From: ${esc(slip.from)}</div>${slip.requestedByName ? '<div>By: ' + esc(slip.requestedByName) + '</div>' : ''}
+${slip.rungUpBy ? '<div>Rung up by: ' + esc(slip.rungUpBy) + '</div>' : ''}
 <div>Time: ${esc(new Date(slip.requestedAt).toLocaleString('en-KE'))}</div><hr>
+${dishes}<hr><h1 style="font-size:13px">PICK LIST</h1>
 <table>${rows}</table><hr>${slip.note ? '<div>' + esc(slip.note) + '</div><hr>' : ''}
 <p>Dispatched by: ____________</p><p>Received by: ____________</p>`)
   win.document.close()

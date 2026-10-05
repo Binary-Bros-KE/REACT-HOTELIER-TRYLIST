@@ -26,11 +26,38 @@ type Request = {
   rejectReason: string | null
   note: string | null
   items: Item[]
+  rungUpBy: string | null
+  dishes: Dish[]
   fromLocation: { name: string }
   toLocation: { name: string }
   order: { table: { label: string } | null }
 }
+type Dish = { name: string; quantity: number; ingredients: { name: string; quantity: number; unit: string }[] }
 type Tab = 'pending' | 'history'
+
+/** Each dish on the order with what it takes from the store, read top to bottom. */
+function DishList({ dishes }: { dishes: Dish[] }) {
+  if (dishes.length === 0) return null
+  return (
+    <div className="mt-3 space-y-3">
+      {dishes.map((dish, index) => (
+        <div key={index} className="border-l-4 border-accent pl-3">
+          <p className="font-semibold">{qty(dish.quantity)} × {dish.name}</p>
+          {dish.ingredients.length === 0
+            ? <p className="text-xs italic text-muted-foreground">No stock ingredients</p>
+            : <ul className="mt-1 space-y-0.5 text-sm">
+                {dish.ingredients.map((g, i) => (
+                  <li key={i} className="flex justify-between gap-3 text-muted-foreground">
+                    <span>{g.name}</span>
+                    <span className="tabular-nums">{qty(g.quantity)} {g.unit}</span>
+                  </li>
+                ))}
+              </ul>}
+        </div>
+      ))}
+    </div>
+  )
+}
 
 const POLL_MS = 10_000
 const qty = (value: string | number) => Number(value).toLocaleString('en-KE', { maximumFractionDigits: 3 })
@@ -62,6 +89,8 @@ export default function DispatchRequests() {
       requestedAt: request.requestedAt,
       note: request.note,
       items: request.items.map((i) => ({ name: i.productName, quantity: Number(i.requestedQty), unit: i.product?.unit ?? '' })),
+      rungUpBy: request.rungUpBy,
+      dishes: request.dishes,
     }
     try {
       const { profile } = await api<{ profile: ReceiptProfile }>('/business-profile').catch(() => ({ profile: null as unknown as ReceiptProfile }))
@@ -124,11 +153,13 @@ export default function DispatchRequests() {
                   <div>
                     <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{request.requestNo}</p>
                     <h3 className="font-display text-lg font-semibold">Order #{request.orderNumber}{request.order.table ? ` · ${request.order.table.label}` : ''}</h3>
-                    <p className="text-xs text-muted-foreground">{request.fromLocation.name} → {request.toLocation.name}</p>
+                    <p className="text-xs text-muted-foreground">{request.rungUpBy ? `Rung up by ${request.rungUpBy} · ` : ''}{request.fromLocation.name} → {request.toLocation.name}</p>
                   </div>
                   <StatusPill tone={STATUS_TONE[request.status]}>{STATUS_LABEL[request.status]}</StatusPill>
                 </div>
-                <table className="mt-3 w-full text-sm">
+                <DishList dishes={request.dishes} />
+                <p className="mt-4 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Pick list</p>
+                <table className="mt-1 w-full text-sm">
                   <thead><tr className="border-b text-left text-[11px] uppercase tracking-wider text-muted-foreground"><th className="py-1.5">Item</th><th className="text-right">Asked</th>{request.status === 'REQUESTED' ? <th className="text-right">In store</th> : <th className="text-right">Sent</th>}</tr></thead>
                   <tbody className="divide-y">
                     {request.items.map((item) => {
@@ -213,6 +244,10 @@ function DispatchModal({ request: initial, onClose, onDone }: { request: Request
     <ModalShell kicker={request.requestNo} title={`Dispatch for order #${request.orderNumber}`} subtitle={`${request.fromLocation.name} → ${request.toLocation.name}`} onClose={onClose} size="md"
       footer={<Button onClick={() => void save()} disabled={!anything || saving}>{saving ? 'Dispatching…' : 'Dispatch to kitchen'}</Button>}>
       <div className="space-y-3 p-5">
+        <div className="border p-3">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Dishes on this order{request.rungUpBy ? ` · rung up by ${request.rungUpBy}` : ''}</p>
+          <DishList dishes={request.dishes} />
+        </div>
         {recipes.length > 0 && (
           <div className="border p-3">
             <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Recipes on this order · correct one if it&apos;s wrong</p>
