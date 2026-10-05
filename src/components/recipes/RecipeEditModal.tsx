@@ -4,6 +4,7 @@ import { LuArrowDown, LuArrowUp, LuLoaderCircle, LuPlus, LuTrash2 } from 'react-
 import { api } from '@/lib/api'
 import ModalShell from '@/components/ui/ModalShell'
 import ActionButton from '@/components/ui/ActionButton'
+import SearchableSelect from '@/components/ui/SearchableSelect'
 import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
 
@@ -134,10 +135,14 @@ export default function RecipeEditModal({ recipe, products, onClose, onSaved }: 
             {form.ingredients.map((row, index) => (
               <div key={index} className="flex items-center gap-2">
                 <div className="min-w-0 flex-1">
-                  <select value={row.productId} onChange={(e) => updateIngredient(index, { productId: e.target.value })} className="input">
-                    <option value="">Select product…</option>
-                    {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
+                  <SearchableSelect
+                    value={row.productId}
+                    onChange={(productId) => updateIngredient(index, { productId })}
+                    options={products.map((p) => ({ value: p.id, label: p.name }))}
+                    placeholder="Select product…"
+                    searchPlaceholder="Search products..."
+                    emptyText="No products match."
+                  />
                 </div>
                 <div className="w-28 shrink-0">
                   <input type="number" min="0" step="0.001" placeholder="Qty" value={row.quantity} onChange={(e) => updateIngredient(index, { quantity: e.target.value })} className="input" />
