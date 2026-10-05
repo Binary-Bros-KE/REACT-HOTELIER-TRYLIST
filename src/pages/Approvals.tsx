@@ -58,6 +58,20 @@ const ago = (iso: string | null) => {
   return hrs < 24 ? `${hrs} h ago` : new Date(iso).toLocaleString('en-KE')
 }
 
+type RevertedOrder = {
+  id: string
+  orderNumber: number
+  locationName: string | null
+  tableLabel: string | null
+  orderStatus: string
+  total: number
+  items: { name: string; variant: string | null; quantity: number }[]
+  dispatchNos: string[]
+  createdByName: string | null
+  revertedByName: string | null
+  revertedAt: string
+}
+
 export default function Approvals() {
   const toast = useToast()
   const user = useAppSelector((s) => s.auth.user)
@@ -78,17 +92,20 @@ export default function Approvals() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [reverted, setReverted] = useState<RevertedOrder[]>([])
 
   const load = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
-      const [pending, pendingReturns, history, returnHistory] = await Promise.all([
+      const [pending, pendingReturns, history, returnHistory, revertedList] = await Promise.all([
         api<{ orders: PendingOrder[] }>('/pos/orders?status=PENDING_CANCELLATION'),
         api<{ requests: ReturnRequest[] }>('/pos/return-requests?status=PENDING'),
         api<{ orders: PendingOrder[] }>(`/pos/orders?status=CANCELLED&limit=${HISTORY_LIMIT}`),
         api<{ requests: ReturnRequest[] }>(`/pos/return-requests?status=APPROVED&limit=${HISTORY_LIMIT}`),
+        api<{ reverted: RevertedOrder[] }>('/pos/reverted-orders'),
       ])
+      setReverted(revertedList.reverted)
       setOrders(pending.orders)
       setReturns(pendingReturns.requests)
       setDecided(history.orders)
@@ -349,6 +366,32 @@ export default function Approvals() {
                   <td className="px-5 py-3 text-muted-foreground">{request.quantity}× {request.orderItem.menuItem?.name ?? request.orderItem.service?.name ?? 'item'}</td>
                   <td className="whitespace-nowrap px-5 py-3 text-xs text-muted-foreground">{request.decidedBy && staff[request.decidedBy] ? `${staff[request.decidedBy]} · ` : ''}{request.decidedAt ? ago(request.decidedAt) : ''}</td>
                   <td className="px-5 py-3"><div className="flex justify-end"><ActionButton tone="neutral" icon={<LuReceiptText />} title="View receipt" onClick={() => setReceiptId(request.order.id)} /></div></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <SectionHead title="Reverted orders" hint="Removed from the sales before the kitchen started. Any dispatched stock went back to the store." count={`last ${reverted.length}`} />
+      {!loading && reverted.length === 0 ? (
+        <div className="mt-4 border border-dashed bg-card p-8 text-center text-sm text-muted-foreground">No orders reverted.</div>
+      ) : (
+        <div className="mt-4 overflow-x-auto border bg-card">
+          <table className="w-full min-w-[880px] text-left text-sm">
+            <thead className="bg-primary text-primary-foreground">
+              <tr><th className={TH}>Order</th><th className={TH}>Items</th><th className={TH}>Rung up by</th><th className={TH}>Reverted by</th><th className={TH}>Dispatch</th><th className={cn(TH, 'text-right')}>Value</th><th className={TH}>When</th></tr>
+            </thead>
+            <tbody className="divide-y">
+              {reverted.map((order) => (
+                <tr key={order.id} className="align-top even:bg-muted/30">
+                  <td className="whitespace-nowrap px-5 py-3"><span className="font-semibold">#{order.orderNumber}</span> <StatusPill tone="danger">Reverted</StatusPill><div className="mt-1 text-xs text-muted-foreground">{order.locationName ?? '—'}{order.tableLabel ? ` · ${order.tableLabel}` : ''} · was {order.orderStatus.toLowerCase()}</div></td>
+                  <td className="px-5 py-3 text-muted-foreground">{order.items.map((i) => `${i.quantity}× ${i.name}${i.variant ? ` (${i.variant})` : ''}`).join(', ') || '—'}</td>
+                  <td className="whitespace-nowrap px-5 py-3">{order.createdByName ?? '—'}</td>
+                  <td className="whitespace-nowrap px-5 py-3">{order.revertedByName ?? '—'}</td>
+                  <td className="whitespace-nowrap px-5 py-3 text-xs text-muted-foreground">{order.dispatchNos.join(', ') || 'none'}</td>
+                  <td className="whitespace-nowrap px-5 py-3 text-right font-semibold tabular-nums">{money(order.total)}</td>
+                  <td className="whitespace-nowrap px-5 py-3 text-xs text-muted-foreground">{ago(order.revertedAt)}</td>
                 </tr>
               ))}
             </tbody>
