@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import { LuBan, LuCircleAlert, LuLoaderCircle, LuPackageCheck, LuPrinter, LuRefreshCw, LuStore } from 'react-icons/lu'
+import { LuBan, LuCircleAlert, LuLoaderCircle, LuPackageCheck, LuPencil, LuPrinter, LuRefreshCw, LuStore } from 'react-icons/lu'
+import RecipeEditModal, { type RecipeDetail, type RecipeProduct } from '@/components/recipes/RecipeEditModal'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { printDispatchSlip, type DispatchSlip } from '@/lib/thermalPrinter'
@@ -163,12 +164,42 @@ export default function DispatchRequests() {
   )
 }
 
-function DispatchModal({ request, onClose, onDone }: { request: Request; onClose: () => void; onDone: () => void }) {
+type OrderRecipe = { id: string; name: string; dishes: string[] }
+
+function DispatchModal({ request: initial, onClose, onDone }: { request: Request; onClose: () => void; onDone: () => void }) {
   const toast = useToast()
-  const [quantities, setQuantities] = useState<Record<string, string>>(() => Object.fromEntries(request.items.map((i) => [i.id, String(Number(i.requestedQty))])))
+  // The request can change while the storekeeper works on it (a recipe correction rebuilds its lines).
+  const [request, setRequest] = useState(initial)
+  const [quantities, setQuantities] = useState<Record<string, string>>(() => Object.fromEntries(initial.items.map((i) => [i.id, String(Number(i.requestedQty))])))
   const [saving, setSaving] = useState(false)
+  const [recipes, setRecipes] = useState<OrderRecipe[]>([])
+  const [products, setProducts] = useState<RecipeProduct[]>([])
+  const [editingRecipe, setEditingRecipe] = useState<RecipeDetail | null>(null)
   const partial = request.items.some((i) => Number(quantities[i.id]) < Number(i.requestedQty))
   const anything = request.items.some((i) => Number(quantities[i.id]) > 0)
+
+  useEffect(() => {
+    api<{ recipes: OrderRecipe[] }>(`/dispatch-requests/${request.id}/recipes`).then((r) => setRecipes(r.recipes)).catch(() => {})
+    api<{ products: RecipeProduct[] }>('/products').then((r) => setProducts(r.products)).catch(() => {})
+  }, [request.id])
+
+  async function openRecipe(id: string) {
+    try {
+      const r = await api<{ recipe: RecipeDetail }>(`/recipes/${id}`)
+      setEditingRecipe(r.recipe)
+    } catch (cause) { toast.error(cause instanceof Error ? cause.message : 'Could not open the recipe') }
+  }
+
+  // Saved recipe: rebuild the waiting request from the order's lines, and keep the storekeeper's place.
+  async function recipeSaved() {
+    setEditingRecipe(null)
+    try {
+      const r = await api<{ request: Request }>(`/dispatch-requests/${request.id}/refresh`, { method: 'POST' })
+      setRequest(r.request)
+      setQuantities(Object.fromEntries(r.request.items.map((i) => [i.id, String(Number(i.requestedQty))])))
+      setRecipes(await api<{ recipes: OrderRecipe[] }>(`/dispatch-requests/${request.id}/recipes`).then((x) => x.recipes))
+    } catch (cause) { toast.error(cause instanceof Error ? cause.message : 'Could not refresh the request') }
+  }
 
   async function save() {
     setSaving(true)
@@ -182,6 +213,16 @@ function DispatchModal({ request, onClose, onDone }: { request: Request; onClose
     <ModalShell kicker={request.requestNo} title={`Dispatch for order #${request.orderNumber}`} subtitle={`${request.fromLocation.name} → ${request.toLocation.name}`} onClose={onClose} size="md"
       footer={<Button onClick={() => void save()} disabled={!anything || saving}>{saving ? 'Dispatching…' : 'Dispatch to kitchen'}</Button>}>
       <div className="space-y-3 p-5">
+        {recipes.length > 0 && (
+          <div className="border p-3">
+            <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Recipes on this order · correct one if it&apos;s wrong</p>
+            <div className="flex flex-wrap gap-2">
+              {recipes.map((r) => (
+                <ActionButton key={r.id} tone="neutral" icon={<LuPencil />} title={r.dishes.join(', ')} onClick={() => void openRecipe(r.id)}>{r.name}</ActionButton>
+              ))}
+            </div>
+          </div>
+        )}
         <table className="w-full text-sm">
           <thead><tr className="border-b text-left text-[11px] uppercase tracking-wider text-muted-foreground"><th className="py-1.5">Item</th><th className="text-right">Asked</th><th className="text-right">In store</th><th className="w-28 text-right">Send</th></tr></thead>
           <tbody className="divide-y">
@@ -196,7 +237,10 @@ function DispatchModal({ request, onClose, onDone }: { request: Request; onClose
           </tbody>
         </table>
         {partial && <p className="text-xs text-warning">You are sending less than was asked. The kitchen may not be able to finish the order.</p>}
-        <p className="text-xs text-muted-foreground">This moves the stock out of {request.fromLocation.name} into {request.toLocation.name} and is recorded in the stock ledger.</p>
+        <p className="text-xs text-muted-foreground">This takes the sent items out of {request.fromLocation.name} and is recorded in the stock ledger.</p>
+        {editingRecipe && (
+          <RecipeEditModal recipe={editingRecipe} products={products} onClose={() => setEditingRecipe(null)} onSaved={() => void recipeSaved()} />
+        )}
       </div>
     </ModalShell>
   )
