@@ -82,6 +82,8 @@ type MenuItem = {
   tax: LineTax
   availableQuantity: number | null
   availabilityUnitLabel: string | null
+  // Set by the location: when true, out-of-stock items can still be ordered (the store sends what it has).
+  locationAllowsOutOfStockOrders?: boolean
 }
 // One configured line in the sale: an item, the chosen variant (size/option)
 // if any, and the flattened set of chosen add-ons. Keyed by a generated id so
@@ -922,7 +924,7 @@ export default function PointOfSale() {
                     const customize = needsCustomize(item, allAddons.length)
                     const outOfStock = item.availableQuantity != null && item.availableQuantity <= 0
                     return (
-                      <button key={item.id} onClick={() => onItemClick(item)} disabled={outOfStock} className={cn('group relative flex flex-col overflow-hidden rounded-sm border bg-card p-3.5 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-accent/50 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-sm sm:p-5', added ? 'border-[#f2921a] ring-2 ring-[#f2921a]/40' : outOfStock ? 'border-destructive/20 bg-destructive/5' : 'border-border')}>
+                      <button key={item.id} onClick={() => onItemClick(item)} disabled={outOfStock && !item.locationAllowsOutOfStockOrders} className={cn('group relative flex flex-col overflow-hidden rounded-sm border bg-card p-3.5 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-accent/50 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:shadow-sm sm:p-5', added ? 'border-[#f2921a] ring-2 ring-[#f2921a]/40' : outOfStock ? 'border-destructive/20 bg-destructive/5' : 'border-border')}>
                         <div className="flex items-start justify-between gap-2">
                           <span className={cn('flex size-9 shrink-0 items-center justify-center rounded-sm sm:size-11', item.temperature === 'HOT' ? 'bg-warning/15 text-warning' : item.temperature === 'COLD' ? 'bg-secondary/10 text-secondary' : 'bg-accent/10 text-accent')}><LuCoffee className="size-5" /></span>
                           <span className="max-w-[55%] truncate rounded-sm bg-muted px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{item.category.name}</span>
@@ -958,7 +960,7 @@ export default function PointOfSale() {
                           )}
 
                           <span className={cn('mt-3 flex w-full items-center justify-center gap-1.5 rounded-sm py-2 text-xs font-bold uppercase tracking-wide shadow-md transition group-hover:brightness-95', added ? 'bg-[#f2921a] text-white' : 'bg-accent text-accent-foreground')}>
-                            {added ? <><LuCheck className="size-4" /> Added</> : outOfStock ? 'Out of stock' : customize ? <><LuSlidersHorizontal className="size-4" /> Options</> : <><LuPlus className="size-4" /> Add</>}
+                            {added ? <><LuCheck className="size-4" /> Added</> : outOfStock && !item.locationAllowsOutOfStockOrders ? 'Out of stock' : customize ? <><LuSlidersHorizontal className="size-4" /> Options</> : <><LuPlus className="size-4" /> Add</>}
                           </span>
                         </div>
                       </button>
@@ -1290,7 +1292,7 @@ function CustomizeModal({ item, allAddons, initial, onClose, onSubmit }: {
     setSelectedIds((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]))
 
   const variantInStock = !variant || variant.availableQuantity == null || variant.availableQuantity > 0
-  const canAdd = (item.variants.length === 0 || !!variant) && variantInStock
+  const canAdd = (item.variants.length === 0 || !!variant) && (variantInStock || !!item.locationAllowsOutOfStockOrders)
   const chosenAddons: Addon[] = selected.map((a) => ({ id: a.id, name: a.name, price: a.price }))
   const unitPrice = (variant?.price ?? item.price) + chosenAddons.reduce((sum, a) => sum + a.price, 0)
 
@@ -1318,7 +1320,7 @@ function CustomizeModal({ item, allAddons, initial, onClose, onSubmit }: {
                   return (
                     <label key={v.id} className={cn('flex cursor-pointer items-start justify-between gap-3 rounded-sm border px-3 py-2.5 text-sm', variantId === v.id ? 'border-secondary bg-secondary/10 font-semibold' : 'hover:bg-muted', out && 'cursor-not-allowed opacity-50')}>
                       <span className="flex min-w-0 items-start gap-2.5">
-                        <input type="radio" name="variant" checked={variantId === v.id} disabled={out} onChange={() => setVariantId(v.id)} className="mt-0.5 accent-secondary" />
+                        <input type="radio" name="variant" checked={variantId === v.id} disabled={out && !item.locationAllowsOutOfStockOrders} onChange={() => setVariantId(v.id)} className="mt-0.5 accent-secondary" />
                         <span className="min-w-0">
                           <span className="block truncate">{v.name}</span>
                           {consumption && (

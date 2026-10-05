@@ -73,6 +73,7 @@ type LocationRow = {
   canSellProducts: boolean
   serveMode: ServeMode
   requireStoreDispatch: boolean
+  allowOutOfStockOrders: boolean
   dispatchAutoPrint: boolean
   dispatchFromLocationId: string | null
   receiptHeader: string | null
@@ -101,6 +102,7 @@ type LocationForm = {
   canSellProducts: boolean
   serveMode: ServeMode
   requireStoreDispatch: boolean
+  allowOutOfStockOrders: boolean
   dispatchAutoPrint: boolean
   dispatchFromLocationId: string
   receiptHeader: string
@@ -117,6 +119,7 @@ const emptyLocationForm: LocationForm = {
   canSellRooms: true, canSellMenu: true, canSellServices: true, canSellProducts: true,
   serveMode: 'KITCHEN',
   requireStoreDispatch: false,
+  allowOutOfStockOrders: false,
   dispatchAutoPrint: true,
   dispatchFromLocationId: '',
   receiptHeader: '', receiptFooter: '', invoiceHeader: '', invoiceFooter: '', quotationHeader: '', quotationFooter: '',
@@ -184,6 +187,7 @@ export default function Locations() {
       canSellProducts: location.canSellProducts,
       serveMode: location.serveMode,
       requireStoreDispatch: location.requireStoreDispatch,
+      allowOutOfStockOrders: location.allowOutOfStockOrders,
       dispatchAutoPrint: location.dispatchAutoPrint,
       dispatchFromLocationId: location.dispatchFromLocationId ?? '',
       receiptHeader: location.receiptHeader ?? '',
@@ -474,6 +478,15 @@ export default function Locations() {
                         <span>
                           <span className="block text-sm font-semibold">Print the dispatch slip automatically at the store</span>
                           <span className="block text-xs text-muted-foreground">The store&apos;s printer prints what to dispatch as soon as an order is posted. Off = the storekeeper prints it with the Print button. Needs a printer set up on the store computer.</span>
+                        </span>
+                      </label>
+                    )}
+                    {form.requireStoreDispatch && (
+                      <label className={cn('mt-3 flex cursor-pointer items-start gap-2.5 border p-3 transition-colors', form.allowOutOfStockOrders ? 'border-secondary bg-secondary/10' : 'bg-muted/40')}>
+                        <input type="checkbox" checked={form.allowOutOfStockOrders} onChange={(e) => setForm({ ...form, allowOutOfStockOrders: e.target.checked })} className="mt-0.5 size-4 accent-secondary" />
+                        <span>
+                          <span className="block text-sm font-semibold">Send orders to the store even when out of stock</span>
+                          <span className="block text-xs text-muted-foreground">Off (default): items the store doesn't hold show as out of stock and can't be ordered. On: waiters can order them; the store sends what it has and the rest stays off the dispatch.</span>
                         </span>
                       </label>
                     )}
