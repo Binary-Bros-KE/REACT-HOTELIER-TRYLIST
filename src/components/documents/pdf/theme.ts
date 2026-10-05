@@ -23,6 +23,8 @@ export const statusColor: Record<string, string> = {
   DRAFT: palette.muted,
   SUBMITTED: palette.amber,
   APPROVED: palette.navy,
+  COMPLETE: palette.success,
+  VOIDED: palette.danger,
   REJECTED: palette.danger,
   CONVERTED: palette.success,
   CANCELLED: palette.muted,

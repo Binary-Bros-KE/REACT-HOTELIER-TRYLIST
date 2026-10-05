@@ -8,6 +8,8 @@ import StockTransferDocument from './StockTransferDocument'
 import GroupInvoiceDocument from './GroupInvoiceDocument'
 import CommercialDocument from './CommercialDocument'
 import ReportDocument from './ReportDocument'
+import PayslipDocument from './PayslipDocument'
+import type { PayslipDocData } from './PayslipDocument'
 import type { RequisitionDocData } from './RequisitionDocument'
 import type { PurchaseOrderDocData } from './PurchaseOrderDocument'
 import type { StockReceiptDocData } from './StockReceiptDocument'
@@ -18,8 +20,9 @@ import type { ReportDocData } from './ReportDocument'
 
 export type { DocProfile }
 export type { ReportDocData, ReportCard, ReportColumn, ReportSection } from './ReportDocument'
-export type DocKind = 'requisition' | 'purchase' | 'stock-transfer' | 'stock-receipt' | 'group-invoice' | 'commercial-document' | 'report'
-export type DocData = RequisitionDocData | PurchaseOrderDocData | StockTransferDocData | StockReceiptDocData | GroupInvoiceDocData | CommercialDocData | ReportDocData
+export type { PayslipDocData } from './PayslipDocument'
+export type DocKind = 'requisition' | 'purchase' | 'stock-transfer' | 'stock-receipt' | 'group-invoice' | 'commercial-document' | 'report' | 'payslip'
+export type DocData = RequisitionDocData | PurchaseOrderDocData | StockTransferDocData | StockReceiptDocData | GroupInvoiceDocData | CommercialDocData | ReportDocData | PayslipDocData
 
 export function buildDocument(kind: DocKind, data: DocData, profile: DocProfile): ReactElement<DocumentProps> {
   if (kind === 'requisition') return <RequisitionDocument data={data as RequisitionDocData} profile={profile} />
@@ -28,10 +31,15 @@ export function buildDocument(kind: DocKind, data: DocData, profile: DocProfile)
   if (kind === 'commercial-document') return <CommercialDocument data={data as CommercialDocData} profile={profile} />
   if (kind === 'stock-transfer') return <StockTransferDocument data={data as StockTransferDocData} profile={profile} />
   if (kind === 'report') return <ReportDocument data={data as ReportDocData} profile={profile} />
+  if (kind === 'payslip') return <PayslipDocument data={data as PayslipDocData} profile={profile} />
   return <PurchaseOrderDocument data={data as PurchaseOrderDocData} profile={profile} />
 }
 
 export function documentMeta(kind: DocKind, data: DocData): { title: string; fileName: string } {
+  if (kind === 'payslip') {
+    const d = data as PayslipDocData
+    return { title: `Payslip ${d.payslipNo}`, fileName: `${d.payslipNo}.pdf` }
+  }
   if (kind === 'report') {
     const d = data as ReportDocData
     const slug = d.reportTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')

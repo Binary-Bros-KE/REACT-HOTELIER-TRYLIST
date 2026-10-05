@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import {
   LuBanknote,
@@ -7,6 +7,7 @@ import {
   LuEye,
   LuLoaderCircle,
   LuPlus,
+  LuPrinter,
   LuSearch,
   LuTrash2,
   LuWalletCards,
@@ -19,6 +20,9 @@ import StatCard from '@/components/ui/StatCard'
 import { useToast } from '@/components/ui/Toast'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import type { DocProfile, PayslipDocData } from '@/components/documents/pdf'
+
+const DocumentViewer = lazy(() => import('@/components/documents/DocumentViewer'))
 
 const paymentMethods = ['BANK_TRANSFER', 'MPESA', 'CASH', 'CHEQUE', 'CARD'] as const
 const statuses = ['DRAFT', 'COMPLETE', 'VOIDED'] as const
@@ -33,6 +37,8 @@ type Employee = {
   firstName: string
   lastName: string
   employeeCode: string
+  jobTitle?: string | null
+  phone?: string | null
   status: string
   salaryAmount: string | number
   salaryType: string
@@ -93,6 +99,33 @@ type ProcessForm = {
 const money = (value: string | number) => `KSh ${Number(value).toLocaleString('en-KE', { maximumFractionDigits: 2 })}`
 const titleCase = (value: string) => value.toLowerCase().split('_').map((part) => part[0].toUpperCase() + part.slice(1)).join(' ')
 const monthLabel = (value: string) => new Date(value).toLocaleDateString('en-KE', { month: 'long', year: 'numeric' })
+
+function payslipData(salary: Salary): PayslipDocData {
+  return {
+    payslipNo: salary.payslipNo,
+    status: salary.status,
+    periodLabel: monthLabel(salary.payPeriod),
+    paidAt: salary.paidAt,
+    paymentMethod: salary.paymentMethod ? titleCase(salary.paymentMethod) : null,
+    reference: salary.reference,
+    notes: salary.notes,
+    employee: {
+      firstName: salary.employee.firstName,
+      lastName: salary.employee.lastName,
+      employeeCode: salary.employee.employeeCode,
+      jobTitle: salary.employee.jobTitle ?? null,
+      department: salary.employee.department?.name ?? null,
+      phone: salary.employee.phone ?? null,
+    },
+    basicSalary: salary.basicSalary,
+    totalAllowances: salary.totalAllowances,
+    totalDeductions: salary.totalDeductions,
+    carriedOverAmount: salary.carriedOverAmount ?? 0,
+    grossPay: salary.grossPay,
+    netPay: salary.netPay,
+    items: salary.items.map((i) => ({ type: i.type, label: i.label, amount: i.amount })),
+  }
+}
 const monthValue = (date = new Date()) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
 const todayLabel = () => new Date().toLocaleDateString('en-KE', { day: 'numeric', month: 'short' })
 const toApiMonth = (value: string) => `${value}-01`
@@ -137,6 +170,8 @@ export default function EmployeeSalaries() {
   const [defaultsForm, setDefaultsForm] = useState<{ allowances: LineDraft[]; deductions: LineDraft[] }>({ allowances: [], deductions: [] })
   const [defaultsSaving, setDefaultsSaving] = useState(false)
   const [detail, setDetail] = useState<Salary | null>(null)
+  const [printing, setPrinting] = useState<Salary | null>(null)
+  const [profile, setProfile] = useState<DocProfile>(null)
   const [advanceForm, setAdvanceForm] = useState({ employeeId: '', payPeriod: monthValue(), allowances: [] as LineDraft[], deductions: [{ label: `Advance - ${todayLabel()}`, amount: '' }], notes: '' })
   const [processForm, setProcessForm] = useState<ProcessForm>(emptyProcess())
   // Completing a salary whose deductions exceed its gross pay: ask before
@@ -183,6 +218,7 @@ export default function EmployeeSalaries() {
     api<{ locations: { id: string; name: string }[] }>('/locations')
       .then((response) => setLocations(response.locations))
       .catch(() => {})
+    api<{ profile: DocProfile }>('/business-profile').then((r) => setProfile(r.profile)).catch(() => {})
   }, [toast])
 
   function existingDraft(employeeId: string, payPeriod: string) {
@@ -495,6 +531,7 @@ export default function EmployeeSalaries() {
                     <td className="px-5 py-4">
                       <div className="flex justify-end gap-1">
                         <button onClick={() => { setDetail(salary); setCompleteForm({ paymentMethod: salary.paymentMethod ?? salary.employee.paymentMethod ?? '', reference: salary.reference ?? '', notes: salary.notes ?? '' }) }} title="View payslip" className="rounded-sm p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuEye /></button>
+                        <button onClick={() => setPrinting(salary)} title="Print payslip" className="rounded-sm p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuPrinter /></button>
                         {salary.status === 'DRAFT' && <button onClick={() => openProcess(salary.employee, salary)} title="Process draft" className="rounded-sm p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuBanknote /></button>}
                       </div>
                     </td>
@@ -594,9 +631,17 @@ export default function EmployeeSalaries() {
         </Modal>
       )}
 
+      {printing && (
+        <Suspense fallback={null}>
+          <DocumentViewer kind="payslip" data={payslipData(printing)} profile={profile} onClose={() => setPrinting(null)} />
+        </Suspense>
+      )}
       {detail && (
         <Modal title={detail.payslipNo} subtitle={`${detail.employee.firstName} ${detail.employee.lastName} - ${monthLabel(detail.payPeriod)}`} onClose={() => setDetail(null)}>
           <div className="space-y-5">
+            <div className="flex justify-end">
+              <Button variant="secondary" onClick={() => setPrinting(detail)}><LuPrinter /> Print payslip</Button>
+            </div>
             <div className="grid gap-3 sm:grid-cols-4">
               <SummaryCell label="Basic salary" value={money(detail.basicSalary)} />
               <SummaryCell label="Allowances" value={money(detail.totalAllowances)} />
