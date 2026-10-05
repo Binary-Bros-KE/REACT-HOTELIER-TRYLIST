@@ -233,6 +233,7 @@ export const navigation: NavGroup[] = [
       { label: 'Rooms Report', href: '/reports/rooms-report', icon: LuBedDouble, moduleKey: 'ROOMS' },
       { label: 'Assets Report', href: '/reports/assets-report', icon: LuArmchair },
       { label: 'Expenses Report', href: '/reports/expenses-report', icon: LuHandCoins, moduleKey: 'ACCOUNTING' },
+      { label: 'Salaries Report', href: '/reports/salaries', icon: LuBanknote, moduleKey: 'ACCOUNTING' },
       { label: 'Purchases Report', href: '/reports/purchases-report', icon: LuTruck, moduleKey: 'STORE' },
       { label: 'Tax Report', href: '/reports/tax-report', icon: LuBadgeDollarSign },
     ],

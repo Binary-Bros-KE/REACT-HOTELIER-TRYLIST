@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { downloadCsvRows } from '@/lib/csv'
 import type { ReactNode } from 'react'
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import {
@@ -108,24 +109,12 @@ function stepAnchor(period: Exclude<Period, 'custom'>, iso: string, dir: 1 | -1)
   return toLocalIso(d)
 }
 
-function csvCell(value: string | number | null | undefined) {
-  const text = value == null ? '' : String(value)
-  return `"${text.replace(/"/g, '""')}"`
-}
-
 function downloadCsv(report: PurchasesReportData) {
   const rows = [
     ['Section', 'Date', 'PO', 'Supplier', 'Product', 'SKU', 'Quantity', 'Unit Cost', 'Value', 'Location'],
     ...report.receiptLines.map((l) => ['Receipt', l.receivedAt, l.purchaseNo, l.supplier, l.productName, l.sku ?? '', qty(l.quantity, l), l.unitCost, l.value, l.location]),
   ]
-  const csv = rows.map((row) => row.map(csvCell).join(',')).join('\n')
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `purchases-report-${new Date().toISOString().slice(0, 10)}.csv`
-  a.click()
-  URL.revokeObjectURL(url)
+  downloadCsvRows('purchases-report', rows)
 }
 
 export default function PurchasesReport() {

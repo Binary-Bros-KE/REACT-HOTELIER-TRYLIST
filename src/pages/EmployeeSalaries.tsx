@@ -133,8 +133,11 @@ export default function EmployeeSalaries() {
   const [notice, setNotice] = useState('')
   const [advanceOpen, setAdvanceOpen] = useState(false)
   const [processOpen, setProcessOpen] = useState(false)
+  const [defaultsFor, setDefaultsFor] = useState<Employee | null>(null)
+  const [defaultsForm, setDefaultsForm] = useState<{ allowances: LineDraft[]; deductions: LineDraft[] }>({ allowances: [], deductions: [] })
+  const [defaultsSaving, setDefaultsSaving] = useState(false)
   const [detail, setDetail] = useState<Salary | null>(null)
-  const [advanceForm, setAdvanceForm] = useState({ employeeId: '', payPeriod: monthValue(), deductions: [{ label: `Advance - ${todayLabel()}`, amount: '' }], notes: '' })
+  const [advanceForm, setAdvanceForm] = useState({ employeeId: '', payPeriod: monthValue(), allowances: [] as LineDraft[], deductions: [{ label: `Advance - ${todayLabel()}`, amount: '' }], notes: '' })
   const [processForm, setProcessForm] = useState<ProcessForm>(emptyProcess())
   // Completing a salary whose deductions exceed its gross pay: ask before
   // pushing the excess onto next month.
@@ -214,7 +217,7 @@ export default function EmployeeSalaries() {
   }
 
   function openAdvance(employeeId = '') {
-    setAdvanceForm({ employeeId, payPeriod: monthValue(), deductions: [{ label: `Advance - ${todayLabel()}`, amount: '' }], notes: '' })
+    setAdvanceForm({ employeeId, payPeriod: monthValue(), allowances: [], deductions: [{ label: `Advance - ${todayLabel()}`, amount: '' }], notes: '' })
     setAdvanceOpen(true)
     setError('')
   }
@@ -238,6 +241,44 @@ export default function EmployeeSalaries() {
     setError('')
   }
 
+  async function openDefaults(employee: Employee) {
+    setDefaultsFor(employee)
+    setDefaultsForm({ allowances: [], deductions: [] })
+    try {
+      const response = await api<{ items: { id: string; type: 'ALLOWANCE' | 'DEDUCTION'; label: string; amount: string | number }[] }>(`/employee-salaries/defaults/${employee.id}`)
+      setDefaultsForm({
+        allowances: response.items.filter((item) => item.type === 'ALLOWANCE').map((item) => ({ id: item.id, label: item.label, amount: String(Number(item.amount)) })),
+        deductions: response.items.filter((item) => item.type === 'DEDUCTION').map((item) => ({ id: item.id, label: item.label, amount: String(Number(item.amount)) })),
+      })
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not load the defaults')
+    }
+  }
+
+  async function saveDefaults(event: FormEvent) {
+    event.preventDefault()
+    if (!defaultsFor) return
+    setDefaultsSaving(true)
+    setError('')
+    try {
+      await api(`/employee-salaries/defaults/${defaultsFor.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          items: [
+            ...cleanLines(defaultsForm.allowances).map((line) => ({ ...line, type: 'ALLOWANCE' })),
+            ...cleanLines(defaultsForm.deductions).map((line) => ({ ...line, type: 'DEDUCTION' })),
+          ],
+        }),
+      })
+      setNotice(`Defaults saved for ${defaultsFor.firstName} ${defaultsFor.lastName}.`)
+      setDefaultsFor(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save the defaults')
+    } finally {
+      setDefaultsSaving(false)
+    }
+  }
+
   async function recordAdvance(event: FormEvent) {
     event.preventDefault()
     setSaving(true)
@@ -249,6 +290,7 @@ export default function EmployeeSalaries() {
         body: JSON.stringify({
           employeeId: advanceForm.employeeId,
           payPeriod: toApiMonth(advanceForm.payPeriod),
+          allowances: cleanLines(advanceForm.allowances),
           deductions: cleanLines(advanceForm.deductions),
           notes: advanceForm.notes,
         }),
@@ -488,6 +530,7 @@ export default function EmployeeSalaries() {
               </Field>
               <Field label="Pay period" required><input required type="month" value={advanceForm.payPeriod} onChange={(e) => setAdvanceForm({ ...advanceForm, payPeriod: e.target.value })} className="input" /></Field>
             </div>
+            <LineEditor title="Allowances" lines={advanceForm.allowances} onChange={(lines) => setAdvanceForm({ ...advanceForm, allowances: lines })} addLabel="Add allowance" />
             <LineEditor title="Deductions" lines={advanceForm.deductions} onChange={(lines) => setAdvanceForm({ ...advanceForm, deductions: lines })} addLabel="Add line" />
             <Field label="Notes"><textarea value={advanceForm.notes} onChange={(e) => setAdvanceForm({ ...advanceForm, notes: e.target.value })} className="input min-h-20" placeholder="Optional - how the advance was paid out, reason, etc." /></Field>
             <ModalActions saving={saving} onCancel={() => setAdvanceOpen(false)} primary="Record advance" />
@@ -495,6 +538,15 @@ export default function EmployeeSalaries() {
         </Modal>
       )}
 
+      {defaultsFor && (
+        <Modal title="Default allowances and deductions" subtitle={`${defaultsFor.firstName} ${defaultsFor.lastName}. Defaults are added to every salary, alongside whatever is already on it. A default added later reaches months not yet processed; changing an amount does not change a month already started.`} onClose={() => setDefaultsFor(null)}>
+          <form onSubmit={saveDefaults} className="space-y-5">
+            <LineEditor title="Allowances" lines={defaultsForm.allowances} onChange={(lines) => setDefaultsForm({ ...defaultsForm, allowances: lines })} addLabel="Add allowance" />
+            <LineEditor title="Deductions" lines={defaultsForm.deductions} onChange={(lines) => setDefaultsForm({ ...defaultsForm, deductions: lines })} addLabel="Add deduction" />
+            <ModalActions saving={defaultsSaving} onCancel={() => setDefaultsFor(null)} primary="Save defaults" />
+          </form>
+        </Modal>
+      )}
       {processOpen && (
         <Modal title="Process Salary" subtitle="Creates or updates a monthly payslip. Save as draft while you are still collecting allowances and deductions, then complete payment at month-end." onClose={() => setProcessOpen(false)}>
           <form onSubmit={(event) => { event.preventDefault(); void processSalary(false) }} className="space-y-5">
@@ -505,6 +557,11 @@ export default function EmployeeSalaries() {
                   {activeEmployees.map((employee) => <option key={employee.id} value={employee.id}>{employee.firstName} {employee.lastName}</option>)}
                 </select>
               </Field>
+              <div className="flex items-end">
+                <button type="button" disabled={!processForm.employeeId} onClick={() => { const chosen = employees.find((e) => e.id === processForm.employeeId); if (chosen) void openDefaults(chosen) }} className="text-sm font-semibold text-secondary underline disabled:opacity-50">
+                  Default allowances &amp; deductions
+                </button>
+              </div>
               <Field label="Pay period" required><input required type="month" value={processForm.payPeriod} onChange={(e) => updateProcess({ payPeriod: e.target.value })} className="input" /></Field>
               <Field label="Basic salary" required><input required type="number" min="0" step="0.01" value={processForm.basicSalary} onChange={(e) => updateProcess({ basicSalary: e.target.value })} className="input" placeholder="0.00" /></Field>
               <Field label="Payment method">

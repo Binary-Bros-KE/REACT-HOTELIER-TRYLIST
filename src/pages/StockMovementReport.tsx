@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { downloadCsvRows } from '@/lib/csv'
 import { LuCalendarDays, LuChevronLeft, LuChevronRight, LuCircleAlert, LuDownload, LuLoaderCircle, LuSearch } from 'react-icons/lu'
 import { api, hasApiTenant } from '@/lib/api'
 import ActionButton from '@/components/ui/ActionButton'
@@ -57,24 +58,12 @@ function rangeLabel(period: Period, startIso: string, endIso: string) {
   return `${s.toLocaleDateString('en-KE', { day: 'numeric', month: 'short' })} - ${e.toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric' })}`
 }
 
-function csvCell(value: string | number | null | undefined) {
-  const text = value == null ? '' : String(value)
-  return `"${text.replace(/"/g, '""')}"`
-}
-
 function downloadCsv(report: StockReport) {
   const rows = [
     ['Product', 'SKU', 'Location', 'Opening', 'Received', 'Issued', 'Adjustments', 'Net change', 'Closing', 'Reconciles'],
     ...report.rows.map((r) => [r.name, r.sku ?? '', r.locationName, plain(r.opening, r), plain(r.received, r), plain(r.issued, r), plain(r.adjustments, r), plain(r.net, r), plain(r.closing, r), r.reconciles ? 'yes' : 'NO']),
   ]
-  const csv = rows.map((row) => row.map(csvCell).join(',')).join('\n')
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `stock-movement-summary-${new Date().toISOString().slice(0, 10)}.csv`
-  a.click()
-  URL.revokeObjectURL(url)
+  downloadCsvRows('stock-movement-summary', rows)
 }
 
 function buildReportDoc(report: StockReport): ReportDocData {
