@@ -89,7 +89,7 @@ function Cards({ cards }: { cards: ReportCard[] }) {
 function SectionTable({ section }: { section: ReportSection }) {
   if (section.rows.length === 0) return null
   return (
-    <View style={rs.sectionWrap} wrap={false}>
+    <View style={rs.sectionWrap}>
       <Text style={rs.sectionTitle}>{section.title}</Text>
       {section.note ? <Text style={rs.sectionNote}>{section.note}</Text> : <View style={{ marginBottom: 6 }} />}
       <View style={rs.table}>
