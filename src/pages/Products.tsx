@@ -33,6 +33,7 @@ type Product = {
   id: string
   categoryId: string | null
   category: { id: string; name: string; level: number } | null
+  unitRef?: { id: string; name: string } | null
   name: string
   sku: string | null
   barcode: string | null
@@ -146,6 +147,7 @@ export default function Products() {
   const [locations, setLocations] = useState<Location[]>([])
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
+  const [uomFilter, setUomFilter] = useState('')
   const [lowStockOnly, setLowStockOnly] = useState(false)
   const [form, setForm] = useState<ProductForm>(emptyForm)
   const [editing, setEditing] = useState<Product | null>(null)
@@ -173,6 +175,7 @@ export default function Products() {
       const query = new URLSearchParams()
       if (search.trim()) query.set('search', search.trim())
       if (categoryFilter) query.set('categoryId', categoryFilter)
+      if (uomFilter) query.set('unitId', uomFilter)
       if (lowStockOnly) query.set('lowStock', 'true')
       const response = await api<{ products: Product[]; summary: Summary }>(`/products${query.size ? `?${query}` : ''}`)
       setProducts(response.products)
@@ -184,7 +187,7 @@ export default function Products() {
     } finally {
       setLoading(false)
     }
-  }, [search, categoryFilter, lowStockOnly, toast])
+  }, [search, categoryFilter, uomFilter, lowStockOnly, toast])
 
   useEffect(() => { const timer = window.setTimeout(() => void loadProducts(), 250); return () => window.clearTimeout(timer) }, [loadProducts])
 
@@ -421,6 +424,16 @@ export default function Products() {
               placeholder="All categories"
               searchPlaceholder="Search categories..."
               emptyText="No categories match."
+            />
+          </div>
+          <div className="sm:w-48">
+            <SearchableSelect
+              value={uomFilter}
+              onChange={setUomFilter}
+              options={units.map((u) => ({ value: u.id, label: u.name }))}
+              placeholder="All units"
+              searchPlaceholder="Search units..."
+              emptyText="No units match."
             />
           </div>
           <label className="flex items-center gap-2 rounded-sm border bg-background px-3 py-2.5 text-sm font-medium">
