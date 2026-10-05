@@ -1090,7 +1090,7 @@ function StorekeeperDashboard() {
 // start/ready actions, so the dashboard can act on a ticket directly. ----
 
 type KitchenOrderItem = { id: string; quantity: number; menuItem: { name: string } | null; variant: { name: string } | null }
-type KitchenOrder = { id: string; orderNumber: number; status: 'OPEN' | 'PREPARING'; createdAt: string; table: { label: string } | null; items: KitchenOrderItem[] }
+type KitchenOrder = { id: string; orderNumber: number; status: 'OPEN' | 'PREPARING'; preparingBy?: string | null; preparedByName?: string | null; createdAt: string; table: { label: string } | null; items: KitchenOrderItem[] }
 type KitchenMenuItem = { id: string; recipe: { id: string } | null }
 
 const elapsedMinutes = (iso: string) => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000))
@@ -1103,6 +1103,8 @@ function ChefDashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [workingId, setWorkingId] = useState('')
+  const currentUserId = useAppSelector((state) => state.auth.user?.id)
+  const [claimTarget, setClaimTarget] = useState<KitchenOrder | null>(null)
 
   const load = useCallback(async () => {
     setError('')
@@ -1176,13 +1178,30 @@ function ChefDashboard() {
                   <p className="truncate text-xs text-muted-foreground">{o.items.map((i) => `${i.quantity}× ${i.menuItem?.name ?? 'item'}${i.variant ? ` (${i.variant.name})` : ''}`).join(' · ')}</p>
                 </div>
                 <span className={cn('shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide', o.status === 'OPEN' ? 'bg-warning/15 text-warning' : 'bg-secondary/10 text-secondary')}>{elapsedMinutes(o.createdAt)} min</span>
-                <button
-                  disabled={workingId === o.id}
-                  onClick={() => void advance(o)}
-                  className="shrink-0 rounded-sm bg-accent px-3 py-1.5 text-xs font-bold text-accent-foreground disabled:opacity-60"
-                >
-                  {workingId === o.id ? <LuLoaderCircle className="size-3.5 animate-spin" /> : o.status === 'OPEN' ? 'Start' : 'Mark Ready'}
-                </button>
+                {o.status === 'PREPARING' && o.preparingBy !== currentUserId ? (
+                  <span className="shrink-0 text-xs text-muted-foreground">{o.preparedByName ? `By ${o.preparedByName}` : 'Being prepared'}</span>
+                ) : (
+                  <button
+                    disabled={workingId === o.id}
+                    onClick={() => (o.status === 'OPEN' ? setClaimTarget(o) : void advance(o))}
+                    className="shrink-0 rounded-sm bg-accent px-3 py-1.5 text-xs font-bold text-accent-foreground disabled:opacity-60"
+                  >
+                    {workingId === o.id ? <LuLoaderCircle className="size-3.5 animate-spin" /> : o.status === 'OPEN' ? 'Claim' : 'Mark Ready'}
+                  </button>
+                )}
+                {claimTarget?.id === o.id && (
+                  <ConfirmModal
+                    open
+                    tone="warning"
+                    title={`Claim order #${o.orderNumber}?`}
+                    message="You will be recorded as the chef preparing this order. Only you can mark it ready or release it back to the queue."
+                    confirmLabel="Claim and start"
+                    cancelLabel="Not now"
+                    loading={workingId === o.id}
+                    onCancel={() => setClaimTarget(null)}
+                    onConfirm={() => { setClaimTarget(null); void advance(o) }}
+                  />
+                )}
               </div>
             ))}
           </div>

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { LuBellRing, LuCheck, LuCircleAlert, LuClock3, LuFlame, LuLoaderCircle, LuPackageOpen, LuRefreshCw, LuSparkles, LuStore } from 'react-icons/lu'
 
 import { api } from '@/lib/api'
+import { useAppSelector } from '@/store/hooks'
+import ConfirmModal from '@/components/ui/ConfirmModal'
 import { cn } from '@/lib/utils'
 import StatCard from '@/components/ui/StatCard'
 import PageBanner from '@/components/ui/PageBanner'
@@ -14,7 +16,7 @@ type MenuItem = { id: string; name: string; category: { name: string }; product:
 type OrderItem = { id: string; needsDispatch?: boolean; quantity: number; menuItem: MenuItem; variant: { name: string } | null; addons: { id: string; addon: { name: string } }[]; addedAfterSend: boolean }
 // Where this ticket's ingredients stand with the store (only when its location requires store dispatch).
 type Dispatch = { required: boolean; state: 'NOT_REQUIRED' | 'NOTHING_NEEDED' | 'NEEDS_REQUEST' | 'WAITING' | 'DISPATCHED'; clear: boolean; uncovered: number; waiting?: boolean; rejectReason: string | null }
-type Order = { id: string; orderNumber: number; dispatch?: Dispatch; table: { label: string } | null; notes: string | null; status: 'OPEN' | 'PREPARING' | 'READY' | 'SERVED'; createdAt: string; updatedAt: string; items: OrderItem[] }
+type Order = { preparingBy?: string | null; preparedByName?: string | null; readyByName?: string | null; id: string; orderNumber: number; dispatch?: Dispatch; table: { label: string } | null; notes: string | null; status: 'OPEN' | 'PREPARING' | 'READY' | 'SERVED'; createdAt: string; updatedAt: string; items: OrderItem[] }
 
 function elapsed(createdAt: string) {
   const minutes = Math.max(0, Math.floor((Date.now() - new Date(createdAt).getTime()) / 60000))
@@ -31,6 +33,7 @@ export default function Kitchen() {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [clock, setClock] = useState(Date.now())
+  const [claimTarget, setClaimTarget] = useState<Order | null>(null)
 
   const load = useCallback(async (quiet = false) => {
     if (quiet) setRefreshing(true)
@@ -66,6 +69,16 @@ export default function Kitchen() {
       setNotice(action === 'request-dispatch' ? `Order #${order.orderNumber}: ingredients requested from the store.` : `Order #${order.orderNumber}: request withdrawn.`)
       await load(true)
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not update the store request') }
+    finally { setWorkingId('') }
+  }
+
+  async function releaseOrder(order: Order) {
+    setWorkingId(order.id); setError(''); setNotice('')
+    try {
+      await api(`/kitchen/orders/${order.id}/release`, { method: 'PATCH' })
+      setNotice(`Order #${order.orderNumber} is back in the queue.`)
+      await load(true)
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not release this order') }
     finally { setWorkingId('') }
   }
 
@@ -140,7 +153,18 @@ export default function Kitchen() {
           </div>
         ) : (
           <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
-            {orders.map((order) => <Ticket key={order.id} order={order} now={clock} working={workingId === order.id} onAdvance={() => void advance(order)} onDispatch={(action) => void dispatchAction(order, action)} />)}
+            <ConfirmModal
+              open={claimTarget !== null}
+              tone="warning"
+              title={claimTarget ? `Claim order #${claimTarget.orderNumber}?` : ''}
+              message="You will be recorded as the chef preparing this order. Only you can mark it ready or release it back to the queue."
+              confirmLabel="Claim and start"
+              cancelLabel="Not now"
+              loading={claimTarget !== null && workingId === claimTarget.id}
+              onCancel={() => setClaimTarget(null)}
+              onConfirm={() => { const target = claimTarget; setClaimTarget(null); if (target) void advance(target) }}
+            />
+            {orders.map((order) => <Ticket key={order.id} order={order} now={clock} working={workingId === order.id} onAdvance={() => (order.status === 'OPEN' ? setClaimTarget(order) : void advance(order))} onRelease={() => void releaseOrder(order)} onDispatch={(action) => void dispatchAction(order, action)} />)}
           </div>
         )}
       </section>
@@ -170,7 +194,8 @@ function DispatchPanel({ dispatch, working, onDispatch, compact }: { dispatch: D
   )
 }
 
-function Ticket({ order, now, working, onAdvance, onDispatch }: { order: Order; now: number; working: boolean; onAdvance: () => void; onDispatch: (action: DispatchAction) => void }) {
+function Ticket({ order, now, working, onAdvance, onRelease, onDispatch }: { order: Order; now: number; working: boolean; onAdvance: () => void; onRelease: () => void; onDispatch: (action: DispatchAction) => void }) {
+  const currentUserId = useAppSelector((state) => state.auth.user?.id)
   const dispatch = order.dispatch
   const needsRequest = Boolean(dispatch?.required) && dispatch?.state === 'NEEDS_REQUEST'
   const waitingOnStore = Boolean(dispatch?.required) && dispatch?.state === 'WAITING'
@@ -210,14 +235,25 @@ function Ticket({ order, now, working, onAdvance, onDispatch }: { order: Order; 
             {working ? <LuLoaderCircle className="animate-spin" /> : <LuStore />}{working ? 'Requesting…' : order.status === 'OPEN' ? 'Send to the store' : 'Send added items to the store'}
           </button>
         ) : (
-        <button
-          disabled={working}
-          onClick={onAdvance}
-          className={cn('mt-4 flex w-full items-center justify-center gap-2 py-3 text-sm font-bold uppercase tracking-wide transition hover:brightness-110 disabled:opacity-60', order.status === 'OPEN' ? 'bg-primary text-primary-foreground' : 'bg-success text-success-foreground')}
-        >
-          {working ? <LuLoaderCircle className="animate-spin" /> : order.status === 'OPEN' ? <LuFlame /> : <LuCheck />}
-          {working ? 'Updating…' : order.status === 'OPEN' ? 'Start preparing' : 'Mark ready'}
-        </button>
+        order.status === 'PREPARING' && order.preparingBy !== currentUserId ? (
+          <button disabled className="mt-4 flex w-full items-center justify-center gap-2 bg-muted py-3 text-sm font-bold uppercase tracking-wide text-muted-foreground">
+            <LuLoaderCircle className="size-4" /> {order.preparedByName ? `Being prepared by ${order.preparedByName}` : 'Being prepared'}
+          </button>
+        ) : (
+          <>
+            <button
+              disabled={working}
+              onClick={onAdvance}
+              className={cn('mt-4 flex w-full items-center justify-center gap-2 py-3 text-sm font-bold uppercase tracking-wide transition hover:brightness-110 disabled:opacity-60', order.status === 'OPEN' ? 'bg-primary text-primary-foreground' : 'bg-success text-success-foreground')}
+            >
+              {working ? <LuLoaderCircle className="animate-spin" /> : order.status === 'OPEN' ? <LuFlame /> : <LuCheck />}
+              {working ? 'Updating…' : order.status === 'OPEN' ? 'Claim and start' : 'Mark ready'}
+            </button>
+            {order.status === 'PREPARING' && (
+              <button type="button" disabled={working} onClick={onRelease} className="mt-2 w-full text-center text-xs font-semibold text-muted-foreground underline disabled:opacity-60">Release back to the queue</button>
+            )}
+          </>
+        )
         )}
       </div>
     </article>
