@@ -29,7 +29,7 @@ type StockReport = {
 }
 
 const TYPE_LABEL: Record<string, string> = {
-  OPENING_STOCK: 'Opening stock', PURCHASE: 'Purchase', SALE: 'Sale', TRANSFER_IN: 'Transfer in', TRANSFER_OUT: 'Transfer out',
+  OPENING_STOCK: 'Opening stock', PURCHASE: 'Purchase', SALE: 'Sale', TRANSFER_IN: 'Transfer in', TRANSFER_OUT: 'Transfer out', ISSUE: 'Issued', USAGE: 'Used (counted)',
   RETURN: 'Return', DAMAGE_LOSS: 'Damage / loss', ADJUSTMENT: 'Adjustment', ROOM_CONSUMPTION: 'Room use',
   BORROWED_IN: 'Borrowed in', RETURNED_BORROWED_STOCK: 'Borrowed returned', LENT_OUT: 'Lent out', LOAN_RETURNED: 'Loan returned',
 }

@@ -8,7 +8,7 @@ import MenuLedgerPanel from '@/pages/MenuLedger'
 import PageBanner from '@/components/ui/PageBanner'
 
 type MoveType =
-  | 'OPENING_STOCK' | 'PURCHASE' | 'SALE' | 'TRANSFER_IN' | 'TRANSFER_OUT' | 'RETURN'
+  | 'OPENING_STOCK' | 'PURCHASE' | 'SALE' | 'TRANSFER_IN' | 'TRANSFER_OUT' | 'RETURN' | 'ISSUE' | 'USAGE'
   | 'DAMAGE_LOSS' | 'ADJUSTMENT' | 'BORROWED_IN' | 'RETURNED_BORROWED_STOCK' | 'LENT_OUT' | 'LOAN_RETURNED'
 
 const TYPE_META: Record<MoveType, { label: string; className: string }> = {
@@ -16,6 +16,8 @@ const TYPE_META: Record<MoveType, { label: string; className: string }> = {
   SALE: { label: 'Sale', className: 'border-destructive/40 text-destructive' },
   TRANSFER_IN: { label: 'Transfer In', className: 'border-success/40 text-success' },
   TRANSFER_OUT: { label: 'Transfer Out', className: 'border-amber-500/50 text-amber-600' },
+  ISSUE: { label: 'Issued', className: 'border-amber-500/50 text-amber-600' },
+  USAGE: { label: 'Used (counted)', className: 'border-amber-500/50 text-amber-600' },
   RETURN: { label: 'Return', className: 'border-indigo-400/50 text-indigo-500' },
   DAMAGE_LOSS: { label: 'Damage / Loss', className: 'border-destructive/40 text-destructive' },
   ADJUSTMENT: { label: 'Adjustment', className: 'border-border text-muted-foreground' },
@@ -29,7 +31,7 @@ const TYPE_META: Record<MoveType, { label: string; className: string }> = {
 // Borrow/lend movement types exist in the schema but have no writers yet, so
 // they're left out of the filter tabs until that module lands.
 const TABS: ('ALL' | MoveType)[] = [
-  'ALL', 'PURCHASE', 'SALE', 'TRANSFER_IN', 'TRANSFER_OUT', 'RETURN', 'DAMAGE_LOSS',
+  'ALL', 'PURCHASE', 'SALE', 'TRANSFER_IN', 'TRANSFER_OUT', 'RETURN', 'ISSUE', 'USAGE', 'DAMAGE_LOSS',
   'ADJUSTMENT', 'OPENING_STOCK',
 ]
 

@@ -29,6 +29,7 @@ import { PRODUCT_TAG_OPTIONS, productTagLabel } from '@/lib/productTags'
 
 type Category = { id: string; name: string; level: number; parentId: string | null }
 type Location = { id: string; name: string; type?: string }
+type TrackingMode = 'PER_SALE' | 'ISSUE_ONLY' | 'PERIODIC_COUNT'
 type StockByLocation = { locationId: string; locationName: string; quantity: string }
 type Product = {
   id: string
@@ -36,6 +37,7 @@ type Product = {
   category: { id: string; name: string; level: number } | null
   unitRef?: { id: string; name: string } | null
   tags?: string[]
+  trackingMode?: TrackingMode
   name: string
   sku: string | null
   barcode: string | null
@@ -118,6 +120,7 @@ type ProductForm = {
   preferredSupplier: string
   isActive: boolean
   tags: string[]
+  trackingMode: TrackingMode
 }
 const emptyForm: ProductForm = {
   categoryId: '', name: '', sku: '', barcode: '', brand: '', description: '',
@@ -126,6 +129,7 @@ const emptyForm: ProductForm = {
   openingStock: '0', locationId: '', reorderLevel: '0', maxStockLevel: '', unitCost: '', sellsDirectly: false, sellingPrice: '', preferredSupplier: '',
   isActive: true,
   tags: [],
+  trackingMode: 'PER_SALE',
 }
 const emptyTransfer = { productId: '', productName: '', fromLocationId: '', toLocationId: '', quantity: '', stockByLocation: [] as StockByLocation[], packSize: 0, packLabel: '', unitName: '' }
 const emptyAdjust = {
@@ -249,6 +253,7 @@ export default function Products() {
       preferredSupplier: product.preferredSupplier ?? '',
       isActive: product.isActive,
       tags: product.tags ?? [],
+      trackingMode: product.trackingMode ?? 'PER_SALE',
     })
     setMovements(null)
     setError('')
@@ -488,6 +493,9 @@ export default function Products() {
                             {(product.tags ?? []).map((tag) => <span key={tag} className="keep-round border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{productTagLabel(tag)}</span>)}
                           </div>
                         )}
+                        {product.trackingMode && product.trackingMode !== 'PER_SALE' && (
+                          <span className="mt-1.5 inline-block keep-round border border-dashed border-accent/60 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent">{product.trackingMode === 'ISSUE_ONLY' ? 'Issued & used up' : 'Counted at close'}</span>
+                        )}
                       </div>
                     </div>
                     <div className="flex flex-wrap items-center justify-between gap-3 sm:justify-end">
@@ -697,6 +705,17 @@ export default function Products() {
                   <span className="mt-1 block text-xs text-muted-foreground">This is the price for one whole {form.packLabel || form.unit.toLowerCase()} — a pack-tracked product sold as a Tot/Double instead needs a Menu Item variant, not this.</span>
                 </Field>
               )}
+            </FieldGroup>
+
+            <FieldGroup title="Stock tracking">
+              <p className="text-xs text-muted-foreground sm:col-span-2">How this product leaves a location. Per dish: the recipe takes it off on every sale (bottles, pieces, portions). Issued and used up: the storekeeper hands it out and it's gone on issue (sugar bowls, salt). Counted at close: it stays on the kitchen shelf and the closing count posts what was used (frying oil).</p>
+              <Field label="Stock tracking" className="sm:col-span-2">
+                <select className="input" value={form.trackingMode} onChange={(e) => setForm({ ...form, trackingMode: e.target.value as TrackingMode })}>
+                  <option value="PER_SALE">Per dish (recipe deducts on sale)</option>
+                  <option value="ISSUE_ONLY">Issued and used up</option>
+                  <option value="PERIODIC_COUNT">Counted at close</option>
+                </select>
+              </Field>
             </FieldGroup>
 
             <FieldGroup title="Operations">

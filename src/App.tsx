@@ -46,6 +46,7 @@ import Assets from "@/pages/Assets";
 import StockLedger from "@/pages/StockLedger";
 import Suppliers from "@/pages/Suppliers";
 import DispatchRequests from "@/pages/DispatchRequests";
+import StockIssues from "@/pages/StockIssues";
 import InventoryOverview from "@/pages/InventoryOverview";
 import ProductsReport from "@/pages/ProductsReport";
 import RoomsReport from "@/pages/RoomsReport";
@@ -216,6 +217,7 @@ function App() {
           element={<PurchaseRequisitions />}
         />
         <Route path="/inventory/dispatch-requests" element={<DispatchRequests />} />
+        <Route path="/inventory/issues" element={<StockIssues />} />
         <Route path="/inventory/categories" element={<Categories />} />
         <Route path="/inventory/units-of-measure" element={<UnitsOfMeasure />} />
         <Route path="/kitchen/recipes" element={<Recipes />} />
