@@ -490,23 +490,11 @@ export function buildDispatchSlipBytes(slip: DispatchSlip, profile: ReceiptProfi
   if (slip.requestedByName) e.line(`By:       ${slip.requestedByName}`)
   e.line(`Time:     ${new Date(slip.requestedAt).toLocaleString('en-KE')}`)
   e.line(rule)
-  const qtyW = compact ? 12 : 16
-  const nameW = cols - qtyW - 1
   for (const dish of slip.dishes ?? []) {
     e.bold(true)
     e.line(`${qtyText(dish.quantity)} x ${dish.name}`)
     e.bold(false)
     for (const ing of dish.ingredients) e.line(`   ${ing.name}  ${qtyText(ing.quantity)} ${ing.unit}`)
-  }
-  e.line(rule)
-  e.bold(true)
-  e.line(center('PICK LIST', cols))
-  e.bold(false)
-  e.bold(true)
-  e.table([{ width: nameW, align: 'left' }, { width: qtyW, align: 'right' }], [['ITEM', 'QTY']])
-  e.bold(false)
-  for (const item of slip.items) {
-    e.table([{ width: nameW, align: 'left' }, { width: qtyW, align: 'right' }], [[item.name, `${qtyText(item.quantity)} ${item.unit}`]])
   }
   e.line(rule)
   if (slip.note) for (const l of wrapWords(slip.note, cols)) e.line(l)
@@ -522,7 +510,6 @@ export function buildDispatchSlipBytes(slip: DispatchSlip, profile: ReceiptProfi
 function printSlipViaWindow(slip: DispatchSlip): void {
   const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string)
   const dishes = (slip.dishes ?? []).map((d) => `<div style="margin-top:6px"><b>${qtyText(d.quantity)} x ${esc(d.name)}</b></div>${d.ingredients.map((g) => `<div style="padding-left:12px">${esc(g.name)} <span style="float:right">${qtyText(g.quantity)} ${esc(g.unit)}</span></div>`).join('')}`).join('')
-  const rows = slip.items.map((i) => `<tr><td>${esc(i.name)}</td><td style="text-align:right;white-space:nowrap">${qtyText(i.quantity)} ${esc(i.unit)}</td></tr>`).join('')
   const win = window.open('', '_blank', 'width=420,height=640')
   if (!win) throw new Error('Allow pop-ups to print the slip')
   win.document.write(`<!doctype html><title>${esc(slip.requestNo)}</title><style>@page{size:80mm auto;margin:4mm}body{font:13px/1.4 monospace;margin:0}h1{font-size:15px;text-align:center;margin:0 0 6px}table{width:100%;border-collapse:collapse}td{padding:2px 0;border-bottom:1px dotted #999}hr{border:0;border-top:1px dashed #000}</style>
@@ -531,8 +518,7 @@ function printSlipViaWindow(slip: DispatchSlip): void {
 <div>For: ${esc(slip.to)}</div><div>From: ${esc(slip.from)}</div>${slip.requestedByName ? '<div>By: ' + esc(slip.requestedByName) + '</div>' : ''}
 ${slip.rungUpBy ? '<div>Rung up by: ' + esc(slip.rungUpBy) + '</div>' : ''}
 <div>Time: ${esc(new Date(slip.requestedAt).toLocaleString('en-KE'))}</div><hr>
-${dishes}<hr><h1 style="font-size:13px">PICK LIST</h1>
-<table>${rows}</table><hr>${slip.note ? '<div>' + esc(slip.note) + '</div><hr>' : ''}
+${dishes}<hr>${slip.note ? '<div>' + esc(slip.note) + '</div><hr>' : ''}
 <p>Dispatched by: ____________</p><p>Received by: ____________</p>`)
   win.document.close()
   win.focus()
