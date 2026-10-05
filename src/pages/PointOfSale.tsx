@@ -157,6 +157,7 @@ function normalizeMenuItem(raw: ApiMenuItem): MenuItem {
     },
     availableQuantity: raw.availableQuantity ?? null,
     availabilityUnitLabel: raw.availabilityUnitLabel ?? null,
+    locationAllowsOutOfStockOrders: raw.locationAllowsOutOfStockOrders === true,
   }
 }
 
