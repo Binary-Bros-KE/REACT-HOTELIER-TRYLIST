@@ -51,6 +51,8 @@ export default function ReceptionProductStock() {
     : location.pathname.startsWith('/service-center')
       ? 'Service center'
       : 'Reception'
+  // Reception and Housekeeping tabs only show products tagged for that operation.
+  const productTag = sectionName === 'Housekeeping' ? 'HOUSEKEEPING' : sectionName === 'Reception' ? 'RECEPTION' : ''
   const [locations, setLocations] = useState<LocationOption[]>([])
   const { fixed: fixedLocation, options: pickableLocations, selectedId, setLocation, effectiveId } = useWorkingLocation(locations, { persist: false })
   const assignedLocationCount = user?.locations.length ?? 0
@@ -73,6 +75,7 @@ export default function ReceptionProductStock() {
       if (effectiveId) query.set('locationId', effectiveId)
       if (search.trim()) query.set('search', search.trim())
       if (categoryId) query.set('categoryId', categoryId)
+      if (productTag) query.set('tag', productTag)
       const response = await api<StockResponse>(`/pos/product-stock?${query}`)
       setData(response)
     } catch (cause) {
@@ -82,7 +85,7 @@ export default function ReceptionProductStock() {
     } finally {
       setLoading(false)
     }
-  }, [categoryId, effectiveId, search, stock, toast])
+  }, [categoryId, effectiveId, productTag, search, stock, toast])
 
   useEffect(() => { api<{ locations: LocationOption[] }>('/locations').then((r) => setLocations(r.locations)).catch(() => {}) }, [])
   useEffect(() => {

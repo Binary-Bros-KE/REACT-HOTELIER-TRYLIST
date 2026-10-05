@@ -25,6 +25,7 @@ import StatCard from '@/components/ui/StatCard'
 import UnitsOfMeasureModal from '@/components/UnitsOfMeasureModal'
 import PackQtyInput, { packAndUnit } from '@/components/ui/PackQtyInput'
 import SearchableSelect from '@/components/ui/SearchableSelect'
+import { PRODUCT_TAG_OPTIONS, productTagLabel } from '@/lib/productTags'
 
 type Category = { id: string; name: string; level: number; parentId: string | null }
 type Location = { id: string; name: string; type?: string }
@@ -34,6 +35,7 @@ type Product = {
   categoryId: string | null
   category: { id: string; name: string; level: number } | null
   unitRef?: { id: string; name: string } | null
+  tags?: string[]
   name: string
   sku: string | null
   barcode: string | null
@@ -115,6 +117,7 @@ type ProductForm = {
   sellingPrice: string
   preferredSupplier: string
   isActive: boolean
+  tags: string[]
 }
 const emptyForm: ProductForm = {
   categoryId: '', name: '', sku: '', barcode: '', brand: '', description: '',
@@ -122,6 +125,7 @@ const emptyForm: ProductForm = {
   packLabel: '', packSize: '', packUnitId: '',
   openingStock: '0', locationId: '', reorderLevel: '0', maxStockLevel: '', unitCost: '', sellsDirectly: false, sellingPrice: '', preferredSupplier: '',
   isActive: true,
+  tags: [],
 }
 const emptyTransfer = { productId: '', productName: '', fromLocationId: '', toLocationId: '', quantity: '', stockByLocation: [] as StockByLocation[], packSize: 0, packLabel: '', unitName: '' }
 const emptyAdjust = {
@@ -148,6 +152,7 @@ export default function Products() {
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
   const [uomFilter, setUomFilter] = useState('')
+  const [tagFilter, setTagFilter] = useState('')
   const [lowStockOnly, setLowStockOnly] = useState(false)
   const [form, setForm] = useState<ProductForm>(emptyForm)
   const [editing, setEditing] = useState<Product | null>(null)
@@ -176,6 +181,7 @@ export default function Products() {
       if (search.trim()) query.set('search', search.trim())
       if (categoryFilter) query.set('categoryId', categoryFilter)
       if (uomFilter) query.set('unitId', uomFilter)
+      if (tagFilter) query.set('tag', tagFilter)
       if (lowStockOnly) query.set('lowStock', 'true')
       const response = await api<{ products: Product[]; summary: Summary }>(`/products${query.size ? `?${query}` : ''}`)
       setProducts(response.products)
@@ -187,7 +193,7 @@ export default function Products() {
     } finally {
       setLoading(false)
     }
-  }, [search, categoryFilter, uomFilter, lowStockOnly, toast])
+  }, [search, categoryFilter, uomFilter, tagFilter, lowStockOnly, toast])
 
   useEffect(() => { const timer = window.setTimeout(() => void loadProducts(), 250); return () => window.clearTimeout(timer) }, [loadProducts])
 
@@ -242,6 +248,7 @@ export default function Products() {
       sellingPrice: product.sellingPrice ?? '',
       preferredSupplier: product.preferredSupplier ?? '',
       isActive: product.isActive,
+      tags: product.tags ?? [],
     })
     setMovements(null)
     setError('')
@@ -436,6 +443,16 @@ export default function Products() {
               emptyText="No units match."
             />
           </div>
+          <div className="sm:w-52">
+            <SearchableSelect
+              value={tagFilter}
+              onChange={setTagFilter}
+              options={[{ value: '', label: 'All operations' }, ...PRODUCT_TAG_OPTIONS]}
+              placeholder="All operations"
+              searchPlaceholder="Search operations..."
+              emptyText="No operations match."
+            />
+          </div>
           <label className="flex items-center gap-2 rounded-sm border bg-background px-3 py-2.5 text-sm font-medium">
             <input type="checkbox" checked={lowStockOnly} onChange={(e) => setLowStockOnly(e.target.checked)} className="size-4 accent-secondary" />
             Low stock only
@@ -466,6 +483,11 @@ export default function Products() {
                       <div className="min-w-0">
                         <p className="font-semibold">{product.name}</p>
                         <p className="text-xs text-muted-foreground">{[product.sku, product.category?.name, product.brand].filter(Boolean).join(' · ') || '—'}</p>
+                        {(product.tags ?? []).length > 0 && (
+                          <div className="mt-1.5 flex flex-wrap gap-1">
+                            {(product.tags ?? []).map((tag) => <span key={tag} className="keep-round border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{productTagLabel(tag)}</span>)}
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div className="flex flex-wrap items-center justify-between gap-3 sm:justify-end">
@@ -675,6 +697,26 @@ export default function Products() {
                   <span className="mt-1 block text-xs text-muted-foreground">This is the price for one whole {form.packLabel || form.unit.toLowerCase()} — a pack-tracked product sold as a Tot/Double instead needs a Menu Item variant, not this.</span>
                 </Field>
               )}
+            </FieldGroup>
+
+            <FieldGroup title="Operations">
+              <p className="text-xs text-muted-foreground sm:col-span-2">Which operations this product belongs to. It shows in each one's product tab and in that section of the inventory report. A product can belong to several, for example a soda in both Bar and Restaurant.</p>
+              <div className="flex flex-wrap gap-2 sm:col-span-2">
+                {PRODUCT_TAG_OPTIONS.map((option) => {
+                  const on = form.tags.includes(option.value)
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() => setForm({ ...form, tags: on ? form.tags.filter((t) => t !== option.value) : [...form.tags, option.value] })}
+                      className={cn('rounded-sm border px-3 py-1.5 text-xs font-semibold', on ? 'border-secondary bg-secondary text-secondary-foreground' : 'text-muted-foreground hover:bg-muted')}
+                    >
+                      {option.label}
+                    </button>
+                  )
+                })}
+              </div>
             </FieldGroup>
 
             <label className="mt-6 flex items-center justify-between rounded-sm border bg-background px-3 py-2.5 text-sm font-medium">

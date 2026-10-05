@@ -9,6 +9,7 @@ import { packAndUnit } from '@/components/ui/PackQtyInput'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import PrintReportButton from '@/components/documents/PrintReportButton'
 import type { ReportDocData, ReportSection } from '@/components/documents/pdf'
+import { productTagLabel } from '@/lib/productTags'
 
 type Location = { id: string; name: string }
 type CategoryBucket = { category: string; units: number; value: number; percent: number }
@@ -28,7 +29,7 @@ type StockProduct = {
   out: boolean
 }
 type Summary = { totalProducts: number; totalUnits: number; lowStockCount: number; outOfStockCount: number; stockValue: number; byCategory: CategoryBucket[] }
-type LocationOverview = Summary & { locationId: string; name: string; products: StockProduct[] }
+type LocationOverview = Summary & { locationId: string; name: string; type: string; products: StockProduct[] }
 type Overview = { mode: 'live' | 'asOf'; asOfDate: string; overall: Summary; locations: LocationOverview[] }
 
 const formatKes = (value: number) => `KSh ${value.toLocaleString('en-KE', { maximumFractionDigits: 0 })}`
@@ -39,12 +40,41 @@ const CHART_COLORS = ['#2563eb', '#16a34a', '#db2777', '#d97706', '#0891b2', '#7
 
 const TOP_PRODUCTS_PER_LOCATION = 25
 
+const reportTableColumns: ReportSection['columns'] = [{ label: 'Product' }, { label: 'SKU' }, { label: 'Category' }, { label: 'Qty', align: 'right' }, { label: 'Unit Cost', align: 'right' }, { label: 'Value', align: 'right' }]
+const reportRow = (p: StockProduct) => [p.name, p.sku ?? '-', p.category ?? '-', stockQty(p), formatKes(p.unitCost), formatKes(p.value)]
+
+function rangeLabelFor(overview: Overview) {
+  return overview.mode === 'live' ? 'Live stock snapshot' : `As of ${new Date(overview.asOfDate).toLocaleDateString('en-KE', { day: 'numeric', month: 'long', year: 'numeric' })}`
+}
+
+// One operation's section on its own: only the products tagged for it.
+function buildSectionDoc(overview: Overview, loc: LocationOverview): ReportDocData {
+  return {
+    reportTitle: `${loc.name} Stock`,
+    kicker: 'Inventory Report',
+    rangeLabel: rangeLabelFor(overview),
+    generatedAt: new Date().toISOString(),
+    cards: [
+      { label: 'Products', value: loc.totalProducts.toLocaleString() },
+      { label: 'Units On Hand', value: loc.totalUnits.toLocaleString() },
+      { label: 'Low Stock', value: loc.lowStockCount.toLocaleString(), hint: 'At or below reorder level' },
+      { label: 'Out of Stock', value: loc.outOfStockCount.toLocaleString() },
+      { label: 'Stock Value', value: formatKes(loc.stockValue) },
+    ],
+    sections: [{
+      title: `${loc.name} products (${productTagLabel(loc.type)})`,
+      columns: reportTableColumns,
+      rows: loc.products.map(reportRow),
+    }],
+  }
+}
+
 function buildReportDoc(overview: Overview): ReportDocData {
   const o = overview.overall
   return {
     reportTitle: 'Inventory Report',
     kicker: 'Reports',
-    rangeLabel: overview.mode === 'live' ? 'Live stock snapshot' : `As of ${new Date(overview.asOfDate).toLocaleDateString('en-KE', { day: 'numeric', month: 'long', year: 'numeric' })}`,
+    rangeLabel: rangeLabelFor(overview),
     generatedAt: new Date().toISOString(),
     cards: [
       { label: 'Total Products', value: o.totalProducts.toLocaleString() },
@@ -61,7 +91,7 @@ function buildReportDoc(overview: Overview): ReportDocData {
           title: `${loc.name} - ${loc.lowStockCount} low, ${loc.outOfStockCount} out, ${formatKes(loc.stockValue)} total`,
           note: loc.products.length > TOP_PRODUCTS_PER_LOCATION ? `Top ${TOP_PRODUCTS_PER_LOCATION} of ${loc.products.length} products by value.` : undefined,
           columns: [{ label: 'Product' }, { label: 'SKU' }, { label: 'Category' }, { label: 'Qty', align: 'right' }, { label: 'Unit Cost', align: 'right' }, { label: 'Value', align: 'right' }],
-          rows: top.map((p) => [p.name, p.sku ?? '-', p.category ?? '-', stockQty(p), formatKes(p.unitCost), formatKes(p.value)]),
+          rows: top.map(reportRow),
         }
       }),
     ],
@@ -218,12 +248,16 @@ export default function InventoryOverview() {
               return (
                 <section key={loc.locationId} className="overflow-hidden rounded-sm border bg-card shadow-sm">
                   <header className="flex flex-wrap items-center justify-between gap-3 border-b border-l-4 border-l-accent p-4">
-                    <h2 className="font-display text-lg font-semibold leading-tight">{loc.name}</h2>
-                    <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+                    <div className="min-w-0">
+                      <h2 className="font-display text-lg font-semibold leading-tight">{loc.name}</h2>
+                      <p className="text-xs text-muted-foreground">{productTagLabel(loc.type)} products only</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
                       <span><span className="font-semibold text-foreground">{loc.totalProducts}</span> products</span>
                       <span className={cn(loc.lowStockCount > 0 && 'font-semibold text-warning')}>{loc.lowStockCount} low stock</span>
                       <span className={cn(loc.outOfStockCount > 0 && 'font-semibold text-destructive')}>{loc.outOfStockCount} out of stock</span>
                       <span>Stock value <span className="font-semibold text-foreground">{formatKes(loc.stockValue)}</span></span>
+                      <PrintReportButton data={buildSectionDoc(overview, loc)} disabled={loading} label="Print section" />
                     </div>
                   </header>
                   <div className="flex gap-1 border-b p-2">
