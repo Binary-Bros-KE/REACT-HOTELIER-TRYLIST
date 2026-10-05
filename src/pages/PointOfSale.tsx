@@ -40,6 +40,7 @@ type ApiMenuItem = {
   id: string
   name: string
   description: string | null
+  locationAllowsOutOfStockOrders?: boolean
   price: string | number
   temperature: 'HOT' | 'COLD' | 'OTHER'
   category: { id: string; name: string }
