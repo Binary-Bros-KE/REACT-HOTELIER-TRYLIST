@@ -29,7 +29,7 @@ type Expense = {
   description: string | null
   status: 'ACTIVE' | 'ARCHIVED'
   category: { id: string; name: string }
-  paymentMethod: { id: string; name: string; requiresReference: boolean }
+  paymentMethod: { id: string; name: string; requiresReference: boolean } | null
   location: { id: string; name: string } | null
   createdByEmployee: { id: string; firstName: string; lastName: string } | null
 }
@@ -142,7 +142,7 @@ export default function Expenses() {
       categoryId: expense.category.id,
       expenseDate: expense.expenseDate.slice(0, 10),
       amount: String(expense.amount),
-      paymentMethodId: expense.paymentMethod.id,
+      paymentMethodId: expense.paymentMethod?.id ?? '',
       reference: expense.reference ?? '',
       description: expense.description ?? '',
       locationId: expense.location?.id ?? '',
@@ -150,7 +150,7 @@ export default function Expenses() {
     setShowForm(true)
   }
 
-  const selectedMethod = methods.find((m) => m.id === form.paymentMethodId) ?? (editing ? { id: editing.paymentMethod.id, name: editing.paymentMethod.name, requiresReference: editing.paymentMethod.requiresReference } : undefined)
+  const selectedMethod = methods.find((m) => m.id === form.paymentMethodId) ?? (editing?.paymentMethod ? { id: editing.paymentMethod.id, name: editing.paymentMethod.name, requiresReference: editing.paymentMethod.requiresReference } : undefined)
 
   async function saveExpense(event: FormEvent) {
     event.preventDefault()
@@ -262,7 +262,7 @@ export default function Expenses() {
                       <p className="text-xs text-muted-foreground">{new Date(expense.expenseDate).toLocaleDateString('en-KE')}{expense.description ? ` · ${expense.description}` : ''}</p>
                     </td>
                     <td className="px-5 py-3.5">{expense.category.name}</td>
-                    <td className="px-5 py-3.5 text-muted-foreground">{expense.paymentMethod.name}{expense.reference ? ` · ${expense.reference}` : ''}</td>
+                    <td className="px-5 py-3.5 text-muted-foreground">{expense.paymentMethod?.name ?? 'Accrued (not yet paid)'}{expense.reference ? ` · ${expense.reference}` : ''}</td>
                     <td className="px-5 py-3.5 text-muted-foreground">{expense.createdByEmployee ? `${expense.createdByEmployee.firstName} ${expense.createdByEmployee.lastName}` : '—'}</td>
                     <td className="px-5 py-3.5 text-right font-semibold tabular-nums">{formatKes(Number(expense.amount))}</td>
                     <td className="px-5 py-3.5"><StatusPill tone={expense.status === 'ACTIVE' ? 'success' : 'muted'}>{expense.status === 'ACTIVE' ? 'Active' : 'Archived'}</StatusPill></td>

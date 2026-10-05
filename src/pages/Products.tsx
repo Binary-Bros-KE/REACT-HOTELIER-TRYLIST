@@ -38,6 +38,8 @@ type Product = {
   unitRef?: { id: string; name: string } | null
   tags?: string[]
   trackingMode?: TrackingMode
+  isExpenseItem?: boolean
+  expenseCategoryId?: string | null
   name: string
   sku: string | null
   barcode: string | null
@@ -99,6 +101,8 @@ function signedPackAndUnit(qty: number, packSize: number, packLabel: string, uni
 
 type ProductForm = {
   categoryId: string
+  isExpenseItem: boolean
+  expenseCategoryId: string
   name: string
   sku: string
   barcode: string
@@ -123,7 +127,7 @@ type ProductForm = {
   trackingMode: TrackingMode
 }
 const emptyForm: ProductForm = {
-  categoryId: '', name: '', sku: '', barcode: '', brand: '', description: '',
+  categoryId: '', isExpenseItem: false, expenseCategoryId: '', name: '', sku: '', barcode: '', brand: '', description: '',
   unit: '', isPerishable: false, shelfLifeDays: '',
   packLabel: '', packSize: '', packUnitId: '',
   openingStock: '0', locationId: '', reorderLevel: '0', maxStockLevel: '', unitCost: '', sellsDirectly: false, sellingPrice: '', preferredSupplier: '',
@@ -151,6 +155,10 @@ export default function Products() {
   const [products, setProducts] = useState<Product[]>([])
   const [summary, setSummary] = useState<Summary>({ total: 0, active: 0, inactive: 0, lowStock: 0 })
   const [categories, setCategories] = useState<Category[]>([])
+  const [expenseCategories, setExpenseCategories] = useState<{ id: string; name: string }[]>([])
+  useEffect(() => {
+    api<{ categories: { id: string; name: string }[] }>('/expense-categories').then((r) => setExpenseCategories(r.categories ?? [])).catch(() => {})
+  }, [])
   const [quickAdd, setQuickAdd] = useState<'category' | 'unit' | 'packUnit' | null>(null)
   const [locations, setLocations] = useState<Location[]>([])
   const [search, setSearch] = useState('')
@@ -254,6 +262,8 @@ export default function Products() {
       isActive: product.isActive,
       tags: product.tags ?? [],
       trackingMode: product.trackingMode ?? 'PER_SALE',
+      isExpenseItem: product.isExpenseItem ?? false,
+      expenseCategoryId: product.expenseCategoryId ?? '',
     })
     setMovements(null)
     setError('')
@@ -703,6 +713,19 @@ export default function Products() {
                 <Field label="Selling Price (KES)" required className="sm:col-span-2">
                   <input required type="number" min="0" step="0.01" placeholder="e.g. 65.00" value={form.sellingPrice} onChange={(e) => setForm({ ...form, sellingPrice: e.target.value })} className="input" />
                   <span className="mt-1 block text-xs text-muted-foreground">This is the price for one whole {form.packLabel || form.unit.toLowerCase()} — a pack-tracked product sold as a Tot/Double instead needs a Menu Item variant, not this.</span>
+                </Field>
+              )}
+            </FieldGroup>
+
+            <FieldGroup title="Expense item">
+              <p className="text-xs text-muted-foreground sm:col-span-2">Bought like any other product but never stocked. When the goods are received, the cost is recorded as an expense under the category you choose. Use it for things like cooking gas or wipes.</p>
+              <label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" checked={form.isExpenseItem} onChange={(e) => setForm({ ...form, isExpenseItem: e.target.checked, ...(e.target.checked ? {} : { expenseCategoryId: '' }) })} /> Record as an expense, not stock</label>
+              {form.isExpenseItem && (
+                <Field label="Expense category" required className="sm:col-span-2">
+                  <select required className="input" value={form.expenseCategoryId} onChange={(e) => setForm({ ...form, expenseCategoryId: e.target.value })}>
+                    <option value="">Choose a category</option>
+                    {expenseCategories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
                 </Field>
               )}
             </FieldGroup>
