@@ -10,6 +10,7 @@ import {
   LuPrinter,
   LuSearch,
   LuTrash2,
+  LuUndo2,
   LuWalletCards,
   LuX,
 } from 'react-icons/lu'
@@ -432,6 +433,17 @@ export default function EmployeeSalaries() {
     }
   }
 
+  async function unvoidSalary(salary: Salary) {
+    try {
+      const response = await api<{ salary: Salary }>(`/employee-salaries/${salary.id}/unvoid`, { method: 'POST', body: '{}' })
+      toast.success(response.salary.status === 'COMPLETE' ? 'Payslip returned.' : 'Payslip returned as a draft - complete it again to pay.')
+      setDetail(response.salary)
+      await loadSalaries()
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : 'Could not return payslip')
+    }
+  }
+
   async function voidSalary(salary: Salary) {
     const reason = window.prompt(`Void ${salary.payslipNo}? Enter the reason.`)
     if (!reason?.trim()) return
@@ -532,6 +544,7 @@ export default function EmployeeSalaries() {
                       <div className="flex justify-end gap-1">
                         <button onClick={() => { setDetail(salary); setCompleteForm({ paymentMethod: salary.paymentMethod ?? salary.employee.paymentMethod ?? '', reference: salary.reference ?? '', notes: salary.notes ?? '' }) }} title="View payslip" className="rounded-sm p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuEye /></button>
                         <button onClick={() => setPrinting(salary)} title="Print payslip" className="rounded-sm p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuPrinter /></button>
+                        {salary.status === 'VOIDED' && <button onClick={() => void unvoidSalary(salary)} title="Return payslip" className="rounded-sm p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuUndo2 /></button>}
                         {salary.status === 'DRAFT' && <button onClick={() => openProcess(salary.employee, salary)} title="Process draft" className="rounded-sm p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuBanknote /></button>}
                       </div>
                     </td>
@@ -676,6 +689,7 @@ export default function EmployeeSalaries() {
                 <Button type="submit" disabled={saving}><LuPlus /> Add</Button>
               </form>
             )}
+            <PeriodMover salary={detail} onMoved={(moved) => { setDetail(moved); void loadSalaries() }} />
             {detail.status === 'DRAFT' ? (
               <form onSubmit={completeDraft} className="space-y-4 border-t pt-5">
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -697,6 +711,7 @@ export default function EmployeeSalaries() {
               <div className="flex items-center justify-between border-t pt-5">
                 <div><StatusBadge status={detail.status} /> {detail.paymentMethod && <span className="ml-2 text-sm text-muted-foreground">{titleCase(detail.paymentMethod)}</span>}</div>
                 {detail.status === 'COMPLETE' && <Button variant="secondary" onClick={() => void voidSalary(detail)}>Void payslip</Button>}
+                {detail.status === 'VOIDED' && <Button onClick={() => void unvoidSalary(detail)}>Return payslip</Button>}
               </div>
             )}
           </div>
@@ -719,6 +734,36 @@ function cleanLines(lines: LineDraft[]) {
 
 function sumLines(lines: LineDraft[]) {
   return cleanLines(lines).reduce((sum, line) => sum + line.amount, 0)
+}
+
+/** Moves a payslip to another month. The pay period is a whole month, so only the month is picked. */
+function PeriodMover({ salary, onMoved }: { salary: Salary; onMoved: (salary: Salary) => void }) {
+  const toast = useToast()
+  const current = salary.payPeriod.slice(0, 7)
+  const [month, setMonth] = useState(current)
+  const [saving, setSaving] = useState(false)
+
+  async function move() {
+    setSaving(true)
+    try {
+      const response = await api<{ salary: Salary }>(`/employee-salaries/${salary.id}/period`, { method: 'PATCH', body: JSON.stringify({ payPeriod: `${month}-01` }) })
+      toast.success('Payslip moved.')
+      onMoved(response.salary)
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : 'Could not move payslip')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-end gap-3 rounded-sm border bg-muted/40 p-3">
+      <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pay month
+        <input type="month" value={month} onChange={(e) => setMonth(e.target.value)} className="input mt-1 block" />
+      </label>
+      <Button variant="secondary" disabled={saving || !month || month === current} onClick={() => void move()}>Move to this month</Button>
+    </div>
+  )
 }
 
 function StatusBadge({ status }: { status: SalaryStatus }) {

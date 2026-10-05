@@ -23,7 +23,6 @@ type Option = { id: string; name: string }
 const formatKes = (value: number) => `KSh ${value.toLocaleString('en-KE', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
 
 const monthStart = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1)
-const monthEnd = (date: Date) => new Date(date.getFullYear(), date.getMonth() + 1, 0)
 const isoDay = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 
 const SECTIONS: { key: 'byEmployee' | 'byLocation' | 'byDepartment' | 'byMonth'; title: string; label: string }[] = [
@@ -38,8 +37,8 @@ const groupCells = (g: Totals) => [g.count, formatKes(g.basic), formatKes(g.allo
 
 export default function SalariesReport() {
   const today = new Date()
-  const [from, setFrom] = useState(isoDay(monthStart(today)))
-  const [to, setTo] = useState(isoDay(monthEnd(today)))
+  // A pay period is a whole month, so the report is picked by month.
+  const [month, setMonth] = useState(isoDay(monthStart(today)).slice(0, 7))
   const [locationId, setLocationId] = useState('')
   const [departmentId, setDepartmentId] = useState('')
   const [locations, setLocations] = useState<Option[]>([])
@@ -57,7 +56,7 @@ export default function SalariesReport() {
     setLoading(true)
     setError('')
     try {
-      const query = new URLSearchParams({ from, to })
+      const query = new URLSearchParams({ month })
       if (locationId) query.set('locationId', locationId)
       if (departmentId) query.set('departmentId', departmentId)
       setReport(await api<SalaryReport>(`/employee-salaries/report?${query}`))
@@ -67,7 +66,7 @@ export default function SalariesReport() {
     } finally {
       setLoading(false)
     }
-  }, [from, to, locationId, departmentId])
+  }, [month, locationId, departmentId])
 
   useEffect(() => { if (hasApiTenant()) void load() }, [load])
 
@@ -81,6 +80,7 @@ export default function SalariesReport() {
   }
 
   function buildReportDoc(data: SalaryReport): ReportDocData {
+    const monthName = new Date(`${month}-01T00:00:00`).toLocaleDateString('en-KE', { month: 'long', year: 'numeric' })
     const sections: ReportSection[] = SECTIONS.map((section) => ({
       title: section.title,
       columns: [{ label: section.label }, ...HEADINGS.map((label) => ({ label, align: 'right' as const }))],
@@ -89,7 +89,7 @@ export default function SalariesReport() {
     return {
       reportTitle: 'Salaries Report',
       kicker: 'Reports',
-      rangeLabel: `${from} to ${to}`,
+      rangeLabel: monthName,
       generatedAt: new Date().toISOString(),
       cards: [
         { label: 'Net pay', value: formatKes(data.totals.net) },
@@ -111,11 +111,8 @@ export default function SalariesReport() {
 
       <div className="mt-6 space-y-3 rounded-sm border bg-card p-4 shadow-sm">
         <div className="flex flex-wrap items-end gap-3">
-          <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">From
-            <input type="date" className="input mt-1 block" value={from} onChange={(e) => setFrom(e.target.value)} />
-          </label>
-          <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">To
-            <input type="date" className="input mt-1 block" value={to} onChange={(e) => setTo(e.target.value)} />
+          <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pay month
+            <input type="month" className="input mt-1 block" value={month} onChange={(e) => setMonth(e.target.value)} />
           </label>
           <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Location
             <select className="input mt-1 block" value={locationId} onChange={(e) => setLocationId(e.target.value)}>
@@ -134,7 +131,7 @@ export default function SalariesReport() {
             <PrintReportButton data={report ? buildReportDoc(report) : null} disabled={loading} />
           </div>
         </div>
-        <p className="text-xs text-muted-foreground">Completed salaries whose pay period falls in the range. Export opens in Excel.</p>
+        <p className="text-xs text-muted-foreground">Completed salaries for the chosen pay month. Export opens in Excel.</p>
       </div>
 
       {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
