@@ -90,7 +90,7 @@ type TransactionRow = {
 
 const NON_FINAL_STATUSES = ['OPEN', 'PREPARING', 'READY', 'SERVED']
 const titleCase = (value: string) => value.charAt(0) + value.slice(1).toLowerCase().replaceAll('_', ' ')
-type LocationOption = { id: string; name: string }
+type LocationOption = { id: string; name: string; isActive?: boolean; serveMode?: 'KITCHEN' | 'COUNTER' | 'DIRECT' }
 
 /** 'operations' (Super Admin, Manager): the full floor-and-money picture.
  * 'finance' (Accountant): money only — Accountant's allowedSections are just
@@ -760,11 +760,13 @@ type BarmanOrder = {
   total: number
   createdAt: string
   table: { label: string } | null
-  location: { name: string } | null
+  location: { id: string; name: string; serveMode?: 'KITCHEN' | 'COUNTER' | 'DIRECT' } | null
   items: BarmanOrderItem[]
 }
 
 function BarmanDashboard() {
+  const [locations, setLocations] = useState<LocationOption[]>([])
+  const { fixed: fixedLocation, options: pickableLocations, selectedId: selectedLocationId, setLocation, effectiveId: effectiveLocationId, needsChoice: needsLocationChoice } = useWorkingLocation(locations)
   const [activeOrders, setActiveOrders] = useState<BarmanOrder[]>([])
   const [completedToday, setCompletedToday] = useState<BarmanOrder[]>([])
   const [loading, setLoading] = useState(true)
@@ -776,10 +778,13 @@ function BarmanDashboard() {
     setError('')
     try {
       const today = localIsoDay(new Date())
-      const [activeResponse, completedResponse] = await Promise.all([
-        api<{ orders: BarmanOrder[] }>('/pos/orders?channel=FOOD&limit=200'),
-        api<{ orders: BarmanOrder[] }>(`/pos/orders?channel=FOOD&status=COMPLETED&from=${today}&to=${today}&limit=200`),
+      const locQuery = effectiveLocationId ? `&locationId=${effectiveLocationId}` : ''
+      const [activeResponse, completedResponse, locationResponse] = await Promise.all([
+        needsLocationChoice ? Promise.resolve({ orders: [] }) : api<{ orders: BarmanOrder[] }>(`/pos/orders?channel=FOOD&limit=200${locQuery}`),
+        needsLocationChoice ? Promise.resolve({ orders: [] }) : api<{ orders: BarmanOrder[] }>(`/pos/orders?channel=FOOD&status=COMPLETED&from=${today}&to=${today}&limit=200${locQuery}`),
+        api<{ locations: LocationOption[] }>('/locations'),
       ])
+      setLocations(locationResponse.locations ?? [])
       setActiveOrders(activeResponse.orders.filter((order) => [...WAITER_NON_FINAL, 'PENDING_CANCELLATION'].includes(order.status)))
       setCompletedToday(completedResponse.orders)
     } catch (cause) {
@@ -787,7 +792,7 @@ function BarmanDashboard() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [effectiveLocationId, needsLocationChoice])
 
   useEffect(() => { void load() }, [load])
 
@@ -807,16 +812,34 @@ function BarmanDashboard() {
     return <DashboardSkeleton />
   }
 
-  const readyOrders = activeOrders.filter((order) => order.status === 'READY')
+  const currentLocation = locations.find((location) => location.id === effectiveLocationId)
+  const currentServeMode = currentLocation?.serveMode ?? null
+  const readyOrders = activeOrders.filter((order) => order.status === 'READY' && (order.location?.serveMode ?? currentServeMode) === 'COUNTER')
+  const readyKitchenOrders = activeOrders.filter((order) => order.status === 'READY' && (order.location?.serveMode ?? currentServeMode) !== 'COUNTER')
   const pendingCancellations = activeOrders.filter((order) => order.status === 'PENDING_CANCELLATION')
   const inProgress = activeOrders.filter((order) => order.status === 'OPEN' || order.status === 'PREPARING')
   const servedUnsettled = activeOrders.filter((order) => order.status === 'SERVED')
   const salesToday = completedToday.reduce((sum, order) => sum + order.total, 0)
   const itemCount = (order: BarmanOrder) => order.items.reduce((sum, item) => sum + item.quantity, 0)
+  const locationPicker = fixedLocation ? (
+    <span className="text-sm font-medium text-muted-foreground">{fixedLocation.name}</span>
+  ) : pickableLocations.length > 0 ? (
+    <select aria-label="Bar dashboard location" value={selectedLocationId} onChange={(event) => setLocation(event.target.value)} className="input w-auto">
+      <option value="">Choose location</option>
+      {pickableLocations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
+    </select>
+  ) : null
 
   return (
     <>
       {error && <div className="mt-5 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert />{error}</div>}
+      {locationPicker && (
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-sm border bg-card p-3">
+          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Working location</p>
+          {locationPicker}
+        </div>
+      )}
+      {needsLocationChoice && <div className="mt-5 flex items-center gap-2 rounded-sm border border-warning/30 bg-warning/10 p-3 text-sm text-warning"><LuTriangleAlert />Choose a location to load bar orders.</div>}
 
       <section className="mt-7">
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Bar counter</p>
@@ -850,6 +873,13 @@ function BarmanDashboard() {
               </div>
             ))}
           </div>
+        </section>
+      )}
+
+      {readyKitchenOrders.length > 0 && (
+        <section className="mt-6 rounded-sm border border-warning/30 bg-warning/5 p-3 text-sm text-warning">
+          <p className="font-semibold">Restaurant orders are ready in this location.</p>
+          <p className="mt-1 text-xs">They follow kitchen workflow, so they are not approved from the bar counter dashboard.</p>
         </section>
       )}
 
