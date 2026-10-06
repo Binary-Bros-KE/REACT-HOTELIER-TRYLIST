@@ -299,6 +299,7 @@ export default function ServiceMemberships() {
           body: JSON.stringify({
             ...form,
             planId: form.planId || null,
+            locationId: editing ? undefined : paymentLocationId || undefined,
             visitLimit: form.visitLimit ? Number(form.visitLimit) : null,
             planPrice: Number(form.planPrice) || 0,
             durationDays: Number(form.durationDays) || 30,
@@ -676,9 +677,9 @@ export default function ServiceMemberships() {
                 />
               </label>
             )}
+            {!editing && <PaymentLocationField locations={locations} onChange={setPaymentLocationId} />}
             {!editing && form.recordPayment && (
               <>
-                <PaymentLocationField locations={locations} onChange={setPaymentLocationId} />
                 <Field label="Payment method" required>
                   <select required className="input" value={form.paymentMethodId} onChange={(e) => setForm({ ...form, paymentMethodId: e.target.value })}>
                     <option value="">Choose method</option>
