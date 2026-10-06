@@ -69,7 +69,13 @@ type RevenueBreakdown = {
   expensesOnly?: number
   salariesPaid?: number
 }
-type TopItem = { name: string; qty: number; revenue: number }
+type TopItem = { kind?: 'MENU' | 'PRODUCT' | 'SERVICE' | 'OTHER'; name: string; variant?: string | null; qty: number; revenue: number }
+type SoldByKind = { kind: 'MENU' | 'PRODUCT' | 'SERVICE'; lines: number; qty: number; revenue: number }
+type MembershipActivity = {
+  registered: { count: number; value: number; rows: { customer: string; plan: string; startsAt: string; price: number }[] }
+  renewed: { count: number; value: number; rows: { customer: string; plan: string; paidAt: string; amount: number }[] }
+  bookings: { count: number; byService: { name: string; count: number }[]; rows: { customer: string; service: string; startsAt: string; status: string }[] }
+}
 type CountBucket = { name: string; count: number; total: number }
 type TrendPoint = { date: string; revenue: number }
 type LocationBucket = {
@@ -100,6 +106,8 @@ type SalesReport = {
   revenueBreakdown: RevenueBreakdown
   topItems: TopItem[]
   soldItems: TopItem[]
+  soldByKind: SoldByKind[]
+  membershipActivity: MembershipActivity
   expensesByCategory: CountBucket[]
   purchasesBySupplier: CountBucket[]
   trend: TrendPoint[]
@@ -152,6 +160,9 @@ function rangeLabel(period: Period, startIso: string, endIso: string, startHour:
   return `${s.toLocaleDateString('en-KE', { day: 'numeric', month: 'short' })} – ${e.toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric' })}`
 }
 
+const KIND_LABEL = { MENU: 'Menu items', PRODUCT: 'Products', SERVICE: 'Services' } as const
+const whenText = (iso: string) => new Date(iso).toLocaleString('en-KE', { dateStyle: 'short', timeStyle: 'short' })
+
 function buildReportDoc(report: SalesReport, startHour: number): ReportDocData {
   const c = report.cards
   const countBucketRows = (rows: CountBucket[], total: number) => rows.map((r) => [r.name, r.count, total ? `${((r.total / total) * 100).toFixed(1)}%` : '0.0%', formatKes(r.total)])
@@ -173,6 +184,26 @@ function buildReportDoc(report: SalesReport, startHour: number): ReportDocData {
       { label: 'Expected Profit', value: formatKes(report.expectedProfit), hint: 'Same as Net Profit' },
     ],
     sections: [
+      ...(['MENU', 'PRODUCT', 'SERVICE'] as const).map((kind) => ({
+        title: `${KIND_LABEL[kind]} sold`,
+        columns: [{ label: 'Item' }, { label: 'Qty', align: 'right' as const }, { label: 'Revenue', align: 'right' as const }],
+        rows: report.soldItems.filter((i) => i.kind === kind).map((i) => [i.variant ? `${i.name} (${i.variant})` : i.name, i.qty, formatKes(i.revenue)]),
+      })),
+      {
+        title: 'Memberships registered',
+        columns: [{ label: 'Customer' }, { label: 'Plan' }, { label: 'Starts' }, { label: 'Price', align: 'right' as const }],
+        rows: report.membershipActivity.registered.rows.map((r) => [r.customer, r.plan, whenText(r.startsAt), formatKes(r.price)]),
+      },
+      {
+        title: 'Membership renewals',
+        columns: [{ label: 'Customer' }, { label: 'Plan' }, { label: 'Paid' }, { label: 'Amount', align: 'right' as const }],
+        rows: report.membershipActivity.renewed.rows.map((r) => [r.customer, r.plan, whenText(r.paidAt), formatKes(r.amount)]),
+      },
+      {
+        title: 'Service bookings',
+        columns: [{ label: 'Customer' }, { label: 'Service' }, { label: 'Starts' }, { label: 'Status' }],
+        rows: report.membershipActivity.bookings.rows.map((r) => [r.customer, r.service, whenText(r.startsAt), r.status]),
+      },
       {
         title: 'Top 10 Selling Menu Items',
         columns: [{ label: 'Item' }, { label: 'Qty', align: 'right' }, { label: 'Revenue', align: 'right' }],
@@ -422,19 +453,38 @@ export default function Reports() {
                 </div>
               )}
 
-              {report.soldItems.length > 0 && (
-                <div>
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">All items sold ({report.soldItems.length})</p>
-                  <div className="max-h-[32rem] overflow-auto rounded-sm border">
-                    <table className="w-full text-left text-sm">
-                      <thead className="sticky top-0 bg-primary text-xs uppercase text-primary-foreground"><tr><th className="px-4 py-2">Item</th><th className="px-4 py-2 text-right">Qty Sold</th><th className="px-4 py-2 text-right">Revenue</th></tr></thead>
-                      <tbody>{report.soldItems.map((i, idx) => (
-                        <tr key={`${i.name}-${idx}`} className="border-t"><td className="px-4 py-2">{idx + 1}. {i.name}</td><td className="px-4 py-2 text-right tabular-nums">{i.qty} sold</td><td className="px-4 py-2 text-right tabular-nums">{formatKes(i.revenue)}</td></tr>
-                      ))}</tbody>
-                    </table>
+              {(['MENU', 'PRODUCT', 'SERVICE'] as const).map((kind) => {
+                const rows = report.soldItems.filter((i) => i.kind === kind)
+                const totals = report.soldByKind.find((k) => k.kind === kind)
+                return (
+                  <div key={kind}>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{KIND_LABEL[kind]} sold · {totals?.qty ?? 0} units · {formatKes(totals?.revenue ?? 0)}</p>
+                    <ActivityTable headers={['Item', 'Qty', 'Revenue']} rows={rows.map((i) => [<span key="n">{i.name}{i.variant ? <span className="ml-1.5 text-secondary">· {i.variant}</span> : null}</span>, <span key="q" className="tabular-nums">{i.qty}</span>, <span key="r" className="tabular-nums">{formatKes(i.revenue)}</span>])} />
                   </div>
+                )
+              })}
+
+              <div className="space-y-4 rounded-sm border p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Memberships and bookings in this period</p>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-sm border bg-card p-3"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Registered</p><p className="mt-1 text-lg font-semibold">{report.membershipActivity.registered.count}</p><p className="text-xs text-muted-foreground">{formatKes(report.membershipActivity.registered.value)} in plan fees</p></div>
+                  <div className="rounded-sm border bg-card p-3"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Renewed</p><p className="mt-1 text-lg font-semibold">{report.membershipActivity.renewed.count}</p><p className="text-xs text-muted-foreground">{formatKes(report.membershipActivity.renewed.value)} paid</p></div>
+                  <div className="rounded-sm border bg-card p-3"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Service bookings</p><p className="mt-1 text-lg font-semibold">{report.membershipActivity.bookings.count}</p><p className="text-xs text-muted-foreground">{report.membershipActivity.bookings.byService.map((b) => `${b.name} ${b.count}`).join(' · ') || 'None'}</p></div>
                 </div>
-              )}
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Registered</p>
+                  <ActivityTable headers={['Customer', 'Plan', 'Starts', 'Price']} rows={report.membershipActivity.registered.rows.map((r) => [r.customer, r.plan, whenText(r.startsAt), formatKes(r.price)])} />
+                </div>
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Renewed</p>
+                  <ActivityTable headers={['Customer', 'Plan', 'Paid', 'Amount']} rows={report.membershipActivity.renewed.rows.map((r) => [r.customer, r.plan, whenText(r.paidAt), formatKes(r.amount)])} />
+                </div>
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Service bookings</p>
+                  <ActivityTable headers={['Customer', 'Service', 'Starts', 'Status']} rows={report.membershipActivity.bookings.rows.map((r) => [r.customer, r.service, whenText(r.startsAt), r.status])} />
+                </div>
+                <p className="text-xs text-muted-foreground">Memberships extended by changing their end date aren't logged yet, so they aren't counted here.</p>
+              </div>
 
               <div className="rounded-sm border bg-muted/30 p-3 text-sm">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Net Profit — after discounts, cost of goods and expenses</p>
@@ -651,6 +701,18 @@ export default function Reports() {
           onClose={() => setEmployeeBreakdown(null)}
         />
       )}
+    </div>
+  )
+}
+
+function ActivityTable({ headers, rows }: { headers: string[]; rows: React.ReactNode[][] }) {
+  if (rows.length === 0) return <p className="text-sm text-muted-foreground">None in this period.</p>
+  return (
+    <div className="max-h-80 overflow-auto rounded-sm border">
+      <table className="w-full text-left text-sm">
+        <thead className="sticky top-0 bg-primary text-xs uppercase text-primary-foreground"><tr>{headers.map((h) => <th key={h} className="px-4 py-2">{h}</th>)}</tr></thead>
+        <tbody>{rows.map((cells, i) => <tr key={i} className="border-t">{cells.map((cell, j) => <td key={j} className="px-4 py-2">{cell}</td>)}</tr>)}</tbody>
+      </table>
     </div>
   )
 }
