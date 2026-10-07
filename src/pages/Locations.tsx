@@ -401,7 +401,7 @@ export default function Locations() {
 
             <div className="mt-6 border-t pt-5">
               <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Printed documents</p>
-              <p className="mb-3 text-xs text-muted-foreground">Optional text this location's receipts, invoices, and quotations print above/below the body. Leave blank to use the default.</p>
+              <p className="mb-3 text-xs text-muted-foreground">Optional text this location's receipts, invoices, and quotations print above/below the body. Logo/name branding is global under Business Information.</p>
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="Receipt Header"><textarea rows={2} placeholder="e.g. this branch's own note" value={form.receiptHeader} onChange={(e) => setForm({ ...form, receiptHeader: e.target.value })} className="input" /></Field>
                 <Field label="Receipt Footer"><textarea rows={2} placeholder="e.g. Thank you for your visit!" value={form.receiptFooter} onChange={(e) => setForm({ ...form, receiptFooter: e.target.value })} className="input" /></Field>

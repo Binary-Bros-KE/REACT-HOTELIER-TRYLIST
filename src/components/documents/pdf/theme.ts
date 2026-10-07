@@ -45,6 +45,8 @@ export const s = StyleSheet.create({
   // Letterhead
   headRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   headLeft: { width: '56%' },
+  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 9, marginBottom: 4 },
+  documentLogo: { width: 74, height: 42, objectFit: 'contain' },
   headRight: { width: '42%' },
   bizName: { fontSize: 15, fontFamily: 'Helvetica-Bold', color: palette.navy, letterSpacing: 0.5, marginBottom: 4 },
   bizLine: { fontSize: 8, color: palette.muted, marginBottom: 1 },
@@ -128,6 +130,8 @@ export const s = StyleSheet.create({
 
 export type DocProfile = {
   businessName: string
+  documentLogoUrl?: string | null
+  documentBrandingMode?: 'NAME' | 'LOGO' | 'LOGO_AND_NAME' | null
   address: string | null
   city: string | null
   county?: string | null

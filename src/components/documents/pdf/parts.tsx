@@ -1,15 +1,23 @@
-import { Text, View } from '@react-pdf/renderer'
+import { Image, Text, View } from '@react-pdf/renderer'
+import { resolveLogoUrl } from '@/lib/api'
 import { palette, s, statusColor, dateTime } from './theme'
 import type { DocProfile } from './theme'
 
 export function Letterhead({ profile, docType, docNo, status }: { profile: DocProfile; docType: string; docNo: string; status: string }) {
   const contact = [profile?.address, [profile?.city, profile?.county].filter(Boolean).join(', ')].filter(Boolean).join(' · ')
   const color = statusColor[status] ?? palette.muted
+  const mode = profile?.documentBrandingMode ?? 'NAME'
+  const logoUrl = profile?.documentLogoUrl ? resolveLogoUrl(profile.documentLogoUrl) : null
+  const showLogo = Boolean(logoUrl && mode !== 'NAME')
+  const showName = mode !== 'LOGO'
   return (
     <View>
       <View style={s.headRow}>
         <View style={s.headLeft}>
-          <Text style={s.bizName}>{profile?.businessName ?? 'Business Name'}</Text>
+          <View style={s.brandRow}>
+            {showLogo ? <Image src={logoUrl!} style={s.documentLogo} /> : null}
+            {showName ? <Text style={s.bizName}>{profile?.businessName ?? 'Business Name'}</Text> : null}
+          </View>
           {contact ? <Text style={s.bizLine}>{contact}</Text> : null}
           <Text style={s.bizLine}>
             {[profile?.primaryPhone, profile?.email].filter(Boolean).join('  ·  ') || ' '}

@@ -54,6 +54,8 @@ const currencyLabels: Record<Currency, string> = {
 }
 type BusinessProfile = {
   logoUrl: string | null
+  documentLogoUrl: string | null
+  documentBrandingMode: 'NAME' | 'LOGO' | 'LOGO_AND_NAME'
   shortName: string | null
   businessName: string
   businessType: BusinessType
@@ -78,6 +80,7 @@ type BusinessProfile = {
 }
 
 type ProfileForm = {
+  documentBrandingMode: 'NAME' | 'LOGO' | 'LOGO_AND_NAME'
   shortName: string
   businessName: string
   businessType: BusinessType | ''
@@ -102,6 +105,7 @@ type ProfileForm = {
 }
 
 const emptyForm: ProfileForm = {
+  documentBrandingMode: 'NAME',
   shortName: '',
   businessName: '', businessType: '', currency: '', registrationNumber: '', kraPin: '',
   taxRate: '16', taxMode: 'INCLUSIVE', taxTreatment: 'STANDARD', businessDayStartHour: 0,
@@ -113,6 +117,7 @@ const emptyForm: ProfileForm = {
 function formFromProfile(profile: BusinessProfile): ProfileForm {
   return {
     shortName: profile.shortName ?? '',
+    documentBrandingMode: profile.documentBrandingMode ?? 'NAME',
     businessName: profile.businessName,
     businessType: profile.businessType,
     currency: profile.currency,
@@ -142,8 +147,10 @@ export default function BusinessInformation() {
   const tenant = useAppSelector((s) => s.tenant)
   const [form, setForm] = useState<ProfileForm>(emptyForm)
   const [logoPreview, setLogoPreview] = useState<string | null>(null)
+  const [documentLogoPreview, setDocumentLogoPreview] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [uploadingLogo, setUploadingLogo] = useState(false)
+  const [uploadingDocumentLogo, setUploadingDocumentLogo] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -156,6 +163,7 @@ export default function BusinessInformation() {
         if (response.profile) {
           setForm(formFromProfile(response.profile))
           setLogoPreview(resolveLogoUrl(response.profile.logoUrl))
+          setDocumentLogoPreview(resolveLogoUrl(response.profile.documentLogoUrl))
         }
       } catch (cause) {
         const message = cause instanceof Error ? cause.message : 'Could not load business information'
@@ -200,6 +208,29 @@ export default function BusinessInformation() {
       toast.error(cause instanceof Error ? cause.message : 'Could not upload logo')
     } finally {
       setUploadingLogo(false)
+    }
+  }
+
+  async function handleDocumentLogoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+
+    if (file.size > MAX_LOGO_BYTES) { toast.error('Document logo must be under 5MB'); return }
+    if (!ACCEPTED_LOGO_TYPES.includes(file.type)) { toast.error('Only PNG, JPG, WEBP, or GIF images are accepted'); return }
+
+    setUploadingDocumentLogo(true)
+    try {
+      const formData = new FormData()
+      formData.append('logo', file)
+      const response = await apiUpload<{ profile: { documentLogoUrl: string; documentBrandingMode: ProfileForm['documentBrandingMode'] } }>('/business-profile/document-logo', formData)
+      setDocumentLogoPreview(resolveLogoUrl(response.profile.documentLogoUrl))
+      set('documentBrandingMode', response.profile.documentBrandingMode ?? 'LOGO_AND_NAME')
+      toast.success('Document logo updated.')
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : 'Could not upload document logo')
+    } finally {
+      setUploadingDocumentLogo(false)
     }
   }
 
@@ -262,6 +293,52 @@ export default function BusinessInformation() {
                 <p className="mt-2 text-xs text-muted-foreground">PNG, JPG, WEBP, or GIF, up to 5MB. Square image recommended.</p>
               </div>
             </div>
+          </Section>
+
+          <Section title="Document Branding" description="Controls the top of receipts, invoices, and quotations. This is separate from the app icon/logo above.">
+            <div className="sm:col-span-2 flex flex-col gap-5 sm:flex-row sm:items-start">
+              <div className="relative flex h-24 w-40 shrink-0 items-center justify-center overflow-hidden rounded-sm border border-dashed border-border bg-muted/40">
+                {documentLogoPreview ? (
+                  <img src={documentLogoPreview} alt="Document logo preview" className="h-full w-full object-contain p-2" />
+                ) : (
+                  <LuImagePlus className="size-7 text-muted-foreground" />
+                )}
+                {uploadingDocumentLogo && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-card/70">
+                    <LuLoaderCircle className="size-6 animate-spin text-secondary" />
+                  </div>
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <label className="inline-flex cursor-pointer items-center gap-2 border-2 border-foreground/20 bg-card px-3.5 py-2 text-xs font-bold uppercase tracking-wider transition-colors hover:bg-muted">
+                  <LuUpload className="size-4" />
+                  Upload document logo
+                  <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden" onChange={(e) => void handleDocumentLogoChange(e)} disabled={uploadingDocumentLogo} />
+                </label>
+                <p className="mt-2 text-xs text-muted-foreground">Use a wide, clean logo for print. It is not per-location, so it applies to all receipts, invoices, and quotations.</p>
+              </div>
+            </div>
+            <Field label="Brand shown on documents" className="sm:col-span-2">
+              <div className="grid gap-2 sm:grid-cols-3">
+                {[
+                  { value: 'NAME', label: 'Name only' },
+                  { value: 'LOGO', label: 'Logo only' },
+                  { value: 'LOGO_AND_NAME', label: 'Logo and name' },
+                ].map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => set('documentBrandingMode', option.value as ProfileForm['documentBrandingMode'])}
+                    className={cn(
+                      'rounded-sm border px-3 py-2 text-sm font-semibold transition',
+                      form.documentBrandingMode === option.value ? 'border-secondary bg-secondary text-secondary-foreground' : 'bg-card hover:bg-muted',
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </Field>
           </Section>
 
           <Section title="General">

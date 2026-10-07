@@ -67,8 +67,17 @@ export type ReceiptOrder = {
   payments: ReceiptPayment[]
   financials: ReceiptFinancials
 }
-export type ReceiptProfile = { businessName: string; address: string | null; city: string | null; primaryPhone: string | null; kraPin: string | null } | null
+export type ReceiptProfile = {
+  businessName: string
+  documentLogoUrl?: string | null
+  documentBrandingMode?: 'NAME' | 'LOGO' | 'LOGO_AND_NAME' | null
+  address: string | null
+  city: string | null
+  primaryPhone: string | null
+  kraPin: string | null
+} | null
 
+import { resolveLogoUrl } from '@/lib/api'
 import { receiptFooterText, receiptHeaderText, receiptItemName, receiptVariantSuffix, receiptPhone, servedByName, showsTaxAsAddedOn } from '@/lib/receiptFields'
 
 const formatKes = (value: number | string) => `KSh ${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -89,6 +98,10 @@ function roomBillSettlementText(order: ReceiptOrder) {
 export default function OrderReceipt({ order, profile }: { order: ReceiptOrder; profile: ReceiptProfile }) {
   const phone = receiptPhone(order, profile)
   const header = receiptHeaderText(order)
+  const brandingMode = profile?.documentBrandingMode ?? 'NAME'
+  const documentLogo = profile?.documentLogoUrl ? resolveLogoUrl(profile.documentLogoUrl) : null
+  const showLogo = Boolean(documentLogo && brandingMode !== 'NAME')
+  const showName = brandingMode !== 'LOGO'
   const served = servedByName(order)
   const taxAddedOn = showsTaxAsAddedOn(order)
   const isComplementary = order.saleType === 'COMPLIMENTARY'
@@ -117,7 +130,8 @@ export default function OrderReceipt({ order, profile }: { order: ReceiptOrder; 
   return (
     <div className="receipt-print-area mx-auto max-w-xs bg-white p-6 text-[13px] text-black">
       <div className="text-center">
-        <p className="font-display text-xl font-extrabold uppercase tracking-wide">{profile?.businessName ?? 'Receipt'}</p>
+        {showLogo && <img src={documentLogo!} alt={profile?.businessName ?? 'Business logo'} className="mx-auto mb-2 max-h-16 max-w-[220px] object-contain" />}
+        {showName && <p className="font-display text-xl font-extrabold uppercase tracking-wide">{profile?.businessName ?? 'Receipt'}</p>}
         {(profile?.address || profile?.city) && <p className="mt-1 text-xs text-gray-600">{[profile?.address, profile?.city].filter(Boolean).join(', ')}</p>}
         {order.location?.name && <p className="mt-0.5 text-[11px] text-gray-500">{order.location.name}</p>}
         {phone && <p className="text-xs text-gray-600">{phone}</p>}
