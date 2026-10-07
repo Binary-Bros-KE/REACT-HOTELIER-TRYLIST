@@ -49,6 +49,9 @@ type ApiMenuItem = {
   taxRate: string | number | null
   taxMode: TaxMode | null
   taxTreatment: TaxTreatment | null
+  fulfillmentLocationId?: string | null
+  fulfillmentLocationName?: string | null
+  fulfillmentServeMode?: 'KITCHEN' | 'COUNTER' | 'DIRECT' | null
   // null = untracked (no product/recipe link) — always orderable, no pill.
   availableQuantity: number | null
   availabilityUnitLabel: string | null
@@ -81,6 +84,9 @@ type MenuItem = {
   variants: Variant[]
   allowsAddons: boolean
   tax: LineTax
+  fulfillmentLocationId?: string | null
+  fulfillmentLocationName?: string | null
+  fulfillmentServeMode?: 'KITCHEN' | 'COUNTER' | 'DIRECT' | null
   availableQuantity: number | null
   availabilityUnitLabel: string | null
   // Set by the location: when true, out-of-stock items can still be ordered (the store sends what it has).
@@ -90,7 +96,7 @@ type MenuItem = {
 // if any, and the flattened set of chosen add-ons. Keyed by a generated id so
 // the same item can sit on the cart twice with different options.
 type CartLine = { key: string; item: MenuItem; variant: Variant | null; addons: Addon[]; quantity: number }
-type CreatedOrder = { id: string; orderNumber: number }
+type CreatedOrder = { id: string; orderNumber: number; location?: { name: string } | null; billGroupId?: string | null }
 type HeldSale = { key: string; heldNo: number; label: string; tableId: string; discount: string; notes: string; party: SaleParty; cart: CartLine[] }
 type PaymentMethod = { id: string; name: string; requiresReference: boolean }
 type ComplimentarySession = { id: string; title: string; hostName: string; hostPhone: string | null; eventDate: string; startsAt?: string | null; endsAt?: string | null; status: 'OPEN' | 'CLOSED'; _count?: { orders: number } }
@@ -157,6 +163,9 @@ function normalizeMenuItem(raw: ApiMenuItem): MenuItem {
       mode: raw.taxMode ?? 'INCLUSIVE',
       treatment: raw.taxTreatment ?? 'STANDARD',
     },
+    fulfillmentLocationId: raw.fulfillmentLocationId ?? null,
+    fulfillmentLocationName: raw.fulfillmentLocationName ?? null,
+    fulfillmentServeMode: raw.fulfillmentServeMode ?? null,
     availableQuantity: raw.availableQuantity ?? null,
     availabilityUnitLabel: raw.availabilityUnitLabel ?? null,
     locationAllowsOutOfStockOrders: raw.locationAllowsOutOfStockOrders === true,
@@ -263,7 +272,10 @@ export default function PointOfSale() {
   const { fixed: fixedLocation, options: pickableLocations, selectedId: selectedLocationId, setLocation, effectiveId: effectiveLocationId, needsChoice: needsLocationChoice } = useWorkingLocation(locations)
 
   async function loadMenuItems() {
-    const query = effectiveLocationId ? `?locationId=${effectiveLocationId}` : ''
+    const params = new URLSearchParams()
+    if (effectiveLocationId) params.set('locationId', effectiveLocationId)
+    params.set('includeRemote', 'true')
+    const query = `?${params.toString()}`
     const menuResponse = await api<{ items: ApiMenuItem[] }>(`/pos/menu-items${query}`)
     setMenuItems((menuResponse.items ?? []).map(normalizeMenuItem))
   }
@@ -530,7 +542,7 @@ export default function PointOfSale() {
     setSubmitting(true)
     setError('')
     try {
-      const response = await api<{ order: CreatedOrder }>('/pos/orders', {
+      const response = await api<{ order: CreatedOrder; linkedOrders?: CreatedOrder[] }>('/pos/orders', {
         method: 'POST',
         body: JSON.stringify({
           tableId: tableId || undefined,
@@ -553,12 +565,15 @@ export default function PointOfSale() {
       })
       resetSale()
       setConfirmation(response.order)
-      const msg = instantServe ? `Order #${response.order.orderNumber} served` : sendsToCounter ? `Order #${response.order.orderNumber} sent to the counter` : `Order #${response.order.orderNumber} sent to the kitchen`
+      const linked = response.linkedOrders ?? [response.order]
+      const msg = linked.length > 1
+        ? `Split into ${linked.map((order) => `#${order.orderNumber}${order.location?.name ? ` ${order.location.name}` : ''}`).join(', ')}`
+        : instantServe ? `Order #${response.order.orderNumber} served` : sendsToCounter ? `Order #${response.order.orderNumber} sent to the counter` : `Order #${response.order.orderNumber} sent to the kitchen`
       toast.success(saleType === 'COMPLIMENTARY' ? `${msg} as complimentary` : msg)
       setSentPulse(true)
       window.clearTimeout(sentTimer.current)
       sentTimer.current = window.setTimeout(() => setSentPulse(false), 2000)
-      void autoPrint(response.order.id)
+      linked.forEach((order) => void autoPrint(order.id))
       await loadPos()
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Could not save the order'
@@ -1003,6 +1018,11 @@ export default function PointOfSale() {
                           <span className="max-w-[55%] truncate rounded-sm bg-muted px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{item.category.name}</span>
                         </div>
                         <h2 className="mt-3 line-clamp-2 text-sm font-semibold text-foreground sm:mt-5 sm:text-base">{item.name}</h2>
+                        {item.fulfillmentLocationName && (
+                          <span className="mt-1.5 inline-flex w-fit rounded-sm border border-secondary/40 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-secondary">
+                            Routes to {item.fulfillmentLocationName}
+                          </span>
+                        )}
                         {item.availableQuantity != null && (
                           <span className={cn('mt-1.5 inline-flex w-fit items-center keep-round border border-dashed px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', outOfStock ? 'border-destructive/70 text-destructive' : 'border-success/70 text-success')}>
                             {outOfStock ? 'Out of stock' : availabilityLabel(item.availableQuantity, item.availabilityUnitLabel)}
@@ -1175,6 +1195,9 @@ export default function PointOfSale() {
                               <li key={addon.id} className="flex justify-between"><span>+ {addon.name}</span><span>{formatKes(addon.price)}</span></li>
                             ))}
                           </ul>
+                        )}
+                        {line.item.fulfillmentLocationName && (
+                          <p className="mt-2 border-t pt-2 text-[11px] font-semibold uppercase tracking-wide text-secondary">Routes to {line.item.fulfillmentLocationName}</p>
                         )}
                         <div className="mt-2.5 flex items-center justify-between">
                           <div className="flex items-center gap-1.5">

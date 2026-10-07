@@ -13,6 +13,7 @@ type PaymentMethod = { id: string; name: string; requiresReference: boolean; cod
 type CheckedInStay = { id: string; reservationNo: string; customer: { firstName: string; lastName: string | null }; room: { number: string } }
 type Order = ReceiptOrder & {
   id: string
+  billGroupId?: string | null
   notes: string | null
   total: number
   paid: number
@@ -81,6 +82,7 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
   // Paying off a debt (an order already completed on credit) is a separate right from taking payment at the till.
   const canCollectCredit = useAppSelector((s) => s.auth.user?.role?.name === 'Super Admin' || Boolean(s.auth.user?.role?.permissions.includes('CREDIT_COLLECT')))
   const [order, setOrder] = useState<Order | null>(null)
+  const [linkedOrders, setLinkedOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -118,7 +120,12 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
   const selectedMethod = paymentMethods.find((m) => m.id === paymentMethodId)
   const isMpesaSelected = selectedMethod?.code === 'MPESA'
   const selectedStay = stays.find((s) => s.id === reservationId)
-  const remaining = order ? Math.max(0, order.total - order.paid) : 0
+  const linkedTotal = linkedOrders.reduce((sum, linked) => sum + linked.total, 0)
+  const linkedPaid = linkedOrders.reduce((sum, linked) => sum + linked.paid, 0)
+  const linkedRemaining = linkedOrders.reduce((sum, linked) => sum + Math.max(0, linked.total - linked.paid), 0)
+  const remaining = order ? (linkedOrders.length > 1 ? linkedRemaining : Math.max(0, order.total - order.paid)) : 0
+  const displayTotal = order ? (linkedOrders.length > 1 ? linkedTotal : order.total) : 0
+  const displayPaid = order ? (linkedOrders.length > 1 ? linkedPaid : order.paid) : 0
   const isComplementary = order?.saleType === 'COMPLIMENTARY'
   const isCreditOverdue = !!order?.creditExpectedAt && remaining > 0.01 && new Date(order.creditExpectedAt).getTime() < Date.now()
   const canRequestReturn = !!order?.servedAt && ['SERVED', 'COMPLETED'].includes(order.status) && (isSuperAdmin || Date.now() - new Date(order.servedAt).getTime() <= RETURN_WINDOW_MS)
@@ -179,7 +186,16 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
     try {
       const response = await api<{ order: Order }>(`/pos/orders/${orderId}`)
       setOrder(response.order)
-      setAmount(String(Math.max(0, response.order.total - response.order.paid)))
+      let linked: Order[] = []
+      if (response.order.billGroupId) {
+        const group = await api<{ orders: Order[] }>(`/pos/bill-groups/${response.order.billGroupId}`)
+        linked = group.orders ?? []
+        setLinkedOrders(linked)
+      } else {
+        setLinkedOrders([])
+      }
+      const due = linked.length > 1 ? linked.reduce((sum, row) => sum + Math.max(0, row.total - row.paid), 0) : Math.max(0, response.order.total - response.order.paid)
+      setAmount(String(due))
       setCreditReason(response.order.creditReason ?? '')
       setCreditExpectedAt(response.order.creditExpectedAt ? response.order.creditExpectedAt.slice(0, 10) : '')
       if (response.order.reservation) {
@@ -326,7 +342,8 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
     setPaying(true)
     setError('')
     try {
-      const response = await api<{ order: Order }>(`/pos/orders/${order.id}/payments`, {
+      const endpoint = order.billGroupId && linkedOrders.length > 1 ? `/pos/bill-groups/${order.billGroupId}/payments` : `/pos/orders/${order.id}/payments`
+      const response = await api<{ order?: Order; orders?: Order[] }>(endpoint, {
         method: 'POST',
         body: JSON.stringify(
           mode === 'PAY'
@@ -334,10 +351,15 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
             : { method: 'ROOM', reservationId, amount: Number(amount) || remaining },
         ),
       })
-      setOrder(response.order)
-      setAmount(String(Math.max(0, response.order.total - response.order.paid)))
+      const updatedOrder = response.order ?? response.orders?.find((row) => row.id === order.id) ?? response.orders?.[0]
+      if (response.orders) setLinkedOrders(response.orders)
+      if (updatedOrder) setOrder(updatedOrder)
+      const nextRemaining = response.orders
+        ? response.orders.reduce((sum, row) => sum + Math.max(0, row.total - row.paid), 0)
+        : updatedOrder ? Math.max(0, updatedOrder.total - updatedOrder.paid) : 0
+      setAmount(String(nextRemaining))
       setReference('')
-      toast.success(mode === 'PAY' ? 'Payment recorded.' : 'Charged to room.')
+      toast.success(linkedOrders.length > 1 ? (mode === 'PAY' ? 'Linked bill payment recorded.' : 'Linked bill charged to room.') : mode === 'PAY' ? 'Payment recorded.' : 'Charged to room.')
       onChanged()
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Could not record this payment'
@@ -390,7 +412,7 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
                   on the printer icon (ReceiptPreviewModal), so it doesn't
                   need repeating here too. */}
               <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                <SettlementStat label="Total" value={formatKes(order.total)} />
+                <SettlementStat label={linkedOrders.length > 1 ? 'Linked total' : 'Total'} value={formatKes(displayTotal)} />
                 <SettlementStat label="Items" value={String(order.items.reduce((sum, item) => sum + item.quantity, 0))} />
                 <SettlementStat label={order.table ? 'Table' : 'Channel'} value={order.table ? order.table.label : 'Takeaway'} />
                 <SettlementStat label="Served by" value={order.servedBy ? `${order.servedBy.firstName} ${order.servedBy.lastName}` : '—'} />
@@ -406,10 +428,21 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
                   </span>
                 </div>
                 <div className="mt-2 space-y-1 text-sm">
-                  <div className="flex justify-between text-muted-foreground"><span>Total</span><span>{formatKes(order.total)}</span></div>
-                  <div className="flex justify-between text-muted-foreground"><span>Paid</span><span className="text-success">{formatKes(order.paid)}</span></div>
+                  <div className="flex justify-between text-muted-foreground"><span>{linkedOrders.length > 1 ? 'Linked total' : 'Total'}</span><span>{formatKes(displayTotal)}</span></div>
+                  <div className="flex justify-between text-muted-foreground"><span>Paid</span><span className="text-success">{formatKes(displayPaid)}</span></div>
                   <div className="flex justify-between border-t pt-1 text-base"><span className="font-semibold">Balance due</span><span className="font-bold">{formatKes(remaining)}</span></div>
                 </div>
+                {linkedOrders.length > 1 && (
+                  <div className="mt-3 space-y-1 border-t pt-2">
+                    <p className="text-[10.5px] font-semibold uppercase tracking-wide text-muted-foreground">Linked orders</p>
+                    {linkedOrders.map((linked) => (
+                      <div key={linked.id} className="flex justify-between text-xs text-muted-foreground">
+                        <span>#{linked.orderNumber}{linked.location?.name ? ` · ${linked.location.name}` : ''}</span>
+                        <span className="font-medium text-foreground">{formatKes(Math.max(0, linked.total - linked.paid))}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {order.payments.length > 0 && (
                   <div className="mt-3 space-y-1 border-t pt-2">
                     <p className="text-[10.5px] font-semibold uppercase tracking-wide text-muted-foreground">Payments received</p>
