@@ -446,6 +446,7 @@ export default function PointOfSale() {
     return b.orderNumber - a.orderNumber
   })
   const readyCount = activeOrders.filter((o) => stageFor(o) === 'READY').length
+  const canRevertActiveOrder = (order: ActiveOrder) => order.status !== 'SERVED' && !order.location?.requireStoreDispatch
   const readyActiveOrders: ActiveOrder[] = []
   const STAGE_BADGE: Record<'OPEN' | 'PREPARING' | 'SERVED', string> = { OPEN: 'KITCHEN', PREPARING: 'PREPARING', SERVED: 'SERVED' }
   const otherByStage: { status: 'OPEN' | 'PREPARING' | 'SERVED'; orders: ActiveOrder[] }[] = []
@@ -853,7 +854,7 @@ export default function PointOfSale() {
                       <div className="mt-4 flex flex-wrap gap-2">
                         <button onClick={() => setReceiptOrderId(order.id)} title="Receipt" className="inline-flex items-center justify-center rounded-sm border p-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"><LuPrinter className="size-3.5" /></button>
                         <button onClick={() => setAddItemsOrder(order)} className="inline-flex items-center gap-1.5 rounded-sm border px-3 py-1.5 text-xs font-semibold hover:bg-muted"><LuPencil className="size-3.5" /> Manage</button>
-                        {order.status !== 'SERVED' && <button onClick={() => setRevertOrder(order)} className="inline-flex items-center gap-1.5 rounded-sm border border-destructive/30 px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/10"><LuTrash2 className="size-3.5" /> Revert</button>}
+                        {canRevertActiveOrder(order) && <button onClick={() => setRevertOrder(order)} className="inline-flex items-center gap-1.5 rounded-sm border border-destructive/30 px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/10"><LuTrash2 className="size-3.5" /> Revert</button>}
                         {canServe && (
                           <button type="button" disabled={servingId === order.id} onClick={() => void serveOrder(order.id)} className="inline-flex items-center gap-1.5 rounded-sm bg-accent px-3 py-1.5 text-xs font-bold text-accent-foreground disabled:opacity-50">
                             {servingId === order.id ? <LuLoaderCircle className="size-3.5 animate-spin" /> : 'Serve Now'}
@@ -890,7 +891,7 @@ export default function PointOfSale() {
                           {compBadge && <span className={cn('shrink-0 keep-round border border-dashed px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', compBadge.cls)}>{compBadge.label}</span>}
                           {pendingReturns > 0 && <span className="shrink-0 keep-round border border-dashed border-warning/70 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-warning">Return pending</span>}
                           <button type="button" onClick={() => setReceiptOrderId(order.id)} title="Preview receipt" className="shrink-0 rounded-sm p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"><LuPrinter className="size-4" /></button>
-                          <button type="button" onClick={() => setRevertOrder(order)} title="Revert undeducted order" className="shrink-0 rounded-sm p-1.5 text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive"><LuTrash2 className="size-4" /></button>
+                          {canRevertActiveOrder(order) && <button type="button" onClick={() => setRevertOrder(order)} title="Revert undeducted order" className="shrink-0 rounded-sm p-1.5 text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive"><LuTrash2 className="size-4" /></button>}
                           <span className="shrink-0 keep-round border border-dashed border-destructive/70 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-destructive">Pending</span>
                           <span className="shrink-0 text-sm font-bold tabular-nums text-foreground">{formatKes(order.total)}</span>
                           <button
