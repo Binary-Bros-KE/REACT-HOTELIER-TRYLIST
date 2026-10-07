@@ -25,10 +25,13 @@ export function receiptPhone(order: ReceiptOrder, profile: ReceiptProfile): stri
   return profile?.primaryPhone ?? null
 }
 
-/** The employee who rang the order up. */
+/** The employee who rang the order up (first name only). */
 export function servedByName(order: ReceiptOrder): string | null {
   if (!order.servedBy) return null
-  return [order.servedBy.firstName, order.servedBy.lastName].filter(Boolean).join(' ') || null
+  const first = order.servedBy.firstName?.trim()
+  if (first) return first.split(/\s+/)[0]
+  const last = order.servedBy.lastName?.trim()
+  return last ? last.split(/\s+/)[0] : null
 }
 
 export function receiptHeaderText(order: ReceiptOrder): string | null {
