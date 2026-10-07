@@ -418,12 +418,12 @@ export default function PointOfSale() {
     return (order.location?.serveMode ?? serveMode) === 'COUNTER' ? 'COUNTER' : 'KITCHEN'
   }
   const STAGE_META: Record<OrderStage, { rank: number; label: string; hint: string; card: string; badge: string }> = {
-    STORE: { rank: 0, label: 'STORE', hint: 'Waiting for store dispatch', card: 'border-warning/60 bg-warning/5', badge: 'border-warning/70 bg-warning/10 text-warning' },
-    COUNTER: { rank: 1, label: 'COUNTER', hint: 'Waiting for counter handover', card: 'border-sky-500/50 bg-sky-50/70', badge: 'border-sky-500/70 bg-sky-50 text-sky-700' },
-    KITCHEN: { rank: 1, label: 'KITCHEN', hint: 'Waiting for kitchen', card: 'border-blue-500/50 bg-blue-50/70', badge: 'border-blue-500/70 bg-blue-50 text-blue-700' },
-    PREPARING: { rank: 2, label: 'PREPARING', hint: 'Being prepared', card: 'border-success/50 bg-success/5', badge: 'border-success/70 bg-success/10 text-success' },
-    READY: { rank: 3, label: 'READY', hint: 'Ready to serve', card: 'border-destructive/50 bg-destructive/5', badge: 'border-destructive/70 bg-destructive/10 text-destructive' },
-    SERVED: { rank: 4, label: 'SERVED', hint: 'Awaiting payment', card: 'border-border bg-card', badge: 'border-muted-foreground/40 bg-muted text-muted-foreground' },
+    STORE: { rank: 0, label: 'STORE', hint: 'Waiting for store dispatch', card: 'border-warning/60', badge: 'border-warning/70 bg-warning/10 text-warning' },
+    COUNTER: { rank: 1, label: 'COUNTER', hint: 'Waiting for counter handover', card: 'border-sky-500/50', badge: 'border-sky-500/70 bg-sky-50 text-sky-700' },
+    KITCHEN: { rank: 1, label: 'KITCHEN', hint: 'Waiting for kitchen', card: 'border-blue-500/50', badge: 'border-blue-500/70 bg-blue-50 text-blue-700' },
+    PREPARING: { rank: 2, label: 'PREPARING', hint: 'Being prepared', card: 'border-success/50', badge: 'border-success/70 bg-success/10 text-success' },
+    READY: { rank: 3, label: 'READY', hint: 'Ready to serve', card: 'border-destructive/50', badge: 'border-destructive/70 bg-destructive/10 text-destructive' },
+    SERVED: { rank: 4, label: 'SERVED', hint: 'Awaiting payment', card: 'border-border', badge: 'border-muted-foreground/40 bg-muted text-muted-foreground' },
   }
   const stageLabel = (order: ActiveOrder) => STAGE_META[stageFor(order)]
   const orderedActiveOrders = [...activeOrders].sort((a, b) => {
@@ -817,7 +817,7 @@ export default function PointOfSale() {
                   const changed = updatedLines(order)
                   const canServe = stageFor(order) === 'READY'
                   return (
-                    <article key={order.id} className={cn('rounded-sm border p-5 shadow-sm', stage.card, compBadge && 'border-secondary/30', changed.length > 0 && 'ring-2 ring-amber-400')}>
+                    <article key={order.id} className={cn('rounded-sm border bg-card p-5 shadow-sm', stage.card, compBadge && 'border-secondary/30', changed.length > 0 && 'ring-2 ring-amber-400')}>
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <h3 className="font-semibold">Order #{order.orderNumber}</h3>

@@ -18,6 +18,7 @@ type Item = { id: string; productId: string; productName: string; requestedQty: 
 type Dish = {
   name: string
   quantity: number
+  totalPrice?: string | number | null
   menuItemId: string | null
   variantId: string | null
   recipeId: string | null
@@ -162,7 +163,7 @@ export default function DispatchRequests() {
       rungUpBy: request.rungUpBy,
       requestedAt: request.requestedAt,
       note: request.note,
-      dishes: request.dishes.map((d) => ({ name: d.name, quantity: d.quantity, stockSource: d.stockSource, ingredients: d.ingredients.map((g) => ({ name: g.name, quantity: g.quantity, unit: g.unit })) })),
+      dishes: request.dishes.map((d) => ({ name: d.name, quantity: d.quantity, totalPrice: d.totalPrice, stockSource: d.stockSource, ingredients: d.ingredients.map((g) => ({ name: g.name, quantity: g.quantity, unit: g.unit })) })),
       items: request.items.map((i) => ({ name: i.productName, quantity: Number(i.requestedQty), unit: i.product?.unit ?? '' })),
     }
     try {

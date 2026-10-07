@@ -460,7 +460,7 @@ export type DispatchSlip = {
   note: string | null
   rungUpBy: string | null
   // Each dish on the order, with what it takes from the store. Read first, then the pick list.
-  dishes: { name: string; quantity: number; stockSource?: string | null; ingredients: { name: string; quantity: number; unit: string }[] }[]
+  dishes: { name: string; quantity: number; totalPrice?: string | number | null; stockSource?: string | null; ingredients: { name: string; quantity: number; unit: string }[] }[]
   items: { name: string; quantity: number; unit: string }[]
 }
 
@@ -490,12 +490,33 @@ export function buildDispatchSlipBytes(slip: DispatchSlip, profile: ReceiptProfi
   if (slip.requestedByName) e.line(`By:       ${slip.requestedByName}`)
   e.line(`Time:     ${new Date(slip.requestedAt).toLocaleString('en-KE')}`)
   e.line(rule)
+  const priceW = compact ? 10 : 12
+  const dishNameW = Math.max(10, Math.floor((cols - priceW - 1) / (compact ? 1 : 2)))
+  const dishRow = (dish: DispatchSlip['dishes'][number]) => {
+    const left = `${qtyText(dish.quantity)} x ${dish.name}`.toUpperCase()
+    const right = dish.totalPrice != null ? money(dish.totalPrice) : ''
+    if (!right) {
+      for (const l of wrapWords(left, dishNameW)) e.line(l)
+      return
+    }
+    const chunks = wrapWords(left, dishNameW)
+    if (chunks.length <= 1) e.table([{ width: dishNameW, align: 'left' }, { width: priceW, align: 'right' }], [[left, right]])
+    else {
+      for (const l of chunks) e.line(l)
+      e.line(`${' '.repeat(Math.max(0, cols - right.length))}${right}`)
+    }
+  }
   for (const dish of slip.dishes ?? []) {
-    e.bold(true)
-    e.line(`${qtyText(dish.quantity)} x ${dish.name}`)
-    e.bold(false)
+    if (compact) e.bold(true)
+    else e.size(2, 2).bold(true)
+    dishRow(dish)
+    e.bold(false).size(1, 1)
     if (dish.stockSource) for (const l of wrapWords(dish.stockSource, cols - 3)) e.line(`   ${l}`)
-    for (const ing of dish.ingredients) e.line(`   ${ing.name}  ${qtyText(ing.quantity)} ${ing.unit}`)
+    for (const ing of dish.ingredients) {
+      const amount = `${qtyText(ing.quantity)} ${ing.unit}`.trim()
+      e.table([{ width: cols - 14, align: 'left' }, { width: 14, align: 'right' }], [[`   ${ing.name}`, amount]])
+      e.line(`   ${'.'.repeat(Math.max(8, cols - 3))}`)
+    }
   }
   e.line(rule)
   if (slip.note) for (const l of wrapWords(slip.note, cols)) e.line(l)
@@ -510,10 +531,10 @@ export function buildDispatchSlipBytes(slip: DispatchSlip, profile: ReceiptProfi
 /** Browser print sheet with the slip, for a store computer without a thermal printer. */
 function printSlipViaWindow(slip: DispatchSlip): void {
   const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string)
-  const dishes = (slip.dishes ?? []).map((d) => `<div style="margin-top:6px"><b>${qtyText(d.quantity)} x ${esc(d.name)}</b></div>${d.stockSource ? `<div style="padding-left:12px;color:#555">${esc(d.stockSource)}</div>` : ''}${d.ingredients.map((g) => `<div style="padding-left:12px">${esc(g.name)} <span style="float:right">${qtyText(g.quantity)} ${esc(g.unit)}</span></div>`).join('')}`).join('')
+  const dishes = (slip.dishes ?? []).map((d) => `<div class="dish"><b>${qtyText(d.quantity)} x ${esc(d.name).toUpperCase()}</b>${d.totalPrice != null ? `<b>${esc(money(d.totalPrice))}</b>` : ''}</div>${d.stockSource ? `<div style="padding-left:12px;color:#555">${esc(d.stockSource)}</div>` : ''}${d.ingredients.map((g) => `<div class="ingredient"><span>${esc(g.name)}</span><span>${qtyText(g.quantity)} ${esc(g.unit)}</span></div>`).join('')}`).join('')
   const win = window.open('', '_blank', 'width=420,height=640')
   if (!win) throw new Error('Allow pop-ups to print the slip')
-  win.document.write(`<!doctype html><title>${esc(slip.requestNo)}</title><style>@page{size:80mm auto;margin:4mm}body{font:13px/1.4 monospace;margin:0}h1{font-size:15px;text-align:center;margin:0 0 6px}table{width:100%;border-collapse:collapse}td{padding:2px 0;border-bottom:1px dotted #999}hr{border:0;border-top:1px dashed #000}</style>
+  win.document.write(`<!doctype html><title>${esc(slip.requestNo)}</title><style>@page{size:80mm auto;margin:4mm}body{font:13px/1.4 monospace;margin:0}h1{font-size:15px;text-align:center;margin:0 0 6px}.dish{display:flex;justify-content:space-between;gap:8px;margin-top:9px;font-size:16px;font-weight:900}.ingredient{display:flex;justify-content:space-between;gap:8px;margin-left:12px;padding:2px 0;border-bottom:1px dotted #999}hr{border:0;border-top:1px dashed #000}</style>
 <h1>STORE DISPATCH REQUEST</h1><hr>
 <div>Request: ${esc(slip.requestNo)}</div><div>Order: #${slip.orderNumber}${slip.table ? ' (' + esc(slip.table) + ')' : ''}</div>
 <div>For: ${esc(slip.to)}</div><div>From: ${esc(slip.from)}</div>${slip.requestedByName ? '<div>By: ' + esc(slip.requestedByName) + '</div>' : ''}
