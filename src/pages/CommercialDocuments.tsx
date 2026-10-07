@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
-import { LuCheck, LuCircleAlert, LuCreditCard, LuFileText, LuLoaderCircle, LuPencil, LuPlus, LuPrinter, LuRefreshCw, LuSearch, LuSend, LuSignature, LuTrash2 } from 'react-icons/lu'
+import { LuCheck, LuCircleAlert, LuCreditCard, LuFileText, LuLoaderCircle, LuPencil, LuPlus, LuPrinter, LuRefreshCw, LuSearch, LuSend, LuSignature, LuTrash2, LuUserPlus } from 'react-icons/lu'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
 import { useToast } from '@/components/ui/Toast'
@@ -104,9 +104,11 @@ export default function CommercialDocuments({ type }: { type: DocType }) {
     }
   }
 
-  async function convert(doc: DocumentRow) {
+  const [convertTarget, setConvertTarget] = useState<DocumentRow | null>(null)
+
+  async function convert(doc: DocumentRow, options: { customerId?: string; createCustomerFromProspect?: boolean } = {}) {
     try {
-      const result = await api<{ document: DocumentRow }>(`/commercial-documents/${doc.id}/convert-to-invoice`, { method: 'POST' })
+      const result = await api<{ document: DocumentRow }>(`/commercial-documents/${doc.id}/convert-to-invoice`, { method: 'POST', body: JSON.stringify(options) })
       toast.success(`${doc.documentNo} converted to ${result.document.documentNo}.`)
       await load()
     } catch (cause) {
@@ -159,7 +161,7 @@ export default function CommercialDocuments({ type }: { type: DocType }) {
                       {doc.source === 'HOTEL_STAY' && doc.linkedStay ? <ActionButton tone="neutral" icon={<LuFileText />} title={`Open stay ${doc.linkedStay.reservationNo}`} onClick={() => navigate(`/reservations?stay=${doc.linkedStay!.reservationId}`)} /> : ['DRAFT', 'SENT', 'ISSUED'].includes(doc.status) && <ActionButton tone="neutral" icon={<LuPencil />} title="Edit" onClick={() => setEditor(doc)} />}
                       {doc.type === 'QUOTATION' && doc.status === 'DRAFT' && <ActionButton tone="neutral" icon={<LuSend />} title="Mark sent" onClick={() => void setDocStatus(doc, 'SENT')} />}
                       {doc.type === 'QUOTATION' && ['SENT', 'DRAFT'].includes(doc.status) && <ActionButton tone="neutral" icon={<LuCheck />} title="Accept" onClick={() => void setDocStatus(doc, 'ACCEPTED')} />}
-                      {doc.type === 'QUOTATION' && doc.status === 'ACCEPTED' && <ActionButton tone="primary" icon={<LuRefreshCw />} title="Convert to invoice" onClick={() => void convert(doc)} />}
+                      {doc.type === 'QUOTATION' && doc.status === 'ACCEPTED' && <ActionButton tone="primary" icon={<LuRefreshCw />} title="Convert to invoice" onClick={() => (doc.customerId ? void convert(doc) : setConvertTarget(doc))} />}
                       {doc.type === 'INVOICE' && doc.status === 'DRAFT' && <ActionButton tone="neutral" icon={<LuSend />} title="Issue" onClick={() => void setDocStatus(doc, 'ISSUED')} />}
                       {((doc.type === 'INVOICE' && !['DRAFT', 'PAID', 'CANCELLED', 'VOID'].includes(doc.status)) || (doc.type === 'QUOTATION' && ['DRAFT', 'SENT', 'ACCEPTED'].includes(doc.status))) && <ActionButton tone="primary" icon={<LuCreditCard />} title={doc.type === 'INVOICE' ? 'Record payment' : 'Record deposit'} onClick={() => setPaying(doc)} />}
                     </div></td>
@@ -173,6 +175,15 @@ export default function CommercialDocuments({ type }: { type: DocType }) {
       </section>
       {editor && <DocumentEditor type={type} document={editor === 'new' ? null : editor} options={options} sources={sources} fixedLocation={fixedLocation} locations={pickableLocations} selectedLocationId={effectiveId} setLocation={setLocation} onClose={() => setEditor(null)} onSaved={(doc) => { setEditor(null); setDocuments((cur) => editor === 'new' ? [doc, ...cur] : cur.map((d) => d.id === doc.id ? doc : d)); void load() }} />}
       {sourcePicker && <SourceInvoiceModal kind={sourcePicker} sources={sources} onClose={() => setSourcePicker(null)} onCreated={(doc) => { setSourcePicker(null); setDocuments((cur) => [doc, ...cur]); setPrinting(doc); void load() }} />}
+      {convertTarget && (
+        <ConvertQuotationModal
+          doc={convertTarget}
+          customers={options.customers}
+          onClose={() => setConvertTarget(null)}
+          onCustomerCreated={(customer) => setOptions((cur) => ({ ...cur, customers: [...cur.customers, customer].sort(compareCustomers) }))}
+          onConvert={(conversion) => { const doc = convertTarget; setConvertTarget(null); void convert(doc, conversion) }}
+        />
+      )}
       {paying && <PaymentModal doc={paying} methods={options.paymentMethods} onClose={() => setPaying(null)} onSaved={(doc) => { setPaying(null); setDocuments((cur) => cur.map((d) => d.id === doc.id ? doc : d)); void load() }} />}
       {printing && profile && <DocumentViewer kind="commercial-document" data={printing} profile={profile} onClose={() => setPrinting(null)} />}
     </div>
@@ -183,6 +194,69 @@ function clientName(doc: DocumentRow) {
   if (doc.customer?.businessName) return doc.customer.businessName
   if (doc.customer) return `${doc.customer.firstName} ${doc.customer.lastName ?? ''}`.trim()
   return doc.prospectName ?? 'Prospect'
+}
+
+function compareCustomers(a: Customer, b: Customer) {
+  const left = a.businessName || `${a.firstName} ${a.lastName ?? ''}`.trim()
+  const right = b.businessName || `${b.firstName} ${b.lastName ?? ''}`.trim()
+  return left.localeCompare(right)
+}
+
+function customerOption(customer: Customer) {
+  return {
+    value: customer.id,
+    label: customer.businessName || `${customer.firstName} ${customer.lastName ?? ''}`.trim(),
+    keywords: [customer.phone, customer.billingPhone, customer.email, customer.billingEmail].filter(Boolean).join(' ') || undefined,
+  }
+}
+
+function ConvertQuotationModal({ doc, customers, onClose, onCustomerCreated, onConvert }: { doc: DocumentRow; customers: Customer[]; onClose: () => void; onCustomerCreated: (customer: Customer) => void; onConvert: (options: { customerId?: string; createCustomerFromProspect?: boolean }) => void }) {
+  const [customerId, setCustomerId] = useState('')
+  const [quickCustomer, setQuickCustomer] = useState(false)
+  const canCreateFromProspect = Boolean(doc.prospectName?.trim() && doc.prospectPhone?.trim())
+  return (
+    <ModalShell size="md" kicker={doc.documentNo} title="Convert quotation to invoice" onClose={onClose}>
+      <div className="space-y-4 p-5">
+        <div className="border-l-4 border-accent bg-muted/30 p-3 text-sm">
+          <p className="font-semibold">Choose who this invoice belongs to.</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {canCreateFromProspect
+              ? 'You can create a customer from the prospect details, or attach an existing customer before converting.'
+              : 'This quotation does not have enough prospect details to create a customer automatically. Attach an existing customer or create one now.'}
+          </p>
+        </div>
+        <label className="block text-sm font-medium">
+          <span className="mb-1.5 flex items-center justify-between">
+            Customer
+            <button type="button" onClick={() => setQuickCustomer(true)} className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-secondary hover:underline"><LuUserPlus className="size-3.5" /> New customer</button>
+          </span>
+          <SearchableSelect
+            value={customerId}
+            onChange={setCustomerId}
+            placeholder="Select customer"
+            searchPlaceholder="Search by name or phone..."
+            emptyText="No customers match."
+            options={customers.map(customerOption)}
+          />
+        </label>
+        <div className="flex flex-wrap justify-end gap-2 border-t pt-4">
+          <button type="button" onClick={onClose} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted">Cancel</button>
+          {canCreateFromProspect && <button type="button" onClick={() => onConvert({ createCustomerFromProspect: true })} className="border-2 border-secondary px-4 py-2 text-xs font-bold uppercase tracking-wider text-secondary hover:bg-secondary/10">Use prospect</button>}
+          <button type="button" disabled={!customerId} onClick={() => onConvert({ customerId })} className="bg-primary px-5 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground disabled:opacity-60">Convert</button>
+        </div>
+      </div>
+      {quickCustomer && (
+        <QuickCustomerModal<Customer>
+          onClose={() => setQuickCustomer(false)}
+          onCreated={(customer) => {
+            onCustomerCreated(customer)
+            setCustomerId(customer.id)
+            setQuickCustomer(false)
+          }}
+        />
+      )}
+    </ModalShell>
+  )
 }
 
 function SourceInvoiceModal({ kind, sources, onClose, onCreated }: { kind: 'folio' | 'order'; sources: SourceOptions; onClose: () => void; onCreated: (doc: DocumentRow) => void }) {

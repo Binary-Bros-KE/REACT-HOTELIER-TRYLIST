@@ -19,6 +19,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!tenantId) throw new Error('Workspace not resolved yet.')
   const response = await fetch(`${apiUrl}${path}`, {
     ...init,
+    cache: 'no-store',
     headers: {
       'Content-Type': 'application/json',
       'x-tenant-id': tenantId,
@@ -46,6 +47,7 @@ export async function apiUpload<T>(path: string, formData: FormData): Promise<T>
   const response = await fetch(`${apiUrl}${path}`, {
     method: 'POST',
     body: formData,
+    cache: 'no-store',
     headers: {
       'x-tenant-id': tenantId,
       ...(userId ? { 'x-user-id': userId } : {}),

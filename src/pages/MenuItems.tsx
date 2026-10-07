@@ -228,6 +228,7 @@ export default function MenuItems() {
     [stockProducts],
   )
   const recipeOptions = useMemo(() => recipes.map((r) => ({ value: r.id, label: r.name })), [recipes])
+  const addRecipe = (recipe: Recipe) => setRecipes((prev) => [...prev, recipe].sort((a, b) => a.name.localeCompare(b.name)))
 
   const summary = useMemo(() => ({
     total: items.length,
@@ -631,7 +632,7 @@ export default function MenuItems() {
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <form onSubmit={save} className="max-h-[90vh] w-full max-w-2xl overflow-y-auto border-2 border-foreground/25 bg-card p-6 shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+          <form onSubmit={save} className="max-h-[90vh] w-full max-w-2xl overflow-x-hidden overflow-y-auto border-2 border-foreground/25 bg-card p-6 shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
             <div className="-mx-6 -mt-6 border-b-4 border-accent bg-muted/60 px-6 py-4">
               <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">{editing ? 'Edit item' : 'New item'}</p>
               <h2 className="mt-1 font-display text-2xl font-semibold">{editing ? editing.name : 'Add a menu item'}</h2>
@@ -856,7 +857,7 @@ export default function MenuItems() {
                     </label>
                     <button type="button" onClick={addStagedVariant} disabled={!variantDraft.name.trim() || variantDraft.price === ''} className="rounded-sm bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-60">Add</button>
                   </div>
-                  <VariantStockEditor value={variantDraft.stock} onChange={(stock) => setVariantDraft({ ...variantDraft, stock })} productOptions={stockProductOptions} recipes={recipes} />
+                  <VariantStockEditor value={variantDraft.stock} onChange={(stock) => setVariantDraft({ ...variantDraft, stock })} productOptions={stockProductOptions} recipes={recipes} onRecipeCreated={addRecipe} />
                 </div>
               </div>
             )}
@@ -910,6 +911,7 @@ export default function MenuItems() {
           stockProductOptions={stockProductOptions}
           onClose={() => setVariantsFor(null)}
           onChanged={load}
+          onRecipeCreated={addRecipe}
         />
       )}
     </div>
@@ -976,9 +978,10 @@ type VariantsModalProps = {
   stockProductOptions: { value: string; label: string; hint?: string }[]
   onClose: () => void
   onChanged: () => Promise<void>
+  onRecipeCreated: (recipe: Recipe) => void
 }
 
-function VariantsModal({ item, recipes, stockProductOptions, onClose, onChanged }: VariantsModalProps) {
+function VariantsModal({ item, recipes, stockProductOptions, onClose, onChanged, onRecipeCreated }: VariantsModalProps) {
   const toast = useToast()
   const [variants, setVariants] = useState<Variant[]>([])
   const [loading, setLoading] = useState(true)
@@ -1090,7 +1093,7 @@ function VariantsModal({ item, recipes, stockProductOptions, onClose, onChanged 
 
   return (
     <div className="fixed inset-0 z-[55] flex items-center justify-center bg-black/60 p-4">
-      <div className="max-h-[88vh] w-full max-w-lg overflow-y-auto border-2 border-foreground/25 bg-card p-6 shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+      <div className="max-h-[88vh] w-full max-w-lg overflow-x-hidden overflow-y-auto border-2 border-foreground/25 bg-card p-6 shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
         <div className="-mx-6 -mt-6 flex items-start justify-between border-b-4 border-accent bg-muted/60 px-6 py-4">
           <div>
             <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">Variants</p>
@@ -1107,7 +1110,7 @@ function VariantsModal({ item, recipes, stockProductOptions, onClose, onChanged 
             <label className="text-xs font-medium">SKU<input value={draft.sku} onChange={(e) => setDraft({ ...draft, sku: e.target.value })} placeholder="opt." className="input mt-1" /></label>
             <button disabled={busy || !draft.name.trim() || draft.price === ''} className="rounded-sm bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-60">Add</button>
           </div>
-          <VariantStockEditor value={draft.stock} onChange={(stock) => setDraft({ ...draft, stock })} productOptions={stockProductOptions} recipes={recipes} />
+          <VariantStockEditor value={draft.stock} onChange={(stock) => setDraft({ ...draft, stock })} productOptions={stockProductOptions} recipes={recipes} onRecipeCreated={onRecipeCreated} />
         </form>
 
         <div className="mt-5 space-y-2">
@@ -1128,7 +1131,7 @@ function VariantsModal({ item, recipes, stockProductOptions, onClose, onChanged 
                       <button onClick={() => setEditingId(null)} className="rounded-sm border px-2.5 py-2 text-xs font-semibold hover:bg-muted">Cancel</button>
                     </div>
                   </div>
-                  <VariantStockEditor value={editDraft.stock} onChange={(stock) => setEditDraft({ ...editDraft, stock })} productOptions={stockProductOptions} recipes={recipes} />
+                  <VariantStockEditor value={editDraft.stock} onChange={(stock) => setEditDraft({ ...editDraft, stock })} productOptions={stockProductOptions} recipes={recipes} onRecipeCreated={onRecipeCreated} />
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
