@@ -18,6 +18,7 @@ type Dish = {
   name: string
   quantity: number
   recipeId: string | null
+  stockSource: string | null
   ingredients: { productId: string; name: string; quantity: number; unit: string; storeQty: number }[]
 }
 type Request = {
@@ -81,6 +82,7 @@ function DishList({
               <button type="button" onClick={() => onEditRecipe(dish.recipeId!)} className="inline-flex items-center gap-1 text-xs font-semibold text-secondary hover:underline"><LuPencil className="size-3" /> Edit recipe</button>
             )}
           </div>
+          {dish.stockSource && <p className="mt-0.5 text-[11px] font-medium text-muted-foreground">{dish.stockSource}</p>}
           {dish.ingredients.length === 0 ? (
             <p className="mt-1 text-xs italic text-muted-foreground">No stock ingredients</p>
           ) : (
@@ -143,7 +145,7 @@ export default function DispatchRequests() {
       rungUpBy: request.rungUpBy,
       requestedAt: request.requestedAt,
       note: request.note,
-      dishes: request.dishes.map((d) => ({ name: d.name, quantity: d.quantity, ingredients: d.ingredients.map((g) => ({ name: g.name, quantity: g.quantity, unit: g.unit })) })),
+      dishes: request.dishes.map((d) => ({ name: d.name, quantity: d.quantity, stockSource: d.stockSource, ingredients: d.ingredients.map((g) => ({ name: g.name, quantity: g.quantity, unit: g.unit })) })),
       items: request.items.map((i) => ({ name: i.productName, quantity: Number(i.requestedQty), unit: i.product?.unit ?? '' })),
     }
     try {
