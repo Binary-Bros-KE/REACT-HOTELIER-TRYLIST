@@ -68,6 +68,7 @@ type RevenueBreakdown = {
   unpaidValue?: number
   expensesOnly?: number
   salariesPaid?: number
+  inventoryConsumptionExpenses?: number
 }
 type TopItem = { kind?: 'MENU' | 'PRODUCT' | 'SERVICE' | 'OTHER'; name: string; variant?: string | null; qty: number; revenue: number }
 type SoldByKind = { kind: 'MENU' | 'PRODUCT' | 'SERVICE'; lines: number; qty: number; revenue: number }
@@ -173,7 +174,7 @@ function buildReportDoc(report: SalesReport, startHour: number): ReportDocData {
     generatedAt: new Date().toISOString(),
     cards: [
       { label: 'Total Revenue', value: formatKes(c.totalRevenue), hint: 'Everything sold, gross, before discounts' },
-      { label: 'Total Expenses', value: formatKes(c.totalExpenses), hint: 'Expenses + Salaries' },
+      { label: 'Total Expenses', value: formatKes(c.totalExpenses), hint: 'Expenses + salaries + consumed stock' },
       { label: 'Net Profit', value: formatKes(c.netProfit), hint: 'Sold after discounts, less cost of goods and expenses' },
       { label: 'Capital Invested', value: formatKes(c.capitalInvested), hint: 'Supplier payments - not an expense' },
       { label: 'POS Transactions', value: String(c.transactions) },
@@ -492,10 +493,10 @@ export default function Reports() {
                   <span className="font-semibold">{formatKes(report.revenueBreakdown.totalSoldValue ?? 0)}</span> total revenue
                   {' − '}<span className="font-semibold">{formatKes(report.revenueBreakdown.discountsAll ?? 0)}</span> discounts
                   {' − '}<span className="font-semibold">{formatKes(report.revenueBreakdown.cogs)}</span> cost of goods sold
-                  {' − '}<span className="font-semibold">{formatKes(report.cards.totalExpenses)}</span> expenses and salaries
+                  {' − '}<span className="font-semibold">{formatKes(report.cards.totalExpenses)}</span> expenses, salaries and consumed stock
                   {' = '}<span className="font-semibold text-secondary">{formatKes(report.cards.netProfit)}</span>
                 </p>
-                <p className="mt-1 text-xs text-muted-foreground">Total revenue is gross sales. Net profit is what the business keeps after discounts, cost of goods and expenses.{cogsNote ? ` ${cogsNote}` : ''}</p>
+                <p className="mt-1 text-xs text-muted-foreground">Total revenue is gross sales. Net profit is what the business keeps after discounts, cost of goods, expenses, salaries and stock consumed outside sales.{cogsNote ? ` ${cogsNote}` : ''}</p>
               </div>
 
               <div>
@@ -503,6 +504,7 @@ export default function Reports() {
                 <p className="mb-2 text-xs text-muted-foreground">
                   <span className="font-semibold">{formatKes(report.revenueBreakdown.expensesOnly ?? report.cards.totalExpenses)}</span> day-to-day expenses (below)
                   {' + '}<span className="font-semibold">{formatKes(report.revenueBreakdown.salariesPaid ?? 0)}</span> salaries paid
+                  {' + '}<span className="font-semibold">{formatKes(report.revenueBreakdown.inventoryConsumptionExpenses ?? 0)}</span> consumed stock
                 </p>
                 {report.expensesByCategory.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No expenses recorded this period.</p>
