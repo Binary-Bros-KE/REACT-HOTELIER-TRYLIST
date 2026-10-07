@@ -71,6 +71,7 @@ const InventoryWorkspace = lazy(() => import("@/pages/InventoryWorkspace"));
 const Products = lazy(() => import("@/pages/Products"));
 const EmployeeSalaries = lazy(() => import("@/pages/EmployeeSalaries"));
 const Reports = lazy(() => import("@/pages/Reports"));
+const CreditDebtorsReport = lazy(() => import("@/pages/CreditDebtorsReport"));
 const ExpensesReport = lazy(() => import("@/pages/ExpensesReport"));
 const SalariesReport = lazy(() => import("@/pages/SalariesReport"));
 const PurchasesReport = lazy(() => import("@/pages/PurchasesReport"));
@@ -232,6 +233,7 @@ function App() {
         <Route path="/reception/product-stock" element={<ReceptionProductStock />} />
         <Route path="/housekeeping/product-stock" element={<ReceptionProductStock />} />
         <Route path="/reports" element={<Reports />} />
+        <Route path="/reports/credit-debtors" element={<CreditDebtorsReport />} />
         <Route path="/reports/inventory-report" element={<InventoryOverview />} />
         <Route path="/reports/products-report" element={<ProductsReport />} />
         <Route path="/reports/rooms-report" element={<RoomsReport />} />
