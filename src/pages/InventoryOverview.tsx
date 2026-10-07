@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils'
 import { packAndUnit } from '@/components/ui/PackQtyInput'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import PrintReportButton from '@/components/documents/PrintReportButton'
-import type { ReportDocData, ReportSection } from '@/components/documents/pdf'
+import type { ReportDocData, ReportRow, ReportSection } from '@/components/documents/pdf'
 import { productTagLabel } from '@/lib/productTags'
 
 type Location = { id: string; name: string }
@@ -40,8 +40,22 @@ const CHART_COLORS = ['#2563eb', '#16a34a', '#db2777', '#d97706', '#0891b2', '#7
 
 const TOP_PRODUCTS_PER_LOCATION = 25
 
-const reportTableColumns: ReportSection['columns'] = [{ label: 'Product' }, { label: 'SKU' }, { label: 'Category' }, { label: 'Qty', align: 'right' }, { label: 'Unit Cost', align: 'right' }, { label: 'Value', align: 'right' }]
-const reportRow = (p: StockProduct) => [p.name, p.sku ?? '-', p.category ?? '-', stockQty(p), formatKes(p.unitCost), formatKes(p.value)]
+const reportTableColumns: ReportSection['columns'] = [{ label: 'Product' }, { label: 'Qty', align: 'right' }, { label: 'Unit Cost', align: 'right' }, { label: 'Value', align: 'right' }]
+const reportRow = (p: StockProduct) => [p.name, stockQty(p), formatKes(p.unitCost), formatKes(p.value)]
+
+function productRowsByCategory(products: StockProduct[]): ReportRow[] {
+  const rows: ReportRow[] = []
+  let current = ''
+  for (const product of [...products].sort((a, b) => (a.category ?? 'Uncategorised').localeCompare(b.category ?? 'Uncategorised') || a.name.localeCompare(b.name))) {
+    const category = product.category ?? 'Uncategorised'
+    if (category !== current) {
+      current = category
+      rows.push({ kind: 'group', label: category })
+    }
+    rows.push(reportRow(product))
+  }
+  return rows
+}
 
 function rangeLabelFor(overview: Overview) {
   return overview.mode === 'live' ? 'Live stock snapshot' : `As of ${new Date(overview.asOfDate).toLocaleDateString('en-KE', { day: 'numeric', month: 'long', year: 'numeric' })}`
@@ -63,8 +77,9 @@ function buildSectionDoc(overview: Overview, loc: LocationOverview): ReportDocDa
     ],
     sections: [{
       title: `${loc.name} products (${productTagLabel(loc.type)})`,
+      compact: true,
       columns: reportTableColumns,
-      rows: loc.products.map(reportRow),
+      rows: productRowsByCategory(loc.products),
     }],
   }
 }
@@ -90,8 +105,9 @@ function buildReportDoc(overview: Overview): ReportDocData {
         return {
           title: `${loc.name} - ${loc.lowStockCount} low, ${loc.outOfStockCount} out, ${formatKes(loc.stockValue)} total`,
           note: loc.products.length > TOP_PRODUCTS_PER_LOCATION ? `Top ${TOP_PRODUCTS_PER_LOCATION} of ${loc.products.length} products by value.` : undefined,
-          columns: [{ label: 'Product' }, { label: 'SKU' }, { label: 'Category' }, { label: 'Qty', align: 'right' }, { label: 'Unit Cost', align: 'right' }, { label: 'Value', align: 'right' }],
-          rows: top.map(reportRow),
+          compact: true,
+          columns: reportTableColumns,
+          rows: productRowsByCategory(top),
         }
       }),
     ],

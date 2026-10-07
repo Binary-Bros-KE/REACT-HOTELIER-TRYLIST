@@ -19,7 +19,7 @@ import type { CommercialDocData } from './CommercialDocument'
 import type { ReportDocData } from './ReportDocument'
 
 export type { DocProfile }
-export type { ReportDocData, ReportCard, ReportColumn, ReportSection } from './ReportDocument'
+export type { ReportDocData, ReportCard, ReportColumn, ReportRow, ReportSection } from './ReportDocument'
 export type { PayslipDocData } from './PayslipDocument'
 export type DocKind = 'requisition' | 'purchase' | 'stock-transfer' | 'stock-receipt' | 'group-invoice' | 'commercial-document' | 'report' | 'payslip'
 export type DocData = RequisitionDocData | PurchaseOrderDocData | StockTransferDocData | StockReceiptDocData | GroupInvoiceDocData | CommercialDocData | ReportDocData | PayslipDocData

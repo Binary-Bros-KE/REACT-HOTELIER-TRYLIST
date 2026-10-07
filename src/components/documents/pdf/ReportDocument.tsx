@@ -13,7 +13,8 @@ import { Footer } from './parts'
 
 export type ReportCard = { label: string; value: string; hint?: string }
 export type ReportColumn = { label: string; align?: 'left' | 'right' }
-export type ReportSection = { title: string; note?: string; columns: ReportColumn[]; rows: (string | number)[][] }
+export type ReportRow = (string | number)[] | { kind: 'group'; label: string }
+export type ReportSection = { title: string; note?: string; compact?: boolean; columns: ReportColumn[]; rows: ReportRow[] }
 export type ReportDocData = {
   reportTitle: string
   kicker?: string
@@ -43,10 +44,14 @@ const rs = StyleSheet.create({
   th: { flexDirection: 'row', backgroundColor: palette.shade, borderBottomWidth: 1, borderBottomColor: palette.line },
   thText: { flex: 1, fontSize: 7, fontFamily: 'Helvetica-Bold', color: palette.muted, letterSpacing: 0.5, paddingVertical: 5, paddingHorizontal: 6, borderRightWidth: 1, borderRightColor: palette.hairline },
   thTextLast: { flex: 1, fontSize: 7, fontFamily: 'Helvetica-Bold', color: palette.muted, letterSpacing: 0.5, paddingVertical: 5, paddingHorizontal: 6 },
+  thTextCompact: { fontSize: 6.4, paddingVertical: 3.2, paddingHorizontal: 4 },
   tr: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: palette.hairline },
   trAlt: { backgroundColor: '#fafafa' },
   td: { flex: 1, fontSize: 8, paddingVertical: 4.5, paddingHorizontal: 6, borderRightWidth: 1, borderRightColor: palette.hairline },
   tdLast: { flex: 1, fontSize: 8, paddingVertical: 4.5, paddingHorizontal: 6 },
+  tdCompact: { fontSize: 7.1, paddingVertical: 2.5, paddingHorizontal: 4 },
+  groupRow: { backgroundColor: '#eef2f7', borderBottomWidth: 1, borderBottomColor: palette.hairline },
+  groupText: { fontSize: 6.8, fontFamily: 'Helvetica-Bold', color: palette.navy, letterSpacing: 0.7, paddingVertical: 3.2, paddingHorizontal: 4 },
 })
 
 function ReportHeader({ profile, data }: { profile: DocProfile; data: ReportDocData }) {
@@ -88,6 +93,7 @@ function Cards({ cards }: { cards: ReportCard[] }) {
 
 function SectionTable({ section }: { section: ReportSection }) {
   if (section.rows.length === 0) return null
+  const compact = section.compact === true
   return (
     <View style={rs.sectionWrap}>
       <Text style={rs.sectionTitle}>{section.title}</Text>
@@ -95,20 +101,25 @@ function SectionTable({ section }: { section: ReportSection }) {
       <View style={rs.table}>
         <View style={rs.th} fixed>
           {section.columns.map((col, i) => (
-            <Text key={i} style={[i === section.columns.length - 1 ? rs.thTextLast : rs.thText, col.align === 'right' ? { textAlign: 'right' } : undefined]}>
+            <Text key={i} style={[i === section.columns.length - 1 ? rs.thTextLast : rs.thText, compact ? rs.thTextCompact : undefined, col.align === 'right' ? { textAlign: 'right' } : undefined]}>
               {col.label.toUpperCase()}
             </Text>
           ))}
         </View>
-        {section.rows.map((row, ri) => (
-          <View key={ri} style={[rs.tr, ri % 2 === 1 ? rs.trAlt : undefined]} wrap={false}>
-            {row.map((cell, ci) => (
-              <Text key={ci} style={[ci === row.length - 1 ? rs.tdLast : rs.td, section.columns[ci]?.align === 'right' ? { textAlign: 'right' } : undefined]}>
-                {String(cell)}
-              </Text>
-            ))}
-          </View>
-        ))}
+        {section.rows.map((row, ri) => {
+          if (!Array.isArray(row)) {
+            return <View key={ri} style={rs.groupRow} wrap={false}><Text style={rs.groupText}>{row.label.toUpperCase()}</Text></View>
+          }
+          return (
+            <View key={ri} style={[rs.tr, ri % 2 === 1 ? rs.trAlt : undefined]} wrap={false}>
+              {row.map((cell, ci) => (
+                <Text key={ci} style={[ci === row.length - 1 ? rs.tdLast : rs.td, compact ? rs.tdCompact : undefined, section.columns[ci]?.align === 'right' ? { textAlign: 'right' } : undefined]}>
+                  {String(cell)}
+                </Text>
+              ))}
+            </View>
+          )
+        })}
       </View>
     </View>
   )
