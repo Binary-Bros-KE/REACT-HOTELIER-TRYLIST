@@ -12,11 +12,14 @@ import PageBanner from '@/components/ui/PageBanner'
 import StatCard from '@/components/ui/StatCard'
 import StatusPill from '@/components/ui/StatusPill'
 import RecipeEditModal, { type RecipeDetail, type RecipeProduct } from '@/components/recipes/RecipeEditModal'
+import VariantStockEditor, { stockFromVariant, stockPayload, type RecipeInfo, type VariantStock } from '@/components/menu/VariantStockEditor'
 
 type Item = { id: string; productId: string; productName: string; requestedQty: string | number; dispatchedQty: string | number | null; storeQty?: number; product?: { unit: string } }
 type Dish = {
   name: string
   quantity: number
+  menuItemId: string | null
+  variantId: string | null
   recipeId: string | null
   stockSource: string | null
   ingredients: { productId: string; name: string; quantity: number; unit: string; storeQty: number }[]
@@ -41,6 +44,19 @@ type Request = {
 }
 type Tab = 'pending' | 'history'
 type RecipeEdit = { requestId: string; recipe: RecipeDetail; products: RecipeProduct[] }
+type Variant = {
+  id: string
+  menuItemId: string
+  name: string
+  sku: string | null
+  price: string
+  stockProductId: string | null
+  stockQtyPerUnit: string | null
+  recipeId: string | null
+  recipe: RecipeInfo | null
+  ingredientOverrides: { productId: string; quantity: string | number; isRemoved: boolean; product: { id: string; name: string; unit: string } }[]
+}
+type VariantEdit = { requestId: string; variant: Variant; stock: VariantStock; recipes: RecipeInfo[]; products: RecipeProduct[] }
 
 const POLL_MS = 10_000
 const qty = (value: string | number) => Number(value).toLocaleString('en-KE', { maximumFractionDigits: 3 })
@@ -58,12 +74,12 @@ function DishList({
   dishes,
   requesting,
   sending,
-  onEditRecipe,
+  onEditDishStock,
 }: {
   dishes: Dish[]
   requesting: boolean
   sending?: { quantities: Record<string, string>; onChange: (productId: string, value: string) => void }
-  onEditRecipe?: (recipeId: string) => void
+  onEditDishStock?: (dish: Dish) => void
 }) {
   // What the whole request asks of each product, across every dish.
   const totalAsked = useMemo(() => {
@@ -78,8 +94,8 @@ function DishList({
         <div key={index} className="border-l-4 border-accent pl-3">
           <div className="flex items-center justify-between gap-2">
             <p className="font-semibold">{qty(dish.quantity)} × {dish.name}</p>
-            {onEditRecipe && dish.recipeId && requesting && (
-              <button type="button" onClick={() => onEditRecipe(dish.recipeId!)} className="inline-flex items-center gap-1 text-xs font-semibold text-secondary hover:underline"><LuPencil className="size-3" /> Edit recipe</button>
+            {onEditDishStock && dish.recipeId && requesting && (
+              <button type="button" onClick={() => onEditDishStock(dish)} className="inline-flex items-center gap-1 text-xs font-semibold text-secondary hover:underline"><LuPencil className="size-3" /> Edit stock</button>
             )}
           </div>
           {dish.stockSource && <p className="mt-0.5 text-[11px] font-medium text-muted-foreground">{dish.stockSource}</p>}
@@ -131,6 +147,7 @@ export default function DispatchRequests() {
   const [dispatching, setDispatching] = useState<Request | null>(null)
   const [rejecting, setRejecting] = useState<Request | null>(null)
   const [recipeEdit, setRecipeEdit] = useState<RecipeEdit | null>(null)
+  const [variantEdit, setVariantEdit] = useState<VariantEdit | null>(null)
   const seen = useState(() => ({ ids: null as Set<string> | null }))[0]
 
   // Manual print: this device's thermal printer if it has one, else the browser print sheet.
@@ -178,24 +195,41 @@ export default function DispatchRequests() {
     return () => window.clearInterval(timer)
   }, [load])
 
-  // Opens a dish's recipe for correction, from the card or the dispatch dialog.
-  async function openRecipe(requestId: string, recipeId: string) {
+  // Opens the stock setup that actually drives this dish. Variant recipes can
+  // have invisible overrides, so editing only the base recipe would lie.
+  async function openDishStock(requestId: string, dish: Dish) {
     try {
-      const [r, p] = await Promise.all([api<{ recipe: RecipeDetail }>(`/recipes/${recipeId}`), api<{ products: RecipeProduct[] }>('/products')])
+      if (dish.variantId && dish.menuItemId) {
+        const [v, r, p] = await Promise.all([
+          api<{ variants: Variant[] }>(`/menu-items/${dish.menuItemId}/variants`),
+          api<{ recipes: RecipeInfo[] }>('/recipes'),
+          api<{ products: RecipeProduct[] }>('/products?active=true'),
+        ])
+        const variant = v.variants.find((row) => row.id === dish.variantId)
+        if (!variant) throw new Error('Variant stock setup was not found')
+        setVariantEdit({ requestId, variant, stock: stockFromVariant(variant), recipes: r.recipes, products: p.products })
+        return
+      }
+      if (!dish.recipeId) return
+      const [r, p] = await Promise.all([api<{ recipe: RecipeDetail }>(`/recipes/${dish.recipeId}`), api<{ products: RecipeProduct[] }>('/products')])
       setRecipeEdit({ requestId, recipe: r.recipe, products: p.products })
     } catch (cause) { toast.error(cause instanceof Error ? cause.message : 'Could not open the recipe') }
   }
 
-  // A corrected recipe rebuilds the waiting request from the order, so the store sees the new list.
-  async function recipeSaved() {
-    if (!recipeEdit) return
-    const requestId = recipeEdit.requestId
+  async function refreshAfterStockEdit(requestId: string) {
     setRecipeEdit(null)
+    setVariantEdit(null)
     try {
       const r = await api<{ request: Request }>(`/dispatch-requests/${requestId}/refresh`, { method: 'POST' })
       setDispatching((current) => (current && current.id === requestId ? r.request : current))
     } catch (cause) { toast.error(cause instanceof Error ? cause.message : 'Could not refresh the request') }
     void load(true)
+  }
+
+  // A corrected recipe rebuilds the waiting request from the order, so the store sees the new list.
+  async function recipeSaved() {
+    if (!recipeEdit) return
+    await refreshAfterStockEdit(recipeEdit.requestId)
   }
 
   const pendingCount = tab === 'pending' ? requests.length : null
@@ -238,7 +272,7 @@ export default function DispatchRequests() {
                   <DishList
                     dishes={request.dishes}
                     requesting={waiting}
-                    onEditRecipe={waiting ? (recipeId) => void openRecipe(request.id, recipeId) : undefined}
+                    onEditDishStock={waiting ? (dish) => void openDishStock(request.id, dish) : undefined}
                   />
                   {!waiting && request.dishes.length === 0 && <p className="mt-3 text-sm text-muted-foreground">No dishes recorded.</p>}
                   <p className="mt-3 text-xs text-muted-foreground">
@@ -257,14 +291,15 @@ export default function DispatchRequests() {
           </div>
         )}
 
-      {dispatching && <DispatchModal request={dispatching} onClose={() => setDispatching(null)} onRecipe={(recipeId) => void openRecipe(dispatching.id, recipeId)} onDone={() => { setDispatching(null); toast.success('Dispatched to the kitchen'); void load(true) }} />}
+      {dispatching && <DispatchModal request={dispatching} onClose={() => setDispatching(null)} onDishStock={(dish) => void openDishStock(dispatching.id, dish)} onDone={() => { setDispatching(null); toast.success('Dispatched to the kitchen'); void load(true) }} />}
       {rejecting && <RejectModal request={rejecting} onClose={() => setRejecting(null)} onDone={() => { setRejecting(null); toast.success('Request rejected'); void load(true) }} />}
       {recipeEdit && <RecipeEditModal recipe={recipeEdit.recipe} products={recipeEdit.products} onClose={() => setRecipeEdit(null)} onSaved={() => void recipeSaved()} />}
+      {variantEdit && <VariantStockModal edit={variantEdit} onChange={(stock) => setVariantEdit({ ...variantEdit, stock })} onClose={() => setVariantEdit(null)} onSaved={(requestId) => void refreshAfterStockEdit(requestId)} />}
     </div>
   )
 }
 
-function DispatchModal({ request, onClose, onDone, onRecipe }: { request: Request; onClose: () => void; onDone: () => void; onRecipe: (recipeId: string) => void }) {
+function DispatchModal({ request, onClose, onDone, onDishStock }: { request: Request; onClose: () => void; onDone: () => void; onDishStock: (dish: Dish) => void }) {
   const toast = useToast()
   // Quantities are per product. A recipe correction can change the list, so anything not yet typed defaults to what was asked.
   const [quantities, setQuantities] = useState<Record<string, string>>({})
@@ -298,9 +333,50 @@ function DispatchModal({ request, onClose, onDone, onRecipe }: { request: Reques
     <ModalShell kicker={request.requestNo} title={`Dispatch for order #${request.orderNumber}`} subtitle={`${request.fromLocation.name} → ${request.toLocation.name}${request.rungUpBy ? ` · rung up by ${request.rungUpBy}` : ''}`} onClose={onClose} size="md"
       footer={<Button onClick={() => void save()} disabled={!anything || saving}>{saving ? 'Dispatching…' : 'Dispatch to kitchen'}</Button>}>
       <div className="space-y-3 p-5">
-        <DishList dishes={request.dishes} requesting sending={sending} onEditRecipe={onRecipe} />
+        <DishList dishes={request.dishes} requesting sending={sending} onEditDishStock={onDishStock} />
         {partial && <p className="text-xs text-warning">You are sending less than was asked. The kitchen may not be able to finish the order.</p>}
         <p className="text-xs text-muted-foreground">This takes the sent items out of {request.fromLocation.name} and is recorded in the stock ledger.</p>
+      </div>
+    </ModalShell>
+  )
+}
+
+function VariantStockModal({ edit, onChange, onClose, onSaved }: { edit: VariantEdit; onChange: (stock: VariantStock) => void; onClose: () => void; onSaved: (requestId: string) => void }) {
+  const toast = useToast()
+  const [saving, setSaving] = useState(false)
+  const productOptions = useMemo(() => edit.products.map((p) => ({ value: p.id, label: p.name, hint: p.unit })), [edit.products])
+
+  async function save() {
+    setSaving(true)
+    try {
+      await api(`/menu-items/${edit.variant.menuItemId}/variants/${edit.variant.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          name: edit.variant.name,
+          price: Number(edit.variant.price),
+          sku: edit.variant.sku ?? undefined,
+          ...stockPayload(edit.stock),
+        }),
+      })
+      toast.success('Variant stock updated.')
+      onSaved(edit.requestId)
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : 'Could not update variant stock')
+      setSaving(false)
+    }
+  }
+
+  return (
+    <ModalShell
+      kicker="Edit variant stock"
+      title={edit.variant.name}
+      subtitle="This dish uses variant-specific ingredients. These changes affect this variant, then the waiting dispatch request is rebuilt."
+      onClose={onClose}
+      size="md"
+      footer={<Button onClick={() => void save()} disabled={saving}>{saving ? 'Saving...' : 'Save changes'}</Button>}
+    >
+      <div className="p-5">
+        <VariantStockEditor value={edit.stock} onChange={onChange} productOptions={productOptions} recipes={edit.recipes} />
       </div>
     </ModalShell>
   )
