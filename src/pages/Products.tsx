@@ -28,7 +28,7 @@ import SearchableSelect from '@/components/ui/SearchableSelect'
 import { PRODUCT_TAG_OPTIONS, productTagLabel } from '@/lib/productTags'
 
 type Category = { id: string; name: string; level: number; parentId: string | null }
-type Location = { id: string; name: string; type?: string }
+type Location = { id: string; name: string; type?: string; isActive?: boolean }
 type TrackingMode = 'PER_SALE' | 'ISSUE_ONLY' | 'PERIODIC_COUNT'
 type StockByLocation = { locationId: string; locationName: string; quantity: string }
 type Product = {
@@ -80,6 +80,7 @@ type Movement = { id: string; type: MovementType; location: { id: string; name: 
 // convention is enforced both here (min="0") and again server-side.
 type ManualMovementType = 'PURCHASE' | 'RETURN' | 'DAMAGE_LOSS' | 'ADJUSTMENT' | 'OPENING_STOCK'
 const MANUAL_MOVEMENT_TYPES: ManualMovementType[] = ['PURCHASE', 'RETURN', 'DAMAGE_LOSS', 'ADJUSTMENT', 'OPENING_STOCK']
+const PRODUCT_TAG_VALUES = new Set<string>(PRODUCT_TAG_OPTIONS.map((option) => option.value))
 const MANUAL_MOVEMENT_HINTS: Record<ManualMovementType, string> = {
   PURCHASE: 'Stock bought in outside the normal Purchases/Goods-Receipt flow — adds to stock.',
   RETURN: 'Stock physically handed back in (e.g. a customer return) — adds to stock.',
@@ -226,6 +227,30 @@ export default function Products() {
     { value: '', label: 'All categories' },
     ...categories.map((category) => ({ value: category.id, label: categoryLabel(category) })),
   ], [categories, categoryLabel])
+  const operationOptions = useMemo(() => {
+    const seen = new Set<string>()
+    return locations
+      .filter((location) => location.isActive !== false && location.type)
+      .map((location) => ({ location, tag: location.type!.toUpperCase() }))
+      .filter(({ tag }) => PRODUCT_TAG_VALUES.has(tag))
+      .filter(({ tag }) => {
+        if (seen.has(tag)) return false
+        seen.add(tag)
+        return true
+      })
+      .map(({ location, tag }) => ({ value: tag, label: location.name, hint: productTagLabel(tag) }))
+  }, [locations])
+  const operationFilterOptions = useMemo(() => [{ value: '', label: 'All operations' }, ...operationOptions], [operationOptions])
+  const formOperationOptions = useMemo(() => {
+    const known = new Set(operationOptions.map((option) => option.value))
+    const savedOnly = form.tags
+      .filter((tag) => !known.has(tag))
+      .map((tag) => ({ value: tag, label: productTagLabel(tag), hint: 'Saved on product' }))
+    return [...operationOptions, ...savedOnly]
+  }, [form.tags, operationOptions])
+  useEffect(() => {
+    if (tagFilter && locations.length > 0 && !operationOptions.some((option) => option.value === tagFilter)) setTagFilter('')
+  }, [locations.length, operationOptions, tagFilter])
   const packSizeNum = Number(form.packSize) || 0
 
   function openCreate() {
@@ -433,48 +458,46 @@ export default function Products() {
       )}
 
       <section className="mt-6 overflow-hidden rounded-sm border bg-card shadow-sm">
-        <div className="flex flex-col gap-3 border-b p-4 sm:flex-row sm:items-center">
-          <label className="relative flex-1">
+        <div className="border-b p-4">
+          <div className="grid gap-3 lg:grid-cols-[minmax(260px,1.5fr)_minmax(200px,1fr)_minmax(160px,0.8fr)_minmax(190px,0.9fr)]">
+          <label className="relative">
             <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, SKU, barcode, brand…" className="w-full rounded-sm border bg-background py-2.5 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
           </label>
-          <div className="sm:w-64">
-            <SearchableSelect
-              value={categoryFilter}
-              onChange={setCategoryFilter}
-              options={categoryOptions}
-              placeholder="All categories"
-              searchPlaceholder="Search categories..."
-              emptyText="No categories match."
-            />
+          <SearchableSelect
+            value={categoryFilter}
+            onChange={setCategoryFilter}
+            options={categoryOptions}
+            placeholder="All categories"
+            searchPlaceholder="Search categories..."
+            emptyText="No categories match."
+          />
+          <SearchableSelect
+            value={uomFilter}
+            onChange={setUomFilter}
+            options={units.map((u) => ({ value: u.id, label: u.name }))}
+            placeholder="All units"
+            searchPlaceholder="Search units..."
+            emptyText="No units match."
+          />
+          <SearchableSelect
+            value={tagFilter}
+            onChange={setTagFilter}
+            options={operationFilterOptions}
+            placeholder="All operations"
+            searchPlaceholder="Search operations..."
+            emptyText="No operations match."
+          />
           </div>
-          <div className="sm:w-48">
-            <SearchableSelect
-              value={uomFilter}
-              onChange={setUomFilter}
-              options={units.map((u) => ({ value: u.id, label: u.name }))}
-              placeholder="All units"
-              searchPlaceholder="Search units..."
-              emptyText="No units match."
-            />
-          </div>
-          <div className="sm:w-52">
-            <SearchableSelect
-              value={tagFilter}
-              onChange={setTagFilter}
-              options={[{ value: '', label: 'All operations' }, ...PRODUCT_TAG_OPTIONS]}
-              placeholder="All operations"
-              searchPlaceholder="Search operations..."
-              emptyText="No operations match."
-            />
-          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-3">
           <label className="flex items-center gap-2 rounded-sm border bg-background px-3 py-2.5 text-sm font-medium">
             <input type="checkbox" checked={lowStockOnly} onChange={(e) => setLowStockOnly(e.target.checked)} className="size-4 accent-secondary" />
             Low stock only
           </label>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2 sm:ml-auto">
             <ActionButton tone="neutral" icon={<LuRuler />} onClick={() => setShowUnits(true)}>Manage UOM</ActionButton>
             <ActionButton tone="primary" icon={<LuPlus />} onClick={openCreate}>Add product</ActionButton>
+          </div>
           </div>
         </div>
 
@@ -744,7 +767,7 @@ export default function Products() {
             <FieldGroup title="Operations">
               <p className="text-xs text-muted-foreground sm:col-span-2">Which operations this product belongs to. It shows in each one's product tab and in that section of the inventory report. A product can belong to several, for example a soda in both Bar and Restaurant.</p>
               <div className="flex flex-wrap gap-2 sm:col-span-2">
-                {PRODUCT_TAG_OPTIONS.map((option) => {
+                {formOperationOptions.map((option) => {
                   const on = form.tags.includes(option.value)
                   return (
                     <button
