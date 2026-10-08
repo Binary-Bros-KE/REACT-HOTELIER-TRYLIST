@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { LuChevronLeft, LuChevronRight, LuLogOut, LuRefreshCw, LuX } from 'react-icons/lu'
+import { LuChevronLeft, LuChevronRight, LuLogOut, LuRefreshCw, LuSearch, LuX } from 'react-icons/lu'
 import { IoPersonCircleSharp } from 'react-icons/io5'
 import { navigation, navItemAllowed, navItemMatchesExactly, sectionModuleEnabled, type PermissionSection } from '@/config/navigation'
 import { cn } from '@/lib/utils'
@@ -26,6 +26,7 @@ type SidebarProps = {
 export default function Sidebar({ className, mobile = false, onNavigate }: SidebarProps) {
   const [collapsedState, setCollapsed] = useState(false)
   const [housekeepingBadge, setHousekeepingBadge] = useState(0)
+  const [navQuery, setNavQuery] = useState('')
   const collapsed = mobile ? false : collapsedState
   const dispatch = useAppDispatch()
   const navigate = useNavigate()
@@ -37,10 +38,26 @@ export default function Sidebar({ className, mobile = false, onNavigate }: Sideb
   const allowedSections = useAppSelector((s) => s.auth.user?.role?.allowedSections) ?? DEFAULT_SECTIONS
   const permissions = useAppSelector((s) => s.auth.user?.role?.permissions) ?? []
   const moduleKeys = useAppSelector((s) => s.tenant.moduleKeys)
-  const visibleNavigation = navigation
-    .filter((group) => sectionModuleEnabled(group.section, moduleKeys))
-    .map((group) => ({ ...group, items: group.items.filter((item) => navItemAllowed(item, allowedSections.includes(group.section), permissions)) }))
-    .filter((group) => group.items.length > 0)
+  const allowedNavigation = useMemo(
+    () => navigation
+      .filter((group) => sectionModuleEnabled(group.section, moduleKeys))
+      .map((group) => ({ ...group, items: group.items.filter((item) => navItemAllowed(item, allowedSections.includes(group.section), permissions)) }))
+      .filter((group) => group.items.length > 0),
+    [allowedSections, moduleKeys, permissions],
+  )
+  const visibleNavigation = useMemo(() => {
+    const query = navQuery.trim().toLowerCase()
+    if (!query) return allowedNavigation
+    return allowedNavigation
+      .map((group) => {
+        const groupMatches = group.label.toLowerCase().includes(query)
+        return {
+          ...group,
+          items: groupMatches ? group.items : group.items.filter((item) => `${group.label} ${item.label}`.toLowerCase().includes(query)),
+        }
+      })
+      .filter((group) => group.items.length > 0)
+  }, [allowedNavigation, navQuery])
   const canSeeHousekeepingTasks = useMemo(() => visibleNavigation.some((group) => group.items.some((item) => item.href === '/housekeeping')), [visibleNavigation])
   const lastHousekeepingBadge = useRef<number | null>(null)
 
@@ -147,9 +164,45 @@ export default function Sidebar({ className, mobile = false, onNavigate }: Sideb
         )}
       </div>
 
+      <AnimatePresence initial={false}>
+        {!collapsed && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.15 }}
+            className="shrink-0 overflow-hidden border-b border-sidebar-border px-3 py-3"
+          >
+            <label className="relative block">
+              <LuSearch className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-sidebar-muted" />
+              <input
+                value={navQuery}
+                onChange={(event) => setNavQuery(event.target.value)}
+                placeholder="Search tabs"
+                className="h-9 w-full rounded-sm border border-sidebar-border bg-sidebar-accent/70 pl-9 pr-8 text-[13px] text-white outline-none transition-colors placeholder:text-sidebar-muted focus:border-[color-mix(in_srgb,var(--primary)_40%,white)] focus:bg-sidebar-accent"
+              />
+              {navQuery && (
+                <button
+                  type="button"
+                  onClick={() => setNavQuery('')}
+                  aria-label="Clear sidebar search"
+                  className="absolute right-2 top-1/2 flex size-5 -translate-y-1/2 items-center justify-center rounded-sm text-sidebar-muted transition-colors hover:bg-sidebar hover:text-white"
+                >
+                  <LuX className="size-3.5" />
+                </button>
+              )}
+            </label>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Nav */}
       <nav className="scrollbar-none flex-1 overflow-y-auto overflow-x-hidden px-3 py-4">
-        {visibleNavigation.map((group) => (
+        {visibleNavigation.length === 0 && !collapsed ? (
+          <div className="px-3 py-8 text-center text-xs font-medium text-sidebar-muted">
+            No tabs found.
+          </div>
+        ) : visibleNavigation.map((group) => (
           <div key={group.label} className="mb-5 last:mb-0">
             <AnimatePresence initial={false}>
               {!collapsed && (
