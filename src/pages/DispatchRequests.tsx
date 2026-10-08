@@ -81,13 +81,16 @@ function buildDishAllocations(dishes: Dish[]) {
     dish.ingredients.forEach((ingredient) => {
       const used = consumed.get(ingredient.productId) ?? 0
       const available = Math.max(ingredient.storeQty - used, 0)
-      const defaultSend = Math.min(ingredient.quantity, available)
+      // With nothing left to split, don't silently pre-fill zero as if that were already decided —
+      // show what was asked, flagged short, so the storekeeper makes that call themselves. The
+      // server still won't send more than the store actually holds, whatever is left in the box.
+      const defaultSend = available > 0 ? Math.min(ingredient.quantity, available) : ingredient.quantity
       rows.set(dishRowKey(dish, dishIndex, ingredient.productId), {
         available,
         defaultSend,
         short: available + STOCK_EPSILON < ingredient.quantity,
       })
-      consumed.set(ingredient.productId, used + defaultSend)
+      consumed.set(ingredient.productId, used + Math.min(defaultSend, available))
     })
   })
   return rows
@@ -371,7 +374,12 @@ function DispatchModal({ request, onClose, onDone, onDishStock }: { request: Req
       const items = request.items.map((i) => ({ itemId: i.id, quantity: sendTotals.get(i.productId) || 0 }))
       await api(`/dispatch-requests/${request.id}/dispatch`, { method: 'POST', body: JSON.stringify({ items }) })
       onDone()
-    } catch (cause) { toast.error(cause instanceof Error ? cause.message : 'Could not dispatch'); setSaving(false) }
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : 'Could not dispatch')
+      // The list has moved on since this modal opened: there's nothing to retry against here.
+      if (cause instanceof Error && (cause as Error & { code?: string }).code === 'REQUEST_STALE') onClose()
+      setSaving(false)
+    }
   }
 
   // The sending view shows the same quantities the card did, plus the send column.
