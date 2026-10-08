@@ -194,7 +194,30 @@ function RevenueDashboard({ variant, pickerSlot }: { variant: 'operations' | 'fi
             <h2 className="font-semibold">Complementary Host Impact</h2>
             <p className="text-xs text-muted-foreground">Guest profit compared with the stock cost given to hosts.</p>
           </header>
-          <div className="overflow-x-auto">
+          <div className="grid gap-3 p-4 md:hidden">
+            {report.complimentarySessions.slice(0, 6).map((session) => {
+              const pct = Math.max(0, Math.min(100, session.coverPercent))
+              return (
+                <article key={session.id} className="border bg-background p-3 text-sm shadow-sm">
+                  <p className="font-semibold">{session.title}</p>
+                  <p className="text-xs text-muted-foreground">{session.hostName ?? 'Host'}{session.startsAt ? ` - ${new Date(session.startsAt).toLocaleString('en-KE')}` : ''}</p>
+                  <div className="mt-2.5 grid grid-cols-2 gap-2">
+                    <div><span className="block text-xs text-muted-foreground">Comp cost</span><span className="font-semibold tabular-nums">{formatKes(session.complimentaryCogs)}</span></div>
+                    <div><span className="block text-xs text-muted-foreground">Guest revenue</span><span className="font-semibold tabular-nums">{formatKes(session.guestRevenue)}</span></div>
+                  </div>
+                  <div className="mt-3">
+                    <div className="h-2 w-full overflow-hidden rounded-full bg-muted"><div className={cn('h-full', session.coverPercent >= 100 ? 'bg-success' : 'bg-warning')} style={{ width: `${pct}%` }} /></div>
+                    <span className="mt-1 block text-[11px] font-semibold text-muted-foreground">{Math.round(session.coverPercent)}% covered</span>
+                  </div>
+                  <div className="mt-3 flex items-center justify-between border-t pt-2">
+                    <span className="text-xs text-muted-foreground">Net</span>
+                    <span className={cn('font-bold tabular-nums', session.netImpact >= 0 ? 'text-success' : 'text-destructive')}>{formatKes(session.netImpact)}</span>
+                  </div>
+                </article>
+              )
+            })}
+          </div>
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full text-left text-sm">
               <thead className="bg-primary text-xs uppercase tracking-wide text-primary-foreground">
                 <tr><th className="px-4 py-2">Event</th><th className="px-4 py-2 text-right">Comp Cost</th><th className="px-4 py-2 text-right">Guest Revenue</th><th className="px-4 py-2">Covered</th><th className="px-4 py-2 text-right">Net</th></tr>
@@ -342,12 +365,26 @@ function RevenueDashboard({ variant, pickerSlot }: { variant: 'operations' | 'fi
             {report.taxBreakdown.length === 0 ? (
               <p className="p-6 text-center text-sm text-muted-foreground">No taxable sales today.</p>
             ) : (
-              <table className="w-full text-left text-sm">
+              <>
+              <div className="grid gap-2 p-4 md:hidden">
+                {report.taxBreakdown.map((t) => (
+                  <div key={t.key} className="border bg-background p-3 text-sm">
+                    <p className="font-medium">{t.label}</p>
+                    <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
+                      <div><span className="block text-muted-foreground">Net</span><span className="font-semibold tabular-nums">{formatKes(t.net)}</span></div>
+                      <div><span className="block text-muted-foreground">Tax</span><span className="font-semibold tabular-nums">{formatKes(t.tax)}</span></div>
+                      <div><span className="block text-muted-foreground">Gross</span><span className="font-semibold tabular-nums">{formatKes(t.gross)}</span></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <table className="hidden w-full text-left text-sm md:table">
                 <thead className="bg-primary text-xs uppercase text-primary-foreground"><tr><th className="px-4 py-2.5">Treatment</th><th className="px-4 py-2.5 text-right">Net</th><th className="px-4 py-2.5 text-right">Tax</th><th className="px-4 py-2.5 text-right">Gross</th></tr></thead>
                 <tbody>{report.taxBreakdown.map((t) => (
                   <tr key={t.key} className="border-t"><td className="px-4 py-2.5 font-medium">{t.label}</td><td className="px-4 py-2.5 text-right tabular-nums">{formatKes(t.net)}</td><td className="px-4 py-2.5 text-right tabular-nums">{formatKes(t.tax)}</td><td className="px-4 py-2.5 text-right tabular-nums font-semibold">{formatKes(t.gross)}</td></tr>
                 ))}</tbody>
               </table>
+              </>
             )}
           </div>
         </section>
@@ -363,12 +400,25 @@ function RevenueDashboard({ variant, pickerSlot }: { variant: 'operations' | 'fi
             {report.topItems.length === 0 ? (
               <p className="p-6 text-center text-sm text-muted-foreground">No items sold today yet.</p>
             ) : (
-              <table className="w-full text-left text-sm">
+              <>
+              <div className="grid gap-2 p-4 md:hidden">
+                {report.topItems.map((i, idx) => (
+                  <div key={i.name} className="flex items-center justify-between gap-3 border bg-background p-3 text-sm">
+                    <span className="min-w-0 truncate">{idx + 1}. {i.name}</span>
+                    <span className="shrink-0 text-right">
+                      <span className="block text-xs text-muted-foreground">{i.qty} sold</span>
+                      <span className="font-semibold tabular-nums">{formatKes(i.revenue)}</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <table className="hidden w-full text-left text-sm md:table">
                 <thead className="bg-primary text-xs uppercase text-primary-foreground"><tr><th className="px-4 py-2.5">Item</th><th className="px-4 py-2.5 text-right">Qty</th><th className="px-4 py-2.5 text-right">Revenue</th></tr></thead>
                 <tbody>{report.topItems.map((i, idx) => (
                   <tr key={i.name} className="border-t"><td className="px-4 py-2.5">{idx + 1}. {i.name}</td><td className="px-4 py-2.5 text-right tabular-nums">{i.qty}</td><td className="px-4 py-2.5 text-right tabular-nums font-semibold">{formatKes(i.revenue)}</td></tr>
                 ))}</tbody>
               </table>
+              </>
             )}
           </div>
         )}
@@ -381,12 +431,25 @@ function RevenueDashboard({ variant, pickerSlot }: { variant: 'operations' | 'fi
           {report.expensesByCategory.length === 0 ? (
             <p className="p-6 text-center text-sm text-muted-foreground">No expenses recorded today.</p>
           ) : (
-            <table className="w-full text-left text-sm">
+            <>
+            <div className="grid gap-2 p-4 md:hidden">
+              {report.expensesByCategory.slice(0, 8).map((c) => (
+                <div key={c.name} className="flex items-center justify-between gap-3 border bg-background p-3 text-sm">
+                  <span className="min-w-0 truncate font-medium">{c.name}</span>
+                  <span className="shrink-0 text-right">
+                    <span className="block text-xs text-muted-foreground">{c.count}× paid</span>
+                    <span className="font-semibold tabular-nums">{formatKes(c.total)}</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+            <table className="hidden w-full text-left text-sm md:table">
               <thead className="bg-primary text-xs uppercase text-primary-foreground"><tr><th className="px-4 py-2.5">Category</th><th className="px-4 py-2.5 text-right">Times Paid</th><th className="px-4 py-2.5 text-right">Total</th></tr></thead>
               <tbody>{report.expensesByCategory.slice(0, 8).map((c) => (
                 <tr key={c.name} className="border-t"><td className="px-4 py-2.5 font-medium">{c.name}</td><td className="px-4 py-2.5 text-right tabular-nums">{c.count}</td><td className="px-4 py-2.5 text-right tabular-nums font-semibold">{formatKes(c.total)}</td></tr>
               ))}</tbody>
             </table>
+            </>
           )}
         </div>
       </section>
