@@ -215,13 +215,13 @@ function PosTouchKeyboard({ value, onChange, onClose }: { value: string; onChang
   const rows = ['1234567890', 'qwertyuiop', 'asdfghjkl', 'zxcvbnm']
   const press = (next: string) => onChange(`${value}${next}`)
   const preventBlur = (event: PointerEvent<HTMLButtonElement>) => event.preventDefault()
-  const keyClass = 'rounded-sm border bg-card px-3 py-2 text-sm font-bold uppercase shadow-sm active:scale-[0.98] hover:bg-muted'
+  const keyClass = 'min-w-0 rounded-sm border bg-card px-1 py-2 text-sm font-bold uppercase shadow-sm active:scale-[0.98] hover:bg-muted'
 
   return (
-    <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-30 rounded-sm border bg-background p-2 shadow-xl">
+    <div className="absolute left-0 top-[calc(100%+0.5rem)] z-30 w-full min-w-[280px] max-w-[min(92vw,34rem)] rounded-sm border bg-background p-2 shadow-xl">
       <div className="space-y-1.5">
         {rows.map((row) => (
-          <div key={row} className="flex justify-center gap-1.5">
+          <div key={row} className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${row.length}, minmax(0, 1fr))` }}>
             {row.split('').map((key) => (
               <button key={key} type="button" onPointerDown={preventBlur} onClick={() => press(key)} className={keyClass}>
                 {key}
