@@ -56,6 +56,7 @@ type Employee = {
   roleId: string | null
   hasSystemAccess: boolean
   role: { id: string; name: string } | null
+  worksAnywhere: boolean
   locations: { id: string; name: string }[]
   salaryType: SalaryType
   salaryAmount: string
@@ -92,6 +93,7 @@ type EmployeeForm = {
   supervisorId: string
   isSupervisor: boolean
   roleId: string
+  worksAnywhere: boolean
   locationIds: string[]
   salaryType: SalaryType
   salaryAmount: string
@@ -113,7 +115,7 @@ type EmployeeForm = {
 const emptyForm: EmployeeForm = {
   firstName: '', lastName: '', gender: '', dateOfBirth: '', nationalId: '',
   phone: '', alternativePhone: '', email: '', address: '',
-  departmentId: '', jobTitle: '', employmentType: 'FULL_TIME', status: 'ACTIVE', dateHired: '', supervisorId: '', isSupervisor: false, roleId: '', locationIds: [],
+  departmentId: '', jobTitle: '', employmentType: 'FULL_TIME', status: 'ACTIVE', dateHired: '', supervisorId: '', isSupervisor: false, roleId: '', worksAnywhere: false, locationIds: [],
   salaryType: 'MONTHLY', salaryAmount: '', paymentMethod: 'BANK_TRANSFER', bankName: '', bankAccountNumber: '', mpesaNumber: '',
   kraPin: '', nssfNumber: '', shaNumber: '',
   employeeCode: '', hasSystemAccess: true, pin: '', confirmPin: '',
@@ -219,6 +221,7 @@ export default function Employees() {
       isSupervisor: employee.isSupervisor,
       roleId: employee.roleId ?? '',
       hasSystemAccess: employee.hasSystemAccess,
+      worksAnywhere: employee.worksAnywhere,
       locationIds: employee.locations.map((l) => l.id),
       salaryType: employee.salaryType,
       salaryAmount: employee.salaryAmount,
@@ -242,7 +245,7 @@ export default function Employees() {
   async function saveEmployee(event: FormEvent) {
     event.preventDefault()
     if (form.hasSystemAccess && form.pin && form.pin !== form.confirmPin) { setError("PIN and confirmation don't match"); return }
-    if (form.locationIds.length === 0) { setError('Assign at least one location'); return }
+    if (!form.worksAnywhere && form.locationIds.length === 0) { setError('Assign at least one location, or mark them as working anywhere'); return }
     setSaving(true)
     setError('')
     try {
@@ -463,9 +466,15 @@ export default function Employees() {
                   {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
                 </select>
               </Field>
-              <Field label="Working Locations" className="sm:col-span-2" required>
-                {locations.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No locations set up — staff work anywhere by default.</p>
+              <Field label="Working Locations" className="sm:col-span-2" required={!form.worksAnywhere}>
+                <label className="mb-2 flex cursor-pointer items-center gap-2 rounded-sm border bg-muted/40 px-3 py-2 text-sm">
+                  <input type="checkbox" checked={form.worksAnywhere} onChange={(e) => setForm({ ...form, worksAnywhere: e.target.checked, ...(e.target.checked ? { locationIds: [] } : {}) })} className="size-4 accent-secondary" />
+                  Works at any location — relief/roaming staff, no fixed assignment
+                </label>
+                {form.worksAnywhere ? (
+                  <p className="text-xs text-muted-foreground">No fixed location — the POS asks which each time.</p>
+                ) : locations.length === 0 ? (
+                  <p className="text-sm text-destructive">No locations set up yet — add one under Locations before this employee can be pinned, or mark them as working anywhere above.</p>
                 ) : (
                   <>
                     <div className="grid gap-2 sm:grid-cols-2">

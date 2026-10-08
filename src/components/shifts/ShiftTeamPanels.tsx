@@ -10,15 +10,15 @@ import { useNow, useShift, type ShiftRow } from '@/components/shifts/shiftContex
 const fullName = (s: ShiftRow) => `${s.employee.firstName} ${s.employee.lastName}`
 
 /** Who's on shift, grouped by their default location (Housekeeping, Main Bar, Restaurant...),
- * each location's own staff sorted by name, locations sorted alphabetically with "Unassigned" last. */
+ * each location's own staff sorted by name, locations sorted alphabetically with "Works anywhere" last. */
 function groupByLocation(staff: ShiftRow[]): [string, ShiftRow[]][] {
   const groups = new Map<string, ShiftRow[]>()
   for (const s of staff) {
-    const name = s.employee.defaultLocation?.name ?? 'Unassigned'
+    const name = s.employee.defaultLocation?.name ?? 'Works anywhere'
     groups.set(name, [...(groups.get(name) ?? []), s])
   }
   for (const rows of groups.values()) rows.sort((a, b) => fullName(a).localeCompare(fullName(b)))
-  return [...groups.entries()].sort(([a], [b]) => (a === 'Unassigned' ? 1 : b === 'Unassigned' ? -1 : a.localeCompare(b)))
+  return [...groups.entries()].sort(([a], [b]) => (a === 'Works anywhere' ? 1 : b === 'Works anywhere' ? -1 : a.localeCompare(b)))
 }
 const clock = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--')
 
@@ -109,7 +109,45 @@ export default function ShiftTeamPanels() {
     <>
       {approvals.length > 0 && (
         <Panel title="Supervisor approvals" count={approvals.length} hint="Requests waiting on you">
-          <div className="overflow-x-auto border bg-card">
+          <div className="grid gap-3 border bg-card p-3 md:hidden">
+            {approvals.map((a) => (
+              <article key={a.id} className="border bg-background p-3 text-sm shadow-sm">
+                <div className="flex items-center gap-3">
+                  <Avatar size="md" />
+                  <div className="min-w-0 flex-1"><p className="truncate font-semibold">{fullName(a)}</p><p className="truncate text-xs text-muted-foreground">{a.employee.jobTitle || 'Employee'}</p></div>
+                  <Pill tone={a.status === 'REQUESTED_END' ? 'warning' : 'secondary'}>{a.status === 'REQUESTED_END' ? 'End shift' : 'Start shift'}</Pill>
+                </div>
+                {a.status === 'REQUESTED_END' && (
+                  <p className="mt-2 text-xs text-muted-foreground">Collected <span className="font-semibold text-foreground">{formatKes(a.summary?.totalPaid ?? 0)}</span></p>
+                )}
+                <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+                  {a.status === 'REQUESTED_END' && a.summary && (
+                    <ActionButton tone="secondary" icon={<LuClipboardCheck />} loading={busyKey === `${a.id}:summary`} onClick={() => openSummary(a, `${a.employee.firstName}'s handover`, true)}>Review</ActionButton>
+                  )}
+                  {a.status === 'REQUESTED_START' && (
+                    <>
+                      <ActionButton tone="success" icon={<LuCheck />} loading={busyKey === `${a.id}:approve`} onClick={() => ask({
+                        title: 'Approve shift start?',
+                        message: `${fullName(a)} will be marked active immediately.`,
+                        confirmLabel: 'Approve',
+                        busyKey: `${a.id}:approve`,
+                        run: () => post(`/shifts/${a.id}/start-approval`, { action: 'APPROVE' }, `${a.id}:approve`),
+                      })}>Approve</ActionButton>
+                      <ActionButton tone="danger" icon={<LuX />} loading={busyKey === `${a.id}:reject`} onClick={() => ask({
+                        title: 'Reject shift start?',
+                        message: `${fullName(a)}'s start request will be rejected.`,
+                        confirmLabel: 'Reject',
+                        tone: 'danger',
+                        busyKey: `${a.id}:reject`,
+                        run: () => post(`/shifts/${a.id}/start-approval`, { action: 'REJECT' }, `${a.id}:reject`),
+                      })}>Reject</ActionButton>
+                    </>
+                  )}
+                </div>
+              </article>
+            ))}
+          </div>
+          <div className="hidden overflow-x-auto border bg-card md:block">
             <table className="w-full min-w-[640px] text-left text-sm">
               <thead className="bg-primary text-primary-foreground">
                 <tr><th className={TH}>Employee</th><th className={TH}>Request</th><th className={cn(TH, 'text-right')}>Collected</th><th className={cn(TH, 'text-right')}>Action</th></tr>
@@ -178,7 +216,41 @@ export default function ShiftTeamPanels() {
 
       {history.length > 0 && (
         <Panel title={isSupervisor ? 'Recent staff shifts' : 'My shift history'} count={history.length}>
-          <div className="max-h-[28rem] overflow-auto border bg-card">
+          <div className="grid max-h-[28rem] gap-2.5 overflow-auto border bg-card p-3 md:hidden">
+            {history.map((s) => {
+              const hasSummary = s.status !== 'REJECTED_START'
+              return (
+                <article key={s.id} className="border bg-background p-3 text-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      {isSupervisor && (
+                        <div className="flex items-center gap-2">
+                          <Avatar size="sm" />
+                          <span className="truncate font-semibold">{fullName(s)}</span>
+                        </div>
+                      )}
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {new Date(s.approvedStartAt ?? s.requestedStartAt).toLocaleDateString('en-KE', { weekday: 'short', month: 'short', day: 'numeric' })}
+                        {' · '}{clock(s.approvedStartAt)} – {clock(s.approvedEndAt)}
+                      </p>
+                    </div>
+                    <Outcome s={s} />
+                  </div>
+                  <div className="mt-2.5 grid grid-cols-3 gap-2 border-t pt-2 text-xs">
+                    <div><span className="block text-muted-foreground">Hours</span><span className="font-semibold tabular-nums">{hasSummary ? (s.summary?.hours ?? 0).toFixed(1) : '—'}</span></div>
+                    <div><span className="block text-muted-foreground">Sales</span><span className="font-semibold tabular-nums">{hasSummary ? formatKes(s.summary?.totalSales ?? 0) : '—'}</span></div>
+                    <div><span className="block text-muted-foreground">Collected</span><span className="font-semibold tabular-nums">{hasSummary ? formatKes(s.summary?.totalPaid ?? 0) : '—'}</span></div>
+                  </div>
+                  {hasSummary && (
+                    <div className="mt-2.5 flex justify-end">
+                      <ActionButton tone="secondary" icon={<LuEye />} loading={busyKey === `${s.id}:summary`} onClick={() => openSummary(s, isSupervisor ? `${s.employee.firstName}'s shift summary` : 'Shift summary')}>View</ActionButton>
+                    </div>
+                  )}
+                </article>
+              )
+            })}
+          </div>
+          <div className="hidden max-h-[28rem] overflow-auto border bg-card md:block">
             <table className="w-full min-w-[820px] text-left text-sm">
               <thead className="sticky top-0 z-10 bg-primary text-primary-foreground">
                 <tr>
