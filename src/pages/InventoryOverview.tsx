@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils'
 import { packAndUnit } from '@/components/ui/PackQtyInput'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import PrintReportButton from '@/components/documents/PrintReportButton'
-import type { ReportDocData, ReportRow, ReportSection } from '@/components/documents/pdf'
+import type { ReportDocData, ReportSection } from '@/components/documents/pdf'
 import { productTagLabel } from '@/lib/productTags'
 
 type Location = { id: string; name: string }
@@ -43,18 +43,20 @@ const TOP_PRODUCTS_PER_LOCATION = 25
 const reportTableColumns: ReportSection['columns'] = [{ label: 'Product' }, { label: 'Qty', align: 'right' }, { label: 'Unit Cost', align: 'right' }, { label: 'Value', align: 'right' }]
 const reportRow = (p: StockProduct) => [p.name, stockQty(p), formatKes(p.unitCost), formatKes(p.value)]
 
-function productRowsByCategory(products: StockProduct[]): ReportRow[] {
-  const rows: ReportRow[] = []
-  let current = ''
-  for (const product of [...products].sort((a, b) => (a.category ?? 'Uncategorised').localeCompare(b.category ?? 'Uncategorised') || a.name.localeCompare(b.name))) {
+function productCategorySections(products: StockProduct[], titleFor: (category: string) => string): ReportSection[] {
+  const buckets = new Map<string, StockProduct[]>()
+  for (const product of products) {
     const category = product.category ?? 'Uncategorised'
-    if (category !== current) {
-      current = category
-      rows.push({ kind: 'group', label: category })
-    }
-    rows.push(reportRow(product))
+    buckets.set(category, [...(buckets.get(category) ?? []), product])
   }
-  return rows
+  return [...buckets.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([category, bucket]) => ({
+      title: titleFor(category),
+      compact: true,
+      columns: reportTableColumns,
+      rows: bucket.sort((a, b) => a.name.localeCompare(b.name)).map(reportRow),
+    }))
 }
 
 function rangeLabelFor(overview: Overview) {
@@ -68,14 +70,14 @@ function buildSectionDoc(overview: Overview, loc: LocationOverview): ReportDocDa
     kicker: 'Inventory Report',
     rangeLabel: rangeLabelFor(overview),
     generatedAt: new Date().toISOString(),
-    dense: true,
-    cards: [],
-    sections: [{
-      title: `${loc.name} products (${productTagLabel(loc.type)})`,
-      compact: true,
-      columns: reportTableColumns,
-      rows: productRowsByCategory(loc.products),
-    }],
+    cards: [
+      { label: 'Products', value: loc.totalProducts.toLocaleString() },
+      { label: 'Units On Hand', value: loc.totalUnits.toLocaleString() },
+      { label: 'Low Stock', value: loc.lowStockCount.toLocaleString(), hint: 'At or below reorder level' },
+      { label: 'Out of Stock', value: loc.outOfStockCount.toLocaleString() },
+      { label: 'Stock Value', value: formatKes(loc.stockValue) },
+    ],
+    sections: productCategorySections(loc.products, (category) => `${category} - ${loc.name} products (${productTagLabel(loc.type)})`),
   }
 }
 
@@ -86,19 +88,18 @@ function buildReportDoc(overview: Overview): ReportDocData {
     kicker: 'Reports',
     rangeLabel: rangeLabelFor(overview),
     generatedAt: new Date().toISOString(),
-    dense: true,
-    cards: [],
+    cards: [
+      { label: 'Total Products', value: o.totalProducts.toLocaleString() },
+      { label: 'Total Units On Hand', value: o.totalUnits.toLocaleString() },
+      { label: 'Low Stock', value: o.lowStockCount.toLocaleString(), hint: 'At or below reorder level' },
+      { label: 'Out of Stock', value: o.outOfStockCount.toLocaleString() },
+      { label: 'Stock Value', value: formatKes(o.stockValue) },
+    ],
     sections: [
       { title: 'Stock Value by Category', columns: [{ label: 'Category' }, { label: 'Units', align: 'right' }, { label: 'Value', align: 'right' }, { label: '% of Total', align: 'right' }], rows: o.byCategory.map((c) => [c.category, c.units.toLocaleString(), formatKes(c.value), `${c.percent}%`]) },
-      ...overview.locations.map((loc): ReportSection => {
+      ...overview.locations.flatMap((loc): ReportSection[] => {
         const top = [...loc.products].sort((a, b) => b.value - a.value).slice(0, TOP_PRODUCTS_PER_LOCATION)
-        return {
-          title: `${loc.name} - ${loc.lowStockCount} low, ${loc.outOfStockCount} out, ${formatKes(loc.stockValue)} total`,
-          note: loc.products.length > TOP_PRODUCTS_PER_LOCATION ? `Top ${TOP_PRODUCTS_PER_LOCATION} of ${loc.products.length} products by value.` : undefined,
-          compact: true,
-          columns: reportTableColumns,
-          rows: productRowsByCategory(top),
-        }
+        return productCategorySections(top, (category) => `${loc.name} - ${category}`)
       }),
     ],
   }
