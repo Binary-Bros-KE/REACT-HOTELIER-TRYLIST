@@ -291,7 +291,46 @@ function ReplenishModal({ task, onClose, onDone }: { task: Task; onClose: () => 
 
             {error && <div className="flex items-center gap-2 border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert /> {error}</div>}
 
-            <div className="overflow-x-auto border">
+            <div className="grid gap-3 md:hidden">
+              {lines.map(({ r, u, rep, after, allowed, problem }) => (
+                <article key={r.productId} className={cn('border bg-card p-3 shadow-sm', problem && 'border-destructive/40 bg-destructive/5')}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <h3 className="font-semibold leading-tight">{r.name}</h3>
+                      <p className="mt-0.5 text-xs text-muted-foreground">{r.unit}</p>
+                    </div>
+                    <div className="text-right text-xs text-muted-foreground">
+                      <p>Max <span className="font-semibold text-foreground">{r.max}</span></p>
+                      <p>In room <span className="font-semibold text-foreground">{r.onHand}</span></p>
+                    </div>
+                  </div>
+                  {(r.status === 'EXPIRED' || r.status === 'EXPIRING_SOON') && (
+                    <div className="mt-2">
+                      {r.status === 'EXPIRED' && (
+                        <button type="button" className="text-xs font-semibold text-destructive hover:underline" onClick={() => { setUsed((c) => ({ ...c, [r.productId]: String(r.onHand) })); setReplace((c) => { const { [r.productId]: _, ...rest } = c; return rest }) }}>Expired - remove all and replace</button>
+                      )}
+                      {r.status === 'EXPIRING_SOON' && <p className="text-xs font-semibold text-warning">Expires soon</p>}
+                    </div>
+                  )}
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Used
+                      <input type="number" min="0" step="0.001" className="input mt-1 h-10 text-sm" value={used[r.productId] ?? ''} placeholder="0" onChange={(e) => { setUsed((c) => ({ ...c, [r.productId]: e.target.value })); setReplace((c) => { const { [r.productId]: _, ...rest } = c; return rest }) }} />
+                    </label>
+                    <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Replace
+                      <input type="number" min="0" step="0.001" className="input mt-1 h-10 text-sm" value={replace[r.productId] ?? (rep > 0 ? String(rep) : '')} placeholder="0" onChange={(e) => setReplace((c) => ({ ...c, [r.productId]: e.target.value }))} />
+                    </label>
+                  </div>
+                  <div className="mt-3 flex items-center justify-between border-t pt-2 text-sm">
+                    <span className="text-muted-foreground">Room will have</span>
+                    <span className={cn('font-bold tabular-nums', u > 0 || rep > 0 ? '' : 'text-muted-foreground')}>{after}</span>
+                  </div>
+                  {problem ? <p className="mt-2 text-xs text-destructive">{problem}</p> : <p className="mt-2 text-[11px] text-muted-foreground">Can replace up to {allowed}</p>}
+                </article>
+              ))}
+              {lines.length === 0 && <p className="border border-dashed p-6 text-center text-sm text-muted-foreground">No consumables with a maximum are set for this room type. Ask a supervisor to set them under Room Contents.</p>}
+            </div>
+
+            <div className="hidden overflow-x-auto border md:block">
               <table className="w-full min-w-[760px] text-left text-sm">
                 <thead className="bg-primary text-primary-foreground">
                   <tr className="text-xs font-bold uppercase tracking-wider [&>th]:px-4 [&>th]:py-3"><th>Item</th><th className="text-right">Max</th><th className="text-right">In room</th><th className="w-28">Used</th><th className="w-28">Replace</th><th className="text-right">Room will have</th></tr>

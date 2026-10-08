@@ -139,7 +139,27 @@ export default function RoomContents() {
 
           <Section title="Fixed assets" note="Furniture, appliances and linen recorded here, with their condition. Report a problem the moment you notice it.">
             {contents.fixedAssets.length === 0 ? <p className="p-6 text-center text-sm text-muted-foreground">No fixed assets recorded for this {contents.target.kind}. Add them under Assets.</p> : (
-              <div className="overflow-x-auto">
+              <>
+              <div className="grid gap-3 p-3 md:hidden">
+                {contents.fixedAssets.map((a) => (
+                  <article key={a.id} className={cn('border bg-background p-3 shadow-sm', a.condition !== 'WORKING' && 'border-destructive/30 bg-destructive/5')}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <h3 className="font-semibold leading-tight">{a.name}</h3>
+                        <p className="mt-0.5 text-xs text-muted-foreground">{a.assetNo}{a.category ? ` - ${a.category}` : ''}</p>
+                      </div>
+                      <ActionButton tone="neutral" icon={<LuPencil />} title="Update condition" onClick={() => setReporting(a)} />
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                      <InfoCell label="Quantity" value={`${num(a.quantity)} ${a.unit}`} />
+                      <InfoCell label="Condition" value={<><ConditionBadge condition={a.condition} />{a.affectedQuantity != null && <span className="mt-1 block text-xs text-muted-foreground">{num(a.affectedQuantity)} of {num(a.quantity)}</span>}</>} />
+                      <InfoCell label="Last update" value={a.conditionUpdatedAt ? `${date(a.conditionUpdatedAt)}${a.conditionUpdatedBy ? ` - ${a.conditionUpdatedBy}` : ''}` : '-'} className="col-span-2" />
+                    </div>
+                    {a.conditionNote && <p className="mt-2 border-t pt-2 text-xs text-muted-foreground">{a.conditionNote}</p>}
+                  </article>
+                ))}
+              </div>
+              <div className="hidden overflow-x-auto md:block">
                 <table className="w-full text-left text-sm">
                   <thead className="bg-primary text-xs uppercase text-primary-foreground"><tr><th className="px-4 py-2.5">Asset</th><th className="px-4 py-2.5">Category</th><th className="px-4 py-2.5 text-right">Qty</th><th className="px-4 py-2.5">Condition</th><th className="px-4 py-2.5">Last update</th><th className="px-4 py-2.5"></th></tr></thead>
                   <tbody>
@@ -156,13 +176,35 @@ export default function RoomContents() {
                   </tbody>
                 </table>
               </div>
+              </>
             )}
           </Section>
 
           {contents.target.kind === 'room' && (
             <Section title="Consumables" note="What the room holds against its maximum. Expiry is the date last replaced plus the product's shelf life.">
               {contents.consumables.length === 0 ? <p className="p-6 text-center text-sm text-muted-foreground">No consumables are set up for this room type. A supervisor can set them under Room supply limits.</p> : (
-                <div className="overflow-x-auto">
+                <>
+                <div className="grid gap-3 p-3 md:hidden">
+                  {contents.consumables.map((c) => (
+                    <article key={c.productId} className={cn('border bg-background p-3 shadow-sm', (c.status === 'EXPIRED' || c.status === 'OVER_MAX') && 'border-destructive/30 bg-destructive/5')}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <h3 className="font-semibold leading-tight">{c.name}</h3>
+                          <p className="mt-0.5 text-xs text-muted-foreground">{c.unit}</p>
+                        </div>
+                        <ConsumableBadge status={c.status} days={c.daysToExpiry} needed={c.needed} />
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                        <InfoCell label="In room" value={num(c.onHand)} />
+                        <InfoCell label="Max" value={c.max == null ? '-' : num(c.max)} />
+                        <InfoCell label="First placed" value={date(c.firstPlacedAt)} />
+                        <InfoCell label="Last replaced" value={date(c.lastReplacedAt)} />
+                        <InfoCell label="Expires" value={c.shelfLifeDays ? (c.expiresAt ? date(c.expiresAt) : '-') : 'No shelf life'} className="col-span-2" />
+                      </div>
+                    </article>
+                  ))}
+                </div>
+                <div className="hidden overflow-x-auto md:block">
                   <table className="w-full text-left text-sm">
                     <thead className="bg-primary text-xs uppercase text-primary-foreground"><tr><th className="px-4 py-2.5">Item</th><th className="px-4 py-2.5 text-right">In room</th><th className="px-4 py-2.5 text-right">Max</th><th className="px-4 py-2.5">First placed</th><th className="px-4 py-2.5">Last replaced</th><th className="px-4 py-2.5">Expires</th><th className="px-4 py-2.5">Status</th></tr></thead>
                     <tbody>
@@ -180,6 +222,7 @@ export default function RoomContents() {
                     </tbody>
                   </table>
                 </div>
+                </>
               )}
             </Section>
           )}
@@ -198,6 +241,15 @@ function Section({ title, note, children }: { title: string; note?: string; chil
       <header className="border-b border-l-4 border-l-accent p-4"><h2 className="font-display text-lg font-semibold leading-tight">{title}</h2>{note && <p className="text-xs text-muted-foreground">{note}</p>}</header>
       {children}
     </section>
+  )
+}
+
+function InfoCell({ label, value, className }: { label: string; value: ReactNode; className?: string }) {
+  return (
+    <div className={cn('border bg-card p-2', className)}>
+      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</p>
+      <div className="mt-1 font-semibold">{value}</div>
+    </div>
   )
 }
 

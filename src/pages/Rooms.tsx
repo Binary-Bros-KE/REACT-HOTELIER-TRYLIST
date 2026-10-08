@@ -25,6 +25,7 @@ import StatusPill from "@/components/ui/StatusPill";
 import { cn } from "@/lib/utils";
 import { TAX_CHOICES, taxChoiceLabel, taxChoiceOf, taxPayload, type BizTax, type TaxChoice } from "@/lib/taxChoices";
 import { computeFinancialsFromRows } from "@/lib/orderTotals";
+import { useAppSelector } from "@/store/hooks";
 
 type RoomStatus = "VACANT" | "OCCUPIED" | "OUT_OF_SERVICE";
 type Cleanliness = "CLEAN" | "DIRTY" | "INSPECTING";
@@ -177,6 +178,8 @@ const folioTotal = (stay: Stay | undefined, bizTax: BizTax | null) => {
 };
 
 export default function Rooms() {
+  const user = useAppSelector((s) => s.auth.user);
+  const canManageRoomState = Boolean(user?.isSupervisor) || user?.role?.name === "Super Admin";
   const [rooms, setRooms] = useState<Room[]>([]);
   const [roomTypes, setRoomTypes] = useState<RoomType[]>([]);
   const [summary, setSummary] = useState<Summary>({
@@ -487,6 +490,7 @@ export default function Rooms() {
                 key={room.id}
                 room={room}
                 bizTax={bizTax}
+                canManageRoomState={canManageRoomState}
                 onEdit={() => openEdit(room)}
                 onDelete={() => void removeRoom(room)}
                 onStatus={(status) => void quickUpdate(room, { status })}
@@ -559,18 +563,20 @@ export default function Rooms() {
                 </Field>
               )}
               <Field label="Room status">
-                <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as RoomStatus })} className="input">
+                <select disabled={Boolean(editing) && !canManageRoomState} value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as RoomStatus })} className="input disabled:cursor-not-allowed disabled:opacity-60">
                   <option value="VACANT">Vacant</option>
                   <option value="OCCUPIED">Occupied</option>
                   <option value="OUT_OF_SERVICE">Out of service</option>
                 </select>
+                {editing && !canManageRoomState && <span className="mt-1 block text-xs text-muted-foreground">Only supervisors can change room status.</span>}
               </Field>
               <Field label="Housekeeping">
-                <select value={form.cleanliness} onChange={(e) => setForm({ ...form, cleanliness: e.target.value as Cleanliness })} className="input">
+                <select disabled={Boolean(editing) && !canManageRoomState} value={form.cleanliness} onChange={(e) => setForm({ ...form, cleanliness: e.target.value as Cleanliness })} className="input disabled:cursor-not-allowed disabled:opacity-60">
                   <option value="CLEAN">Clean</option>
                   <option value="DIRTY">Dirty</option>
                   <option value="INSPECTING">Inspecting</option>
                 </select>
+                {editing && !canManageRoomState && <span className="mt-1 block text-xs text-muted-foreground">Only supervisors can change housekeeping state.</span>}
               </Field>
               <div className="sm:col-span-2">
                 <Field label="Notes">
@@ -730,6 +736,7 @@ export default function Rooms() {
 function RoomCard({
   room,
   bizTax,
+  canManageRoomState,
   onEdit,
   onDelete,
   onStatus,
@@ -737,6 +744,7 @@ function RoomCard({
 }: {
   room: Room;
   bizTax: BizTax | null;
+  canManageRoomState: boolean;
   onEdit: () => void;
   onDelete: () => void;
   onStatus: (status: RoomStatus) => void;
@@ -806,18 +814,22 @@ function RoomCard({
         )}
         <div className="mt-auto grid grid-cols-2 gap-2 pt-3">
           <select
+            disabled={!canManageRoomState}
             value={room.status}
             onChange={(e) => onStatus(e.target.value as RoomStatus)}
-            className={cn("border-2 px-2 py-2 text-xs font-bold uppercase tracking-wide", room.status === "OCCUPIED" ? "border-destructive/50 bg-destructive/10 text-destructive" : room.status === "OUT_OF_SERVICE" ? "border-warning/50 bg-warning/15 text-warning" : "border-success/50 bg-success/10 text-success")}
+            title={canManageRoomState ? undefined : "Only supervisors can change room status"}
+            className={cn("border-2 px-2 py-2 text-xs font-bold uppercase tracking-wide disabled:cursor-not-allowed disabled:opacity-70", room.status === "OCCUPIED" ? "border-destructive/50 bg-destructive/10 text-destructive" : room.status === "OUT_OF_SERVICE" ? "border-warning/50 bg-warning/15 text-warning" : "border-success/50 bg-success/10 text-success")}
           >
             <option value="VACANT">Vacant</option>
             <option value="OCCUPIED">Occupied</option>
             <option value="OUT_OF_SERVICE">Out of service</option>
           </select>
           <select
+            disabled={!canManageRoomState}
             value={room.cleanliness}
             onChange={(e) => onCleanliness(e.target.value as Cleanliness)}
-            className={cn("border-2 px-2 py-2 text-xs font-bold uppercase tracking-wide", room.cleanliness === "CLEAN" ? "border-success/50 bg-success/10 text-success" : room.cleanliness === "DIRTY" ? "border-destructive/50 bg-destructive/10 text-destructive" : "border-secondary/50 bg-secondary/10 text-secondary")}
+            title={canManageRoomState ? undefined : "Only supervisors can change housekeeping state"}
+            className={cn("border-2 px-2 py-2 text-xs font-bold uppercase tracking-wide disabled:cursor-not-allowed disabled:opacity-70", room.cleanliness === "CLEAN" ? "border-success/50 bg-success/10 text-success" : room.cleanliness === "DIRTY" ? "border-destructive/50 bg-destructive/10 text-destructive" : "border-secondary/50 bg-secondary/10 text-secondary")}
           >
             <option value="CLEAN">Clean</option>
             <option value="DIRTY">Dirty</option>
