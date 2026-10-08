@@ -10,15 +10,15 @@ import { useNow, useShift, type ShiftRow } from '@/components/shifts/shiftContex
 const fullName = (s: ShiftRow) => `${s.employee.firstName} ${s.employee.lastName}`
 
 /** Who's on shift, grouped by their default location (Housekeeping, Main Bar, Restaurant...),
- * each location's own staff sorted by name, locations sorted alphabetically with "Works anywhere" last. */
+ * each location's own staff sorted by name, locations sorted alphabetically with "Unassigned" last. */
 function groupByLocation(staff: ShiftRow[]): [string, ShiftRow[]][] {
   const groups = new Map<string, ShiftRow[]>()
   for (const s of staff) {
-    const name = s.employee.defaultLocation?.name ?? 'Works anywhere'
+    const name = s.employee.defaultLocation?.name ?? 'Unassigned'
     groups.set(name, [...(groups.get(name) ?? []), s])
   }
   for (const rows of groups.values()) rows.sort((a, b) => fullName(a).localeCompare(fullName(b)))
-  return [...groups.entries()].sort(([a], [b]) => (a === 'Works anywhere' ? 1 : b === 'Works anywhere' ? -1 : a.localeCompare(b)))
+  return [...groups.entries()].sort(([a], [b]) => (a === 'Unassigned' ? 1 : b === 'Unassigned' ? -1 : a.localeCompare(b)))
 }
 const clock = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--')
 
