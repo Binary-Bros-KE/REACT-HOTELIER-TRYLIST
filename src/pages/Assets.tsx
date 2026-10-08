@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useAppSelector } from '@/store/hooks'
 import type { FormEvent, ReactNode } from 'react'
 import {
   LuWrench,
@@ -124,6 +125,8 @@ export default function Assets() {
   const [notice, setNotice] = useState('')
 
   const [movementFor, setMovementFor] = useState<Asset | null>(null)
+  const user = useAppSelector((s) => s.auth.user)
+  const isSupervisor = Boolean(user?.isSupervisor) || user?.role?.name === 'Super Admin'
   const [conditionFor, setConditionFor] = useState<Asset | null>(null)
   const [conditionFilter, setConditionFilter] = useState<'all' | 'issues' | Condition>('all')
   const [movementForm, setMovementForm] = useState<MovementForm>(emptyMovement)
@@ -364,13 +367,13 @@ export default function Assets() {
                     <td className="px-5 py-4">
                       <ConditionBadge condition={asset.condition} />
                       {asset.condition !== 'WORKING' && asset.affectedQuantity != null && <span className="ml-2 text-xs text-muted-foreground">{Number(asset.affectedQuantity)} of {Number(asset.quantity)}</span>}
-                      {asset.condition !== 'WORKING' && asset.conditionNote && <span className="mt-1 block max-w-48 truncate text-xs text-muted-foreground" title={asset.conditionNote}>{asset.conditionNote}</span>}
+                      {asset.conditionNote && <span className="mt-1 block max-w-48 truncate text-xs text-muted-foreground" title={asset.conditionNote}>{asset.conditionNote}</span>}
                       {asset.conditionUpdatedAt && <span className="block text-[11px] text-muted-foreground">as of {new Date(asset.conditionUpdatedAt).toLocaleDateString('en-KE', { day: '2-digit', month: 'short' })}</span>}
                     </td>
                     <td className="px-5 py-4 text-muted-foreground">{asset.unitCost ? formatKes(Number(asset.quantity) * Number(asset.unitCost)) : '—'}</td>
                     <td className="px-5 py-4">
                       <div className="flex justify-end gap-1">
-                        <ActionButton tone="neutral" icon={<LuWrench />} title="Update condition" onClick={() => setConditionFor(asset)} />
+                        {isSupervisor && <ActionButton tone="neutral" icon={<LuWrench />} title="Update condition" onClick={() => setConditionFor(asset)} />}
                         <ActionButton tone="neutral" icon={<LuPackageSearch />} title="Record movement" onClick={() => openMovement(asset)} />
                         <ActionButton tone="neutral" icon={<LuPencil />} title="Edit asset" onClick={() => openEdit(asset)} />
                         <ActionButton tone="neutral" icon={<LuTrash2 />} title="Delete asset" onClick={() => void deleteAsset(asset)} />
@@ -646,11 +649,9 @@ function ConditionModal({ asset, onClose, onSaved }: { asset: Asset; onClose: ()
               <input type="number" min="0" step="0.001" max={Number(asset.quantity)} className="input mt-1.5" value={affected} onChange={(e) => setAffected(e.target.value)} />
             </label>
           )}
-          {condition !== 'WORKING' && (
-            <label className="block text-sm font-medium">What is wrong?
-              <textarea rows={2} className="input mt-1.5" value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Screen cracked, remote missing" />
-            </label>
-          )}
+          <label className="block text-sm font-medium">Condition notes
+            <textarea rows={2} className="input mt-1.5" value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Screen cracked, remote missing - or a note on a working item, like 'due for service next month'" />
+          </label>
         </div>
         <div className="mt-6 flex justify-end gap-2 border-t pt-5">
           <button type="button" onClick={onClose} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Cancel</button>

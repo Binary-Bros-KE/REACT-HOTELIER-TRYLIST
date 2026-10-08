@@ -148,7 +148,7 @@ export default function RoomContents() {
                         <h3 className="font-semibold leading-tight">{a.name}</h3>
                         <p className="mt-0.5 text-xs text-muted-foreground">{a.assetNo}{a.category ? ` - ${a.category}` : ''}</p>
                       </div>
-                      <ActionButton tone="neutral" icon={<LuPencil />} title="Update condition" onClick={() => setReporting(a)} />
+                      {isSupervisor && <ActionButton tone="neutral" icon={<LuPencil />} title="Update condition" onClick={() => setReporting(a)} />}
                     </div>
                     <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
                       <InfoCell label="Quantity" value={`${num(a.quantity)} ${a.unit}`} />
@@ -170,7 +170,7 @@ export default function RoomContents() {
                         <td className="px-4 py-3 text-right tabular-nums">{num(a.quantity)} {a.unit}</td>
                         <td className="px-4 py-3"><ConditionBadge condition={a.condition} />{a.affectedQuantity != null && <span className="ml-2 text-xs text-muted-foreground">{num(a.affectedQuantity)} of {num(a.quantity)}</span>}{a.conditionNote && <span className="block text-xs text-muted-foreground">{a.conditionNote}</span>}</td>
                         <td className="px-4 py-3 text-xs text-muted-foreground">{a.conditionUpdatedAt ? `${date(a.conditionUpdatedAt)}${a.conditionUpdatedBy ? ` - ${a.conditionUpdatedBy}` : ''}` : '-'}</td>
-                        <td className="px-4 py-3 text-right"><ActionButton tone="neutral" icon={<LuPencil />} title="Update condition" onClick={() => setReporting(a)} /></td>
+                        <td className="px-4 py-3 text-right">{isSupervisor && <ActionButton tone="neutral" icon={<LuPencil />} title="Update condition" onClick={() => setReporting(a)} />}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -296,11 +296,9 @@ function ConditionModal({ asset, onClose, onSaved }: { asset: FixedAsset; onClos
             <input type="number" min="0" step="0.001" max={asset.quantity} className="input mt-1.5" value={affected} onChange={(e) => setAffected(e.target.value)} />
           </label>
         )}
-        {condition !== 'WORKING' && (
-          <label className="block text-sm font-medium">What is wrong?
-            <textarea rows={2} className="input mt-1.5" value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Screen cracked, remote missing" />
-          </label>
-        )}
+        <label className="block text-sm font-medium">Condition notes
+          <textarea rows={2} className="input mt-1.5" value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Screen cracked, remote missing - or a note on a working item, like 'due for service next month'" />
+        </label>
       </div>
     </ModalShell>
   )
