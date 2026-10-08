@@ -219,6 +219,12 @@ function App() {
         />
         <Route path="/inventory/dispatch-requests" element={<DispatchRequests />} />
         <Route path="/inventory/issues" element={<StockIssues />} />
+        <Route path="/inventory/stock-requests" element={<StockIssues />} />
+        <Route path="/reception/stock-requests" element={<StockIssues />} />
+        <Route path="/housekeeping/stock-requests" element={<StockIssues />} />
+        <Route path="/sales/stock-requests" element={<StockIssues />} />
+        <Route path="/kitchen/stock-requests" element={<StockIssues />} />
+        <Route path="/service-center/stock-requests" element={<StockIssues />} />
         <Route path="/inventory/categories" element={<Categories />} />
         <Route path="/inventory/units-of-measure" element={<UnitsOfMeasure />} />
         <Route path="/kitchen/recipes" element={<Recipes />} />
