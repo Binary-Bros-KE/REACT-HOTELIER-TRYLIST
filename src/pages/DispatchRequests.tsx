@@ -36,7 +36,9 @@ type Request = {
   respondedByName: string | null
   rejectReason: string | null
   note: string | null
+  orderKind?: 'NEW_ORDER' | 'UPDATED_ORDER'
   rungUpBy: string | null
+  existingDishes?: Dish[]
   dishes: Dish[]
   items: Item[]
   fromLocation: { name: string }
@@ -192,9 +194,12 @@ export default function DispatchRequests() {
       from: request.fromLocation.name,
       to: request.toLocation.name,
       requestedByName: request.requestedByName,
+      waiterName: request.requestedByName ?? request.rungUpBy,
       rungUpBy: request.rungUpBy,
       requestedAt: request.requestedAt,
       note: request.note,
+      kind: request.orderKind ?? ((request.existingDishes?.length ?? 0) > 0 ? 'UPDATED_ORDER' : 'NEW_ORDER'),
+      existingDishes: (request.existingDishes ?? []).map((d) => ({ name: d.name, quantity: d.quantity, totalPrice: d.totalPrice, stockSource: d.stockSource, ingredients: d.ingredients.map((g) => ({ name: g.name, quantity: g.quantity, unit: g.unit })) })),
       dishes: request.dishes.map((d) => ({ name: d.name, quantity: d.quantity, totalPrice: d.totalPrice, stockSource: d.stockSource, ingredients: d.ingredients.map((g) => ({ name: g.name, quantity: g.quantity, unit: g.unit })) })),
       items: request.items.map((i) => ({ name: i.productName, quantity: Number(i.requestedQty), unit: i.product?.unit ?? '' })),
     }

@@ -453,18 +453,22 @@ export type DispatchSlip = {
   requestNo: string
   orderNumber: number
   table: string | null
+  kind?: 'NEW_ORDER' | 'UPDATED_ORDER'
   from: string
   to: string
   requestedByName: string | null
+  waiterName?: string | null
   requestedAt: string
   note: string | null
   rungUpBy: string | null
   // Each dish on the order, with what it takes from the store. Read first, then the pick list.
+  existingDishes?: { name: string; quantity: number; totalPrice?: string | number | null; stockSource?: string | null; ingredients: { name: string; quantity: number; unit: string }[] }[]
   dishes: { name: string; quantity: number; totalPrice?: string | number | null; stockSource?: string | null; ingredients: { name: string; quantity: number; unit: string }[] }[]
   items: { name: string; quantity: number; unit: string }[]
 }
 
 const qtyText = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 3 })
+const eatTime = (iso: string) => new Date(iso).toLocaleString('en-KE', { timeZone: 'Africa/Nairobi', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 
 export function buildDispatchSlipBytes(slip: DispatchSlip, profile: ReceiptProfile | null, s: ThermalSettings): Uint8Array {
   const cols = Math.max(24, Math.min(64, Math.round(s.columns) || 42))
@@ -479,16 +483,17 @@ export function buildDispatchSlipBytes(slip: DispatchSlip, profile: ReceiptProfi
   const rule = '-'.repeat(cols)
   if (profile?.businessName) { e.bold(true); e.line(center(profile.businessName.toUpperCase(), cols)); e.bold(false) }
   e.bold(true)
+  if (compact) e.line(center(slip.kind === 'UPDATED_ORDER' ? 'UPDATED ORDER' : 'NEW ORDER', cols))
+  else e.size(2, 2).line(center(slip.kind === 'UPDATED_ORDER' ? 'UPDATED ORDER' : 'NEW ORDER', Math.floor(cols / 2))).size(1, 1)
   e.line(center('STORE DISPATCH REQUEST', cols))
   e.bold(false)
   e.line(rule)
   e.line(`Request:  ${slip.requestNo}`)
   e.line(`Order:    #${slip.orderNumber}${slip.table ? ` (${slip.table})` : ''}`)
-  if (slip.rungUpBy) e.line(`Rung up by: ${slip.rungUpBy}`)
   e.line(`For:      ${slip.to}`)
   e.line(`From:     ${slip.from}`)
-  if (slip.requestedByName) e.line(`By:       ${slip.requestedByName}`)
-  e.line(`Time:     ${new Date(slip.requestedAt).toLocaleString('en-KE')}`)
+  if (slip.waiterName ?? slip.requestedByName) e.line(`Waiter:   ${slip.waiterName ?? slip.requestedByName}`)
+  e.line(`Time:     ${eatTime(slip.requestedAt)}`)
   e.line(rule)
   const priceW = compact ? 10 : 12
   const dishNameW = Math.max(10, Math.floor((cols - priceW - 1) / (compact ? 1 : 2)))
@@ -506,7 +511,14 @@ export function buildDispatchSlipBytes(slip: DispatchSlip, profile: ReceiptProfi
       e.line(`${' '.repeat(Math.max(0, cols - right.length))}${right}`)
     }
   }
-  for (const dish of slip.dishes ?? []) {
+  const renderSection = (title: string, dishes: DispatchSlip['dishes'], update = false) => {
+    if (!dishes?.length) return
+    e.bold(true)
+    e.line(update ? '#'.repeat(cols) : rule)
+    e.line(center(title, cols))
+    e.line(update ? '#'.repeat(cols) : rule)
+    e.bold(false)
+    for (const dish of dishes) {
     if (compact) e.bold(true)
     else e.size(2, 2).bold(true)
     dishRow(dish)
@@ -518,10 +530,11 @@ export function buildDispatchSlipBytes(slip: DispatchSlip, profile: ReceiptProfi
       e.line(`   ${'.'.repeat(Math.max(8, cols - 3))}`)
     }
   }
+  }
+  renderSection('ALREADY ON ORDER', slip.existingDishes ?? [], false)
+  renderSection(slip.kind === 'UPDATED_ORDER' ? 'UPDATED ITEMS TO DISPATCH' : 'ITEMS TO DISPATCH', slip.dishes ?? [], slip.kind === 'UPDATED_ORDER')
   e.line(rule)
   if (slip.note) for (const l of wrapWords(slip.note, cols)) e.line(l)
-  e.newline(1)
-  e.line('Dispatched by: ______________')
   e.newline(1)
   e.line('Received by:   ______________')
   e.newline(4).cut()
@@ -531,17 +544,17 @@ export function buildDispatchSlipBytes(slip: DispatchSlip, profile: ReceiptProfi
 /** Browser print sheet with the slip, for a store computer without a thermal printer. */
 function printSlipViaWindow(slip: DispatchSlip): void {
   const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string)
-  const dishes = (slip.dishes ?? []).map((d) => `<div class="dish"><b>${qtyText(d.quantity)} x ${esc(d.name).toUpperCase()}</b>${d.totalPrice != null ? `<b>${esc(money(d.totalPrice))}</b>` : ''}</div>${d.stockSource ? `<div style="padding-left:12px;color:#555">${esc(d.stockSource)}</div>` : ''}${d.ingredients.map((g) => `<div class="ingredient"><span>${esc(g.name)}</span><span>${qtyText(g.quantity)} ${esc(g.unit)}</span></div>`).join('')}`).join('')
+  const dishHtml = (dishes: DispatchSlip['dishes']) => (dishes ?? []).map((d) => `<div class="dish"><b>${qtyText(d.quantity)} x ${esc(d.name).toUpperCase()}</b>${d.totalPrice != null ? `<b>${esc(money(d.totalPrice))}</b>` : ''}</div>${d.stockSource ? `<div class="source">${esc(d.stockSource)}</div>` : ''}${d.ingredients.map((g) => `<div class="ingredient"><span>${esc(g.name)}</span><span>${qtyText(g.quantity)} ${esc(g.unit)}</span></div>`).join('')}`).join('')
+  const section = (title: string, dishes: DispatchSlip['dishes'], cls = '') => dishes?.length ? `<section class="${cls}"><h2>${esc(title)}</h2>${dishHtml(dishes)}</section>` : ''
   const win = window.open('', '_blank', 'width=420,height=640')
   if (!win) throw new Error('Allow pop-ups to print the slip')
-  win.document.write(`<!doctype html><title>${esc(slip.requestNo)}</title><style>@page{size:80mm auto;margin:4mm}body{font:13px/1.4 monospace;margin:0}h1{font-size:15px;text-align:center;margin:0 0 6px}.dish{display:flex;justify-content:space-between;gap:8px;margin-top:9px;font-size:16px;font-weight:900}.ingredient{display:flex;justify-content:space-between;gap:8px;margin-left:12px;padding:2px 0;border-bottom:1px dotted #999}hr{border:0;border-top:1px dashed #000}</style>
-<h1>STORE DISPATCH REQUEST</h1><hr>
+  win.document.write(`<!doctype html><title>${esc(slip.requestNo)}</title><style>@page{size:80mm auto;margin:4mm}body{font:13px/1.4 monospace;margin:0}.kind{font-size:24px;font-weight:900;text-align:center;margin:0}.title{font-size:15px;text-align:center;margin:0 0 6px}h2{font-size:13px;margin:8px 0 4px;padding:3px 0;border-top:1px dashed #000;border-bottom:1px dashed #000;text-align:center}.updated{background:#eee;padding:4px 5px;margin:8px -2px}.updated h2{border-color:#333}.dish{display:flex;justify-content:space-between;gap:8px;margin-top:9px;font-size:16px;font-weight:900}.source{padding-left:12px;color:#555}.ingredient{display:flex;justify-content:space-between;gap:8px;margin-left:12px;padding:2px 0;border-bottom:1px dotted #999}hr{border:0;border-top:1px dashed #000}</style>
+<p class="kind">${slip.kind === 'UPDATED_ORDER' ? 'UPDATED ORDER' : 'NEW ORDER'}</p><h1 class="title">STORE DISPATCH REQUEST</h1><hr>
 <div>Request: ${esc(slip.requestNo)}</div><div>Order: #${slip.orderNumber}${slip.table ? ' (' + esc(slip.table) + ')' : ''}</div>
-<div>For: ${esc(slip.to)}</div><div>From: ${esc(slip.from)}</div>${slip.requestedByName ? '<div>By: ' + esc(slip.requestedByName) + '</div>' : ''}
-${slip.rungUpBy ? '<div>Rung up by: ' + esc(slip.rungUpBy) + '</div>' : ''}
-<div>Time: ${esc(new Date(slip.requestedAt).toLocaleString('en-KE'))}</div><hr>
-${dishes}<hr>${slip.note ? '<div>' + esc(slip.note) + '</div><hr>' : ''}
-<p>Dispatched by: ____________</p><p>Received by: ____________</p>`)
+<div>For: ${esc(slip.to)}</div><div>From: ${esc(slip.from)}</div>${slip.waiterName ?? slip.requestedByName ? '<div>Waiter: ' + esc((slip.waiterName ?? slip.requestedByName)!) + '</div>' : ''}
+<div>Time: ${esc(eatTime(slip.requestedAt))}</div><hr>
+${section('ALREADY ON ORDER', slip.existingDishes ?? [])}${section(slip.kind === 'UPDATED_ORDER' ? 'UPDATED ITEMS TO DISPATCH' : 'ITEMS TO DISPATCH', slip.dishes ?? [], slip.kind === 'UPDATED_ORDER' ? 'updated' : '')}<hr>${slip.note ? '<div>' + esc(slip.note) + '</div><hr>' : ''}
+<p>Received by: ____________</p>`)
   win.document.close()
   win.focus()
   win.print()
