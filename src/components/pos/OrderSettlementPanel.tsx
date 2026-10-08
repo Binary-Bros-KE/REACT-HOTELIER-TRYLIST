@@ -8,6 +8,7 @@ import { useAppSelector } from '@/store/hooks'
 import CustomerSelectModal, { type SaleParty } from '@/components/pos/CustomerSelectModal'
 import type { ReceiptOrder } from './OrderReceipt'
 import { receiptItemName, receiptVariantSuffix } from '@/lib/receiptFields'
+import { TouchInput, TouchTextarea } from '@/components/ui/TouchInput'
 
 type PaymentMethod = { id: string; name: string; requiresReference: boolean; code?: string }
 type CheckedInStay = { id: string; reservationNo: string; customer: { firstName: string; lastName: string | null }; room: { number: string } }
@@ -474,8 +475,8 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
                     <div className="space-y-2 rounded-sm border border-destructive/30 p-3">
                       <label className="block text-xs font-semibold text-destructive">Reason for returning the whole order</label>
                       {pendingReturnTotal > 0 && <p className="text-xs text-muted-foreground">This replaces the {pendingReturnTotal} item{pendingReturnTotal === 1 ? '' : 's'} already waiting for a return decision.</p>}
-                      <textarea
-                        autoFocus rows={2} value={cancelReason} onChange={(e) => setCancelReason(e.target.value)}
+                      <TouchTextarea
+                        autoFocus rows={2} value={cancelReason} onValueChange={setCancelReason}
                         placeholder="e.g. customer left, wrong order rung up…"
                         className="w-full rounded-sm border bg-background px-2.5 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
                       />
@@ -511,14 +512,15 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
                                 <span className="block truncate font-medium">{receiptItemName(item)}{receiptVariantSuffix(item)}</span>
                                 <span className="text-xs text-muted-foreground">{item.quantity} on order{pending ? `, ${pending} already pending` : ''}</span>
                               </span>
-                              <input
+                              <TouchInput
                                 type="number"
+                                keyboardMode="number"
                                 min="0"
                                 max={max}
                                 step="1"
                                 disabled={max <= 0}
                                 value={returnQty[item.id] ?? ''}
-                                onChange={(e) => setReturnQty((current) => ({ ...current, [item.id]: e.target.value }))}
+                                onValueChange={(value) => setReturnQty((current) => ({ ...current, [item.id]: value }))}
                                 placeholder="0"
                                 className="input text-right"
                               />
@@ -528,7 +530,7 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
                       </div>
                       <label className="block text-xs font-semibold text-warning">
                         Reason
-                        <textarea rows={2} value={returnReason} onChange={(e) => setReturnReason(e.target.value)} placeholder="e.g. customer changed order" className="mt-1.5 w-full rounded-sm border bg-background px-2.5 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring" />
+                        <TouchTextarea rows={2} value={returnReason} onValueChange={setReturnReason} placeholder="e.g. customer changed order" className="mt-1.5 w-full rounded-sm border bg-background px-2.5 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring" />
                       </label>
                       <div className="flex gap-2">
                         <button type="button" onClick={() => { setPartialReturnOpen(false); setReturnQty({}); setReturnReason('') }} className="flex-1 rounded-sm border py-2 text-xs font-semibold hover:bg-muted">Back</button>
@@ -559,8 +561,8 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
                 return cancelOpen ? (
                   <div className="mt-2 space-y-2 rounded-sm border border-destructive/30 p-3">
                     <label className="block text-xs font-semibold text-destructive">Reason for {isReturn ? 'the return' : 'cancelling'}</label>
-                    <textarea
-                      autoFocus rows={2} value={cancelReason} onChange={(e) => setCancelReason(e.target.value)}
+                    <TouchTextarea
+                      autoFocus rows={2} value={cancelReason} onValueChange={setCancelReason}
                       placeholder="e.g. customer left, wrong order rung up…"
                       className="w-full rounded-sm border bg-background px-2.5 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
                     />
@@ -600,7 +602,7 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
                         </label>
                         <label className="block text-sm font-medium">
                           Amount
-                          <input required type="number" min="0" step="0.01" max={remaining} className="input mt-1.5" value={amount} onChange={(e) => setAmount(e.target.value)} />
+                          <TouchInput required type="number" keyboardMode="number" min="0" step="0.01" max={remaining} className="input mt-1.5" value={amount} onValueChange={setAmount} />
                         </label>
                       </div>
                       {isMpesaSelected && (
@@ -616,7 +618,7 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
                         <div className="space-y-2 rounded-sm border p-3">
                           <label className="block text-sm font-medium">
                             Customer's phone number
-                            <input required placeholder="e.g. 0712345678" disabled={stkStatus === 'SENDING' || stkStatus === 'WAITING'} className="input mt-1.5" value={stkPhone} onChange={(e) => setStkPhone(e.target.value)} />
+                            <TouchInput required placeholder="e.g. 0712345678" keyboardMode="number" disabled={stkStatus === 'SENDING' || stkStatus === 'WAITING'} className="input mt-1.5" value={stkPhone} onValueChange={setStkPhone} />
                           </label>
                           {stkStatus === 'WAITING' && <p className="flex items-center gap-2 text-sm font-semibold text-secondary"><LuLoaderCircle className="animate-spin" /> {stkMessage}</p>}
                           {stkStatus === 'ERROR' && <p className="text-sm font-semibold text-destructive">{stkMessage}</p>}
@@ -633,7 +635,7 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
                       ) : (
                         <label className="block text-sm font-medium">
                           {selectedMethod?.requiresReference ? 'Reference code required' : 'Reference (optional)'}
-                          <input placeholder="e.g. M-Pesa code" className={cn('input mt-1.5', selectedMethod?.requiresReference && !reference.trim() && 'border-warning focus:ring-warning')} value={reference} onChange={(e) => setReference(e.target.value)} />
+                          <TouchInput placeholder="e.g. M-Pesa code" className={cn('input mt-1.5', selectedMethod?.requiresReference && !reference.trim() && 'border-warning focus:ring-warning')} value={reference} onValueChange={setReference} />
                           {selectedMethod?.requiresReference && <p className="mt-1 text-xs font-semibold text-warning">{selectedMethod.name} needs a transaction/reference code.</p>}
                         </label>
                       )}
@@ -642,7 +644,7 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
                     <div className="space-y-2">
                       <label className="block text-sm font-medium">
                         Search checked-in stays
-                        <input placeholder="Guest name, room, reservation no…" className="input mt-1.5" value={staySearch} onChange={(e) => { setStaySearch(e.target.value); setReservationId('') }} />
+                        <TouchInput placeholder="Guest name, room, reservation no…" className="input mt-1.5" value={staySearch} onValueChange={(value) => { setStaySearch(value); setReservationId('') }} />
                       </label>
                       {selectedStay ? (
                         <div className="flex items-center justify-between rounded-sm border bg-secondary/5 p-2.5 text-sm">
@@ -661,7 +663,7 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
                       )}
                       <label className="block text-sm font-medium">
                         Amount
-                        <input required type="number" min="0" step="0.01" max={remaining} className="input mt-1.5" value={amount} onChange={(e) => setAmount(e.target.value)} />
+                        <TouchInput required type="number" keyboardMode="number" min="0" step="0.01" max={remaining} className="input mt-1.5" value={amount} onValueChange={setAmount} />
                       </label>
                     </div>
                   )}
@@ -690,7 +692,7 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
                     <div className="space-y-2 rounded-sm border bg-warning/5 p-3">
                       <label className="block text-xs font-semibold text-warning">
                         Reason for credit
-                        <textarea rows={2} value={creditReason} onChange={(e) => setCreditReason(e.target.value)} placeholder="e.g. client requested credit until salary date" className="mt-1.5 w-full rounded-sm border bg-background px-2.5 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring" />
+                        <TouchTextarea rows={2} value={creditReason} onValueChange={setCreditReason} placeholder="e.g. client requested credit until salary date" className="mt-1.5 w-full rounded-sm border bg-background px-2.5 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring" />
                       </label>
                       <label className="block text-xs font-semibold text-warning">
                         Expected payment date

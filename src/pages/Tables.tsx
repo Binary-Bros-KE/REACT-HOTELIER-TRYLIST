@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils'
 import { type ReceiptProfile } from '@/components/pos/OrderReceipt'
 import OrderSettlementPanel from '@/components/pos/OrderSettlementPanel'
 import ReceiptPreviewModal from '@/components/pos/ReceiptPreviewModal'
+import { TouchInput } from '@/components/ui/TouchInput'
 
 type TableStatus = 'AVAILABLE' | 'OCCUPIED' | 'RESERVED' | 'OUT_OF_SERVICE'
 type ActiveOrderSummary = {
@@ -220,9 +221,9 @@ export default function Tables() {
               <h2 className="mt-1 font-display text-2xl font-semibold">{editing ? editing.label : 'Add a table'}</h2>
             </div>
             <div className="space-y-4">
-              <Field label="Label" required><input required placeholder="e.g. T1" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} className="input" /></Field>
-              <Field label="Area"><input placeholder="e.g. Main Hall, Patio" value={form.area} onChange={(e) => setForm({ ...form, area: e.target.value })} className="input" /></Field>
-              <Field label="Capacity" required><input required type="number" min="1" value={form.capacity} onChange={(e) => setForm({ ...form, capacity: e.target.value })} className="input" /></Field>
+              <Field label="Label" required><TouchInput required placeholder="e.g. T1" value={form.label} onValueChange={(value) => setForm({ ...form, label: value })} className="input" /></Field>
+              <Field label="Area"><TouchInput placeholder="e.g. Main Hall, Patio" value={form.area} onValueChange={(value) => setForm({ ...form, area: value })} className="input" /></Field>
+              <Field label="Capacity" required><TouchInput required type="number" keyboardMode="number" min="1" value={form.capacity} onValueChange={(value) => setForm({ ...form, capacity: value })} className="input" /></Field>
               <Field label="Location">
                 <select className="input" value={form.locationId} onChange={(e) => setForm({ ...form, locationId: e.target.value })}>
                   <option value="">Shared (visible everywhere)</option>

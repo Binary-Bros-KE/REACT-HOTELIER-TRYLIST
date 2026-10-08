@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import { LuBedDouble, LuLoaderCircle, LuPlus, LuSearch, LuUserRound, LuX } from 'react-icons/lu'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { TouchInput } from '@/components/ui/TouchInput'
 
 export type PickedCustomer = { id: string; firstName: string; lastName: string | null; phone: string }
 
@@ -111,8 +112,8 @@ export default function CustomerSelectModal({ party, onChange, onClose }: {
           {creating ? (
             <form onSubmit={createCustomer} className="space-y-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">New customer</p>
-              <input autoFocus placeholder="Full name" className="input" value={name} onChange={(event) => setName(event.target.value)} />
-              <input placeholder="Phone" className="input" value={phone} onChange={(event) => setPhone(event.target.value)} />
+              <TouchInput autoFocus placeholder="Full name" className="input" value={name} onValueChange={setName} />
+              <TouchInput placeholder="Phone" keyboardMode="number" className="input" value={phone} onValueChange={setPhone} />
               <div className="flex gap-2">
                 <button type="button" onClick={() => setCreating(false)} className="flex-1 rounded-sm border py-2 text-sm font-semibold hover:bg-muted">Back</button>
                 <button disabled={saving || !name.trim() || !phone.trim()} className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-sm bg-secondary py-2 text-sm font-semibold text-secondary-foreground disabled:opacity-60">
@@ -128,12 +129,12 @@ export default function CustomerSelectModal({ party, onChange, onClose }: {
 
               <div className="relative">
                 <LuSearch className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <input
+                <TouchInput
                   autoFocus
                   placeholder={roomsAvailable ? 'Search name, phone, or room…' : 'Search name or phone…'}
                   className="input pl-9"
                   value={search}
-                  onChange={(event) => setSearch(event.target.value)}
+                  onValueChange={setSearch}
                 />
               </div>
 

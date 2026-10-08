@@ -9,6 +9,7 @@ import PageBanner from '@/components/ui/PageBanner'
 import ModalShell from '@/components/ui/ModalShell'
 import ActionButton from '@/components/ui/ActionButton'
 import StatusPill from '@/components/ui/StatusPill'
+import { TouchInput, TouchTextarea } from '@/components/ui/TouchInput'
 
 type PaymentMethod = {
   id: string
@@ -140,7 +141,7 @@ export default function PaymentMethods() {
           </div>
           <label className="relative">
             <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, code or description" className="w-full border bg-background py-2.5 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring lg:w-72" />
+            <TouchInput value={search} onValueChange={setSearch} placeholder="Search name, code or description" className="w-full border bg-background py-2.5 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring lg:w-72" />
           </label>
           <ActionButton tone="primary" icon={<LuPlus />} onClick={openCreate}>New method</ActionButton>
         </div>
@@ -211,19 +212,19 @@ export default function PaymentMethods() {
         >
           <form id="method-form" onSubmit={saveMethod} className="p-5">
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Name" required><input required placeholder="e.g. Airtel Money" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="input" /></Field>
+              <Field label="Name" required><TouchInput required placeholder="e.g. Airtel Money" value={form.name} onValueChange={(value) => setForm({ ...form, name: value })} className="input" /></Field>
               <Field label="Code" required>
-                <input
+                <TouchInput
                   required
                   disabled={Boolean(editing)}
                   placeholder="e.g. AIRTEL_MONEY"
                   value={form.code}
-                  onChange={(e) => setForm({ ...form, code: e.target.value })}
+                  onValueChange={(value) => setForm({ ...form, code: value })}
                   className="input disabled:opacity-60"
                 />
               </Field>
-              <Field label="Sort order"><input type="number" value={form.sortOrder} onChange={(e) => setForm({ ...form, sortOrder: e.target.value })} className="input" /></Field>
-              <Field label="Description" className="sm:col-span-2"><textarea rows={2} placeholder="e.g. Mobile money payments via Airtel" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="input" /></Field>
+              <Field label="Sort order"><TouchInput type="number" keyboardMode="number" value={form.sortOrder} onValueChange={(value) => setForm({ ...form, sortOrder: value })} className="input" /></Field>
+              <Field label="Description" className="sm:col-span-2"><TouchTextarea rows={2} placeholder="e.g. Mobile money payments via Airtel" value={form.description} onValueChange={(value) => setForm({ ...form, description: value })} className="input" /></Field>
             </div>
 
             <label className="mt-4 flex items-start gap-3 border border-l-4 border-l-warning bg-muted/40 p-3">

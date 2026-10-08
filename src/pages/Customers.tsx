@@ -18,6 +18,7 @@ import ModalShell from '@/components/ui/ModalShell'
 import ActionButton from '@/components/ui/ActionButton'
 import StatusPill, { type PillTone } from '@/components/ui/StatusPill'
 import Avatar from '@/components/ui/Avatar'
+import { TouchInput, TouchTextarea } from '@/components/ui/TouchInput'
 
 const customerTypes = ['PERSONAL', 'BUSINESS'] as const
 const customerStatuses = ['ACTIVE', 'INACTIVE', 'BLOCKED'] as const
@@ -301,9 +302,9 @@ export default function Customers() {
           </div>
           <label className="relative">
             <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input
+            <TouchInput
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onValueChange={setSearch}
               placeholder="Search name, phone, customer no…"
               className="w-full border bg-background py-2.5 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring lg:w-72"
             />
@@ -423,16 +424,16 @@ export default function Customers() {
                 </select>
               </Field>
               {form.customerType === 'BUSINESS' ? (
-                <Field label="Business Name" required className="sm:col-span-2"><input required placeholder="e.g. Acme Traders Ltd" value={form.businessName} onChange={(e) => setForm({ ...form, businessName: e.target.value })} className="input" /></Field>
+                <Field label="Business Name" required className="sm:col-span-2"><TouchInput required placeholder="e.g. Acme Traders Ltd" value={form.businessName} onValueChange={(value) => setForm({ ...form, businessName: value })} className="input" /></Field>
               ) : (
                 <>
-                  <Field label="First Name" required><input required placeholder="e.g. Faith" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} className="input" /></Field>
-                  <Field label="Last Name"><input placeholder="e.g. Wanjiru" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} className="input" /></Field>
+                  <Field label="First Name" required><TouchInput required placeholder="e.g. Faith" value={form.firstName} onValueChange={(value) => setForm({ ...form, firstName: value })} className="input" /></Field>
+                  <Field label="Last Name"><TouchInput placeholder="e.g. Wanjiru" value={form.lastName} onValueChange={(value) => setForm({ ...form, lastName: value })} className="input" /></Field>
                 </>
               )}
-              <Field label="Phone" required><input required type="tel" placeholder="e.g. 0712 345 678" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="input" /></Field>
-              <Field label="Email"><input type="email" placeholder="e.g. faith@example.com" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="input" /></Field>
-              <Field label="Address" className="sm:col-span-2"><input placeholder="Physical address" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} className="input" /></Field>
+              <Field label="Phone" required><TouchInput required type="tel" keyboardMode="number" placeholder="e.g. 0712 345 678" value={form.phone} onValueChange={(value) => setForm({ ...form, phone: value })} className="input" /></Field>
+              <Field label="Email"><TouchInput type="email" placeholder="e.g. faith@example.com" value={form.email} onValueChange={(value) => setForm({ ...form, email: value })} className="input" /></Field>
+              <Field label="Address" className="sm:col-span-2"><TouchInput placeholder="Physical address" value={form.address} onValueChange={(value) => setForm({ ...form, address: value })} className="input" /></Field>
               {isServiceCenter && (
                 <Field label="Service group" className="sm:col-span-2">
                   <select value={form.serviceGroupId} onChange={(e) => setForm({ ...form, serviceGroupId: e.target.value })} className="input">
@@ -445,19 +446,19 @@ export default function Customers() {
 
             {form.customerType === 'BUSINESS' ? (
               <FieldGroup title="Business Details">
-                <Field label="Contact Person"><input placeholder="e.g. Jane Doe" value={form.contactPerson} onChange={(e) => setForm({ ...form, contactPerson: e.target.value })} className="input" /></Field>
-                <Field label="KRA PIN"><input placeholder="e.g. P051234567X" value={form.kraPin} onChange={(e) => setForm({ ...form, kraPin: e.target.value })} className="input" /></Field>
-                <Field label="Registration Number"><input placeholder="e.g. BN-2024-104567" value={form.registrationNumber} onChange={(e) => setForm({ ...form, registrationNumber: e.target.value })} className="input" /></Field>
-                <Field label="Website"><input placeholder="e.g. www.acme.co.ke" value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} className="input" /></Field>
-                <Field label="Billing Phone" className="text-muted-foreground"><input type="tel" placeholder="If different from above" value={form.billingPhone} onChange={(e) => setForm({ ...form, billingPhone: e.target.value })} className="input" /></Field>
-                <Field label="Billing Email" className="text-muted-foreground"><input type="email" placeholder="If different from above" value={form.billingEmail} onChange={(e) => setForm({ ...form, billingEmail: e.target.value })} className="input" /></Field>
+                <Field label="Contact Person"><TouchInput placeholder="e.g. Jane Doe" value={form.contactPerson} onValueChange={(value) => setForm({ ...form, contactPerson: value })} className="input" /></Field>
+                <Field label="KRA PIN"><TouchInput placeholder="e.g. P051234567X" value={form.kraPin} onValueChange={(value) => setForm({ ...form, kraPin: value })} className="input" /></Field>
+                <Field label="Registration Number"><TouchInput placeholder="e.g. BN-2024-104567" value={form.registrationNumber} onValueChange={(value) => setForm({ ...form, registrationNumber: value })} className="input" /></Field>
+                <Field label="Website"><TouchInput placeholder="e.g. www.acme.co.ke" value={form.website} onValueChange={(value) => setForm({ ...form, website: value })} className="input" /></Field>
+                <Field label="Billing Phone" className="text-muted-foreground"><TouchInput type="tel" keyboardMode="number" placeholder="If different from above" value={form.billingPhone} onValueChange={(value) => setForm({ ...form, billingPhone: value })} className="input" /></Field>
+                <Field label="Billing Email" className="text-muted-foreground"><TouchInput type="email" placeholder="If different from above" value={form.billingEmail} onValueChange={(value) => setForm({ ...form, billingEmail: value })} className="input" /></Field>
               </FieldGroup>
             ) : (
               <>
                 <FieldGroup title="Identity">
-                  <Field label="Nationality"><input placeholder="e.g. Kenyan" value={form.nationality} onChange={(e) => setForm({ ...form, nationality: e.target.value })} className="input" /></Field>
-                  <Field label="Passport / ID No"><input placeholder="e.g. 30112233" value={form.idNumber} onChange={(e) => setForm({ ...form, idNumber: e.target.value })} className="input" /></Field>
-                  <Field label="Occupation"><input placeholder="e.g. Accountant" value={form.occupation} onChange={(e) => setForm({ ...form, occupation: e.target.value })} className="input" /></Field>
+                  <Field label="Nationality"><TouchInput placeholder="e.g. Kenyan" value={form.nationality} onValueChange={(value) => setForm({ ...form, nationality: value })} className="input" /></Field>
+                  <Field label="Passport / ID No"><TouchInput placeholder="e.g. 30112233" value={form.idNumber} onValueChange={(value) => setForm({ ...form, idNumber: value })} className="input" /></Field>
+                  <Field label="Occupation"><TouchInput placeholder="e.g. Accountant" value={form.occupation} onValueChange={(value) => setForm({ ...form, occupation: value })} className="input" /></Field>
                   <Field label="Gender">
                     <select className="input" value={form.gender} onChange={(e) => setForm({ ...form, gender: e.target.value as Gender | '' })}>
                       <option value="">Not set</option>
@@ -465,13 +466,13 @@ export default function Customers() {
                     </select>
                   </Field>
                   <Field label="Date of Birth"><input type="date" value={form.dob} onChange={(e) => setForm({ ...form, dob: e.target.value })} className="input" /></Field>
-                  <Field label="KRA PIN"><input placeholder="e.g. A012345678X" value={form.kraPin} onChange={(e) => setForm({ ...form, kraPin: e.target.value })} className="input" /></Field>
+                  <Field label="KRA PIN"><TouchInput placeholder="e.g. A012345678X" value={form.kraPin} onValueChange={(value) => setForm({ ...form, kraPin: value })} className="input" /></Field>
                 </FieldGroup>
 
                 <FieldGroup title="Car Details">
-                  <Field label="Car Model"><input placeholder="e.g. Toyota Axio" value={form.carModel} onChange={(e) => setForm({ ...form, carModel: e.target.value })} className="input" /></Field>
-                  <Field label="Registration No"><input placeholder="e.g. KDA 123A" value={form.carRegistration} onChange={(e) => setForm({ ...form, carRegistration: e.target.value })} className="input" /></Field>
-                  <Field label="Colour"><input placeholder="e.g. Silver" value={form.carColour} onChange={(e) => setForm({ ...form, carColour: e.target.value })} className="input" /></Field>
+                  <Field label="Car Model"><TouchInput placeholder="e.g. Toyota Axio" value={form.carModel} onValueChange={(value) => setForm({ ...form, carModel: value })} className="input" /></Field>
+                  <Field label="Registration No"><TouchInput placeholder="e.g. KDA 123A" value={form.carRegistration} onValueChange={(value) => setForm({ ...form, carRegistration: value })} className="input" /></Field>
+                  <Field label="Colour"><TouchInput placeholder="e.g. Silver" value={form.carColour} onValueChange={(value) => setForm({ ...form, carColour: value })} className="input" /></Field>
                 </FieldGroup>
               </>
             )}
@@ -495,7 +496,7 @@ export default function Customers() {
                   {contactMethods.map((m) => <option key={m} value={m}>{titleCase(m)}</option>)}
                 </select>
               </Field>
-              <Field label="Loyalty Points"><input type="number" min="0" placeholder="0" value={form.loyaltyPoints} onChange={(e) => setForm({ ...form, loyaltyPoints: e.target.value })} className="input" /></Field>
+              <Field label="Loyalty Points"><TouchInput type="number" keyboardMode="number" min="0" placeholder="0" value={form.loyaltyPoints} onValueChange={(value) => setForm({ ...form, loyaltyPoints: value })} className="input" /></Field>
               <label className="flex cursor-pointer items-center justify-between gap-4 border bg-background px-3 py-2.5 text-sm font-medium sm:col-span-2">
                 Marketing consent
                 <input type="checkbox" checked={form.marketingConsent} onChange={(e) => setForm({ ...form, marketingConsent: e.target.checked })} className="size-4 accent-secondary" />
@@ -503,14 +504,14 @@ export default function Customers() {
             </FieldGroup>
 
             <FieldGroup title="Emergency Contact">
-              <Field label="Name"><input placeholder="e.g. John Doe" value={form.emergencyContactName} onChange={(e) => setForm({ ...form, emergencyContactName: e.target.value })} className="input" /></Field>
-              <Field label="Relationship"><input placeholder="e.g. Spouse" value={form.emergencyContactRelationship} onChange={(e) => setForm({ ...form, emergencyContactRelationship: e.target.value })} className="input" /></Field>
-              <Field label="Phone" className="sm:col-span-2"><input type="tel" placeholder="e.g. 0722 000 000" value={form.emergencyContactPhone} onChange={(e) => setForm({ ...form, emergencyContactPhone: e.target.value })} className="input" /></Field>
+              <Field label="Name"><TouchInput placeholder="e.g. John Doe" value={form.emergencyContactName} onValueChange={(value) => setForm({ ...form, emergencyContactName: value })} className="input" /></Field>
+              <Field label="Relationship"><TouchInput placeholder="e.g. Spouse" value={form.emergencyContactRelationship} onValueChange={(value) => setForm({ ...form, emergencyContactRelationship: value })} className="input" /></Field>
+              <Field label="Phone" className="sm:col-span-2"><TouchInput type="tel" keyboardMode="number" placeholder="e.g. 0722 000 000" value={form.emergencyContactPhone} onValueChange={(value) => setForm({ ...form, emergencyContactPhone: value })} className="input" /></Field>
             </FieldGroup>
 
             <FieldGroup title="Notes">
               <Field label="Notes" className="sm:col-span-2">
-                <textarea rows={3} placeholder="Anything worth remembering about this customer" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className="input" />
+                <TouchTextarea rows={3} placeholder="Anything worth remembering about this customer" value={form.notes} onValueChange={(value) => setForm({ ...form, notes: value })} className="input" />
               </Field>
             </FieldGroup>
 

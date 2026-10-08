@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import PageBanner from '@/components/ui/PageBanner'
 import ActionButton from '@/components/ui/ActionButton'
 import PrinterRouting from '@/components/printers/PrinterRouting'
+import { TouchInput } from '@/components/ui/TouchInput'
 import {
   getThermalSettings, saveThermalSettings, pairUsbPrinter, pairBluetoothPrinter,
   webUsbAvailable, webBluetoothAvailable, PRINTER_MODELS, recommendedColumns,
@@ -173,9 +174,9 @@ export default function PrinterSettings() {
                 )}
 
                 <Label>Bridge address</Label>
-                <input
+                <TouchInput
                   value={s.bridgeUrl}
-                  onChange={(e) => patch({ bridgeUrl: e.target.value })}
+                  onValueChange={(value) => patch({ bridgeUrl: value })}
                   placeholder="http://127.0.0.1:47011"
                   className="input mt-2 max-w-xs"
                 />
@@ -198,10 +199,10 @@ export default function PrinterSettings() {
             )}
 
             <Label>Paper width (characters per line)</Label>
-            <input
-              type="number" min={24} max={64}
-              value={s.columns}
-              onChange={(e) => patch({ columns: Number(e.target.value) || recommendedColumns(s.model) })}
+            <TouchInput
+              type="number" keyboardMode="number" min={24} max={64}
+              value={String(s.columns)}
+              onValueChange={(value) => patch({ columns: Number(value) || recommendedColumns(s.model) })}
               className="input mt-2 max-w-40"
             />
             <p className="mt-2 max-w-xl text-xs text-muted-foreground">

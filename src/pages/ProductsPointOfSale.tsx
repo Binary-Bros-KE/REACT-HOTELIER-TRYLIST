@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils'
 import RetailCheckoutModal, { type CreatedOrder, type PaymentMethod } from '@/components/pos/RetailCheckoutModal'
 import { pluralizePackLabel } from '@/components/ui/PackQtyInput'
 import { resolveTax, taxLabel, type TaxMode, type TaxTreatment } from '@/lib/tax'
+import { TouchInput } from '@/components/ui/TouchInput'
 
 type ApiProduct = {
   id: string
@@ -197,7 +198,7 @@ export default function ProductsPointOfSale() {
         <div className="mt-6 flex flex-col gap-2.5 sm:flex-row">
           <label className="relative flex-1">
             <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search products…" className="w-full rounded-sm border bg-card py-2.5 pl-9 pr-3 text-sm shadow-sm outline-none focus:ring-2 focus:ring-ring" />
+            <TouchInput value={search} onValueChange={setSearch} placeholder="Search products…" className="w-full rounded-sm border bg-card py-2.5 pl-9 pr-3 text-sm shadow-sm outline-none focus:ring-2 focus:ring-ring" />
           </label>
           <div ref={categoryRef} className="relative sm:w-64">
             <button type="button" onClick={() => { setCategoryOpen((v) => !v); setCategoryQuery('') }} className="flex w-full items-center justify-between gap-2 rounded-sm border bg-card px-3 py-2.5 text-sm font-medium shadow-sm outline-none focus:ring-2 focus:ring-ring">
@@ -207,7 +208,7 @@ export default function ProductsPointOfSale() {
             {categoryOpen && (
               <div className="absolute z-20 mt-1 w-full rounded-sm border bg-card shadow-lg">
                 <div className="border-b p-2">
-                  <input autoFocus value={categoryQuery} onChange={(e) => setCategoryQuery(e.target.value)} placeholder="Search categories…" className="w-full rounded-sm border bg-background px-2.5 py-1.5 text-xs outline-none focus:ring-2 focus:ring-ring" />
+                  <TouchInput autoFocus value={categoryQuery} onValueChange={setCategoryQuery} placeholder="Search categories…" className="w-full rounded-sm border bg-background px-2.5 py-1.5 text-xs outline-none focus:ring-2 focus:ring-ring" />
                 </div>
                 <div className="scrollbar-thin max-h-56 overflow-y-auto py-1">
                   {filteredCategories.length === 0 ? (
@@ -309,7 +310,7 @@ export default function ProductsPointOfSale() {
           <div className="border-t p-4">
             <label className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Discount (KES)
-              <input type="number" min="0" step="1" value={discount} onChange={(e) => setDiscount(e.target.value)} className="w-24 rounded-sm border bg-background px-2 py-1 text-right text-xs font-semibold text-foreground outline-none focus:ring-2 focus:ring-ring" />
+              <TouchInput type="number" keyboardMode="number" min="0" step="1" value={discount} onValueChange={setDiscount} className="w-24 rounded-sm border bg-background px-2 py-1 text-right text-xs font-semibold text-foreground outline-none focus:ring-2 focus:ring-ring" />
             </label>
           </div>
 

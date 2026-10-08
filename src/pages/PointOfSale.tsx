@@ -1,8 +1,8 @@
 import { computeFinancialsFromRows } from '@/lib/orderTotals'
-import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   LuBan, LuBedDouble, LuBellRing, LuBuilding2, LuCheck, LuChevronDown, LuCircleAlert, LuCircleCheck, LuClipboardList, LuCoffee, LuGift, LuLoaderCircle, LuMapPin, LuMinus,
-  LuDelete, LuKeyboard, LuPause, LuPencil, LuPlus, LuPrinter, LuReceiptText, LuSearch, LuSlidersHorizontal, LuTrash2, LuUserRound, LuX,
+  LuKeyboard, LuPause, LuPencil, LuPlus, LuPrinter, LuReceiptText, LuSearch, LuSlidersHorizontal, LuTrash2, LuUserRound, LuX,
 } from 'react-icons/lu'
 import { api } from '@/lib/api'
 import { useToast } from '@/components/ui/Toast'
@@ -15,6 +15,8 @@ import ReceiptPreviewModal from '@/components/pos/ReceiptPreviewModal'
 import { type ReceiptOrder, type ReceiptProfile } from '@/components/pos/OrderReceipt'
 import { getThermalSettings, printReceipt } from '@/lib/thermalPrinter'
 import type { TaxMode, TaxTreatment } from '@/lib/tax'
+import { POS_TOUCH_KEYBOARD_KEY, TouchInput, readPosTouchKeyboardSetting } from '@/components/ui/TouchInput'
+import ReasonModal from '@/components/ui/ReasonModal'
 
 type StockProduct = { id: string; name: string; unit: string; packUnit: { id: string; name: string } | null }
 type ApiVariant = {
@@ -124,7 +126,6 @@ type CancelledOrder = ActiveOrder & {
 }
 
 const NON_FINAL_STATUSES = ['OPEN', 'PREPARING', 'READY', 'SERVED']
-const POS_TOUCH_KEYBOARD_KEY = 'hotelier_pos_touch_keyboard'
 // Same cap used app-wide for "recent sales" style lists (Receipts, Approvals
 // history) — see the note on Receipts.tsx's FETCH_LIMIT for the size math.
 const FETCH_LIMIT = 100
@@ -185,15 +186,6 @@ const configKey = (itemId: string, variantId: string | null, addonIds: string[])
 const lineUnitPrice = (line: CartLine) => (line.variant?.price ?? line.item.price) + line.addons.reduce((sum, a) => sum + a.price, 0)
 const lineTotal = (line: CartLine) => lineUnitPrice(line) * line.quantity
 
-function readTouchKeyboardSetting() {
-  try {
-    return localStorage.getItem(POS_TOUCH_KEYBOARD_KEY) === 'true'
-  } catch {
-    return false
-  }
-}
-
-
 const formatQty = (value: number) => value.toLocaleString('en-KE', { maximumFractionDigits: 3 })
 
 function availabilityLabel(quantity: number, unitLabel: string | null) {
@@ -209,35 +201,6 @@ function variantConsumptionLabel(variant: Variant) {
 /** Live mirror of the server's computeOrderFinancials, shared with the Services till (lib/orderTotals.ts). */
 function computeFinancials(cart: CartLine[], discountInput: string, complimentary = false) {
   return computeFinancialsFromRows(cart.map((line) => ({ sub: lineTotal(line), tax: line.item.tax })), discountInput, complimentary)
-}
-
-function PosTouchKeyboard({ value, onChange, onClose }: { value: string; onChange: (value: string) => void; onClose: () => void }) {
-  const rows = ['1234567890', 'qwertyuiop', 'asdfghjkl', 'zxcvbnm']
-  const press = (next: string) => onChange(`${value}${next}`)
-  const preventBlur = (event: PointerEvent<HTMLButtonElement>) => event.preventDefault()
-  const keyClass = 'min-w-0 rounded-sm border bg-card px-1 py-2 text-sm font-bold uppercase shadow-sm active:scale-[0.98] hover:bg-muted'
-
-  return (
-    <div className="absolute left-0 top-[calc(100%+0.5rem)] z-30 w-full min-w-[280px] max-w-[min(92vw,34rem)] rounded-sm border bg-background p-2 shadow-xl">
-      <div className="space-y-1.5">
-        {rows.map((row) => (
-          <div key={row} className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${row.length}, minmax(0, 1fr))` }}>
-            {row.split('').map((key) => (
-              <button key={key} type="button" onPointerDown={preventBlur} onClick={() => press(key)} className={keyClass}>
-                {key}
-              </button>
-            ))}
-          </div>
-        ))}
-      </div>
-      <div className="mt-2 grid grid-cols-[1fr_2fr_1fr_1fr] gap-1.5">
-        <button type="button" onPointerDown={preventBlur} onClick={() => onChange(value.slice(0, -1))} className={keyClass} title="Backspace"><LuDelete className="mx-auto size-4" /></button>
-        <button type="button" onPointerDown={preventBlur} onClick={() => press(' ')} className={keyClass}>Space</button>
-        <button type="button" onPointerDown={preventBlur} onClick={() => onChange('')} className={keyClass}>Clear</button>
-        <button type="button" onPointerDown={preventBlur} onClick={onClose} className="rounded-sm bg-primary px-3 py-2 text-sm font-bold uppercase text-primary-foreground shadow-sm active:scale-[0.98]">Done</button>
-      </div>
-    </div>
-  )
 }
 
 export default function PointOfSale() {
@@ -266,8 +229,7 @@ export default function PointOfSale() {
   const [categoryQuery, setCategoryQuery] = useState('')
   const categoryRef = useRef<HTMLDivElement>(null)
   const [search, setSearch] = useState('')
-  const [touchKeyboardEnabled, setTouchKeyboardEnabled] = useState(readTouchKeyboardSetting)
-  const [touchKeyboardOpen, setTouchKeyboardOpen] = useState(false)
+  const [touchKeyboardEnabled, setTouchKeyboardEnabled] = useState(readPosTouchKeyboardSetting)
   const [cart, setCart] = useState<CartLine[]>([])
   const [customizing, setCustomizing] = useState<MenuItem | null>(null)
   const [editingLine, setEditingLine] = useState<CartLine | null>(null)
@@ -308,6 +270,7 @@ export default function PointOfSale() {
   const [revertOrder, setRevertOrder] = useState<ActiveOrder | null>(null)
   const [revertingId, setRevertingId] = useState<string | null>(null)
   const [voidingId, setVoidingId] = useState<string | null>(null)
+  const [voidTarget, setVoidTarget] = useState<CompletedOrder | null>(null)
 
   const { fixed: fixedLocation, options: pickableLocations, selectedId: selectedLocationId, setLocation, effectiveId: effectiveLocationId, needsChoice: needsLocationChoice } = useWorkingLocation(locations)
 
@@ -674,13 +637,12 @@ export default function PointOfSale() {
     }
   }
 
-  async function voidCompletedSale(order: CompletedOrder) {
-    const reason = window.prompt(`Void completed sale #${order.orderNumber}? Give a reason:`)?.trim()
-    if (!reason) return
+  async function voidCompletedSale(order: CompletedOrder, reason: string) {
     setVoidingId(order.id)
     try {
       await api(`/pos/orders/${order.id}/void`, { method: 'POST', body: JSON.stringify({ reason }) })
       toast.success(`Order #${order.orderNumber} voided.`)
+      setVoidTarget(null)
       await Promise.all([loadCompletedOrders(), loadCancelledOrders()])
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : 'Could not void this sale')
@@ -813,7 +775,7 @@ export default function PointOfSale() {
                           <LuReceiptText className="size-3.5" /> {owed > 0.01 ? 'Take payment' : 'View receipt'}
                         </button>
                         {isSuperAdmin && (
-                          <button onClick={() => void voidCompletedSale(order)} disabled={voidingId === order.id} className="inline-flex items-center gap-1.5 rounded-sm bg-destructive px-3 py-1.5 text-xs font-semibold text-destructive-foreground disabled:opacity-60">
+                          <button onClick={() => setVoidTarget(order)} disabled={voidingId === order.id} className="inline-flex items-center gap-1.5 rounded-sm bg-destructive px-3 py-1.5 text-xs font-semibold text-destructive-foreground disabled:opacity-60">
                             {voidingId === order.id ? <LuLoaderCircle className="size-3.5 animate-spin" /> : <LuBan className="size-3.5" />} Void sale
                           </button>
                         )}
@@ -1004,16 +966,14 @@ export default function PointOfSale() {
         <div className="mt-4 grid grid-cols-1 gap-0 sm:mt-6 lg:grid-cols-[minmax(0,1fr)_24px_360px]">
           <section className="min-w-0">
             <div className="flex flex-col gap-2.5 sm:flex-row">
-              <div className="relative flex-1 rounded-sm ring-2 ring-border focus-within:ring-secondary" onFocusCapture={() => { if (touchKeyboardEnabled) setTouchKeyboardOpen(true) }}>
+              <div className="relative flex-1 rounded-sm ring-2 ring-border focus-within:ring-secondary">
                 <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search menu…" className="w-full rounded-sm border bg-card py-2.5 pl-9 pr-3 text-sm shadow-sm outline-none focus:ring-2 focus:ring-ring" />
-                {touchKeyboardEnabled && touchKeyboardOpen && <PosTouchKeyboard value={search} onChange={setSearch} onClose={() => setTouchKeyboardOpen(false)} />}
+                <TouchInput value={search} onValueChange={setSearch} touchKeyboardEnabled={touchKeyboardEnabled} placeholder="Search menu…" className="w-full rounded-sm border bg-card py-2.5 pl-9 pr-3 text-sm shadow-sm outline-none focus:ring-2 focus:ring-ring" />
               </div>
               <button
                 type="button"
                 onClick={() => {
                   setTouchKeyboardEnabled((enabled) => !enabled)
-                  setTouchKeyboardOpen(!touchKeyboardEnabled)
                 }}
                 title="Toggle touch keyboard on this device"
                 className={cn(
@@ -1036,10 +996,10 @@ export default function PointOfSale() {
                 {categoryOpen && (
                   <div className="absolute z-20 mt-1 w-full rounded-sm border bg-card shadow-lg">
                     <div className="border-b p-2">
-                      <input
+                      <TouchInput
                         autoFocus
                         value={categoryQuery}
-                        onChange={(e) => setCategoryQuery(e.target.value)}
+                        onValueChange={setCategoryQuery}
                         placeholder="Search categories…"
                         className="w-full rounded-sm border bg-background px-2.5 py-1.5 text-xs outline-none focus:ring-2 focus:ring-ring"
                       />
@@ -1219,8 +1179,8 @@ export default function PointOfSale() {
                   </div>
                   {saleType === 'COMPLIMENTARY' && (
                     <>
-                      <input value={complimentaryRecipientName} onChange={(e) => setComplimentaryRecipientName(e.target.value)} placeholder="Recipient, e.g. DJ Lexx, boss guest, walk-in" className="input" />
-                      <input value={complimentaryReason} onChange={(e) => setComplimentaryReason(e.target.value)} placeholder="Reason, e.g. host bottle allocation" className="input" />
+                      <TouchInput value={complimentaryRecipientName} onValueChange={setComplimentaryRecipientName} placeholder="Recipient, e.g. DJ Lexx, boss guest, walk-in" className="input" />
+                      <TouchInput value={complimentaryReason} onValueChange={setComplimentaryReason} placeholder="Reason, e.g. host bottle allocation" className="input" />
                     </>
                   )}
                   {saleType === 'SALE' && complimentarySessionId && (
@@ -1280,7 +1240,7 @@ export default function PointOfSale() {
               <div className="border-t p-4">
                 <label className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Discount (KES)
-                  <input type="number" min="0" step="1" value={discount} onChange={(e) => setDiscount(e.target.value)} disabled={saleType === 'COMPLIMENTARY'} className="w-24 rounded-sm border bg-background px-2 py-1 text-right text-xs font-semibold text-foreground outline-none focus:ring-2 focus:ring-ring disabled:opacity-50" />
+                  <TouchInput type="number" keyboardMode="number" min="0" step="1" value={discount} onValueChange={setDiscount} disabled={saleType === 'COMPLIMENTARY'} className="w-24 rounded-sm border bg-background px-2 py-1 text-right text-xs font-semibold text-foreground outline-none focus:ring-2 focus:ring-ring disabled:opacity-50" />
                 </label>
               </div>
 
@@ -1411,6 +1371,16 @@ export default function PointOfSale() {
             setComplimentarySessionId(session.id)
             setSessionModalOpen(false)
           }}
+        />
+      )}
+      {voidTarget && (
+        <ReasonModal
+          title={`Void completed sale #${voidTarget.orderNumber}?`}
+          tone="danger"
+          confirmLabel="Void sale"
+          busy={voidingId === voidTarget.id}
+          onCancel={() => setVoidTarget(null)}
+          onConfirm={(reason) => void voidCompletedSale(voidTarget, reason)}
         />
       )}
     </div>
@@ -1620,14 +1590,14 @@ function ComplimentarySessionModal({ onClose, onCreated }: { onClose: () => void
           <button type="button" onClick={onClose} title="Close" className="bg-black p-2 text-white transition hover:bg-black/80"><LuX className="size-4" /></button>
         </div>
         <div className="mt-5 grid gap-3">
-          <label className="text-sm font-medium">Title <span className="text-destructive">*</span><input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. DJ Lexx Saturday" className="input mt-1.5" /></label>
-          <label className="text-sm font-medium">Host name <span className="text-destructive">*</span><input value={hostName} onChange={(e) => setHostName(e.target.value)} placeholder="e.g. DJ Lexx" className="input mt-1.5" /></label>
-          <label className="text-sm font-medium">Phone<input value={hostPhone} onChange={(e) => setHostPhone(e.target.value)} className="input mt-1.5" /></label>
+          <label className="text-sm font-medium">Title <span className="text-destructive">*</span><TouchInput value={title} onValueChange={setTitle} placeholder="e.g. DJ Lexx Saturday" className="input mt-1.5" /></label>
+          <label className="text-sm font-medium">Host name <span className="text-destructive">*</span><TouchInput value={hostName} onValueChange={setHostName} placeholder="e.g. DJ Lexx" className="input mt-1.5" /></label>
+          <label className="text-sm font-medium">Phone<TouchInput value={hostPhone} onValueChange={setHostPhone} keyboardMode="number" className="input mt-1.5" /></label>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-sm font-medium">Starts<input type="datetime-local" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} className="input mt-1.5" /></label>
             <label className="text-sm font-medium">Ends<input type="datetime-local" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} className="input mt-1.5" /></label>
           </div>
-          <label className="text-sm font-medium">Notes<input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. 2 bottles whiskey allocation" className="input mt-1.5" /></label>
+          <label className="text-sm font-medium">Notes<TouchInput value={notes} onValueChange={setNotes} placeholder="e.g. 2 bottles whiskey allocation" className="input mt-1.5" /></label>
         </div>
         {error && <div className="mt-4 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert />{error}</div>}
         <div className="mt-6 flex justify-end gap-2 border-t pt-5">
@@ -1801,7 +1771,7 @@ function AddItemsModal({ order, menuItems, allAddons, onClose, onRefresh, onAdde
           <div className="overflow-y-auto p-4">
             <label className="relative block">
               <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search menu to add…" className="w-full rounded-sm border bg-background py-2 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
+              <TouchInput value={search} onValueChange={setSearch} placeholder="Search menu to add…" className="w-full rounded-sm border bg-background py-2 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
             </label>
             <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
               {visibleItems.map((item) => (

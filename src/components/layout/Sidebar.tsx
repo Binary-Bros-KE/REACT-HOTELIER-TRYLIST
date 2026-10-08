@@ -14,6 +14,15 @@ const EXPANDED_WIDTH = 264
 const COLLAPSED_WIDTH = 80
 const DEFAULT_SECTIONS: PermissionSection[] = ['OVERVIEW']
 const HOUSEKEEPING_POLL_MS = 10_000
+const SIDEBAR_COLLAPSED_KEY = 'hotelier.sidebar.collapsed'
+
+function readCollapsedSetting(): boolean {
+  try {
+    return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
 
 type SidebarProps = {
   className?: string
@@ -24,10 +33,17 @@ type SidebarProps = {
 }
 
 export default function Sidebar({ className, mobile = false, onNavigate }: SidebarProps) {
-  const [collapsedState, setCollapsed] = useState(false)
+  const [collapsedState, setCollapsedState] = useState(readCollapsedSetting)
   const [housekeepingBadge, setHousekeepingBadge] = useState(0)
   const [navQuery, setNavQuery] = useState('')
   const collapsed = mobile ? false : collapsedState
+  useEffect(() => {
+    try {
+      localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsedState ? 'true' : 'false')
+    } catch {
+      // Local device preference only.
+    }
+  }, [collapsedState])
   const dispatch = useAppDispatch()
   const navigate = useNavigate()
   const location = useLocation()
@@ -110,7 +126,7 @@ export default function Sidebar({ className, mobile = false, onNavigate }: Sideb
         <div className="absolute -right-3.5 top-8 z-30 flex flex-col gap-2">
           <button
             type="button"
-            onClick={() => setCollapsed((v) => !v)}
+            onClick={() => setCollapsedState((v) => !v)}
             title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             className="flex size-7 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-md transition-colors hover:text-foreground"
           >

@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import { LuCircleAlert, LuLoaderCircle, LuX } from 'react-icons/lu'
 import { api } from '@/lib/api'
 import { CustomerSelectField, partyLabel, type SaleParty } from './CustomerSelectModal'
+import { TouchInput } from '@/components/ui/TouchInput'
 
 export type PaymentMethod = { id: string; name: string; requiresReference: boolean }
 export type CreatedOrder = { id: string; orderNumber: number }
@@ -161,19 +162,19 @@ export default function RetailCheckoutModal({ items, lines, total, channel, loca
             </label>
             <label className="block text-sm font-medium">
               Amount received
-              <input required type="number" min="0" step="0.01" className="input mt-1.5" value={amount} onChange={(e) => setAmount(e.target.value)} />
+              <TouchInput required type="number" keyboardMode="number" min="0" step="0.01" className="input mt-1.5" value={amount} onValueChange={setAmount} />
               {changeDue > 0 && <span className="mt-1.5 block rounded-sm bg-success/10 px-3 py-1.5 text-sm font-semibold text-success">Change due: {formatKes(changeDue)}</span>}
             </label>
             <label className="block text-sm font-medium">
               {selectedMethod?.requiresReference ? 'Reference *' : 'Reference (optional)'}
-              <input required={selectedMethod?.requiresReference} placeholder="e.g. M-Pesa code" className="input mt-1.5" value={reference} onChange={(e) => setReference(e.target.value)} />
+              <TouchInput required={selectedMethod?.requiresReference} placeholder="e.g. M-Pesa code" className="input mt-1.5" value={reference} onValueChange={setReference} />
             </label>
           </div>
         ) : (
           <div className="mt-4 space-y-3">
             <label className="block text-sm font-medium">
               Search checked-in stays
-              <input placeholder="Guest name, room, reservation no…" className="input mt-1.5" value={staySearch} onChange={(e) => { setStaySearch(e.target.value); setReservationId('') }} />
+              <TouchInput placeholder="Guest name, room, reservation no…" className="input mt-1.5" value={staySearch} onValueChange={(value) => { setStaySearch(value); setReservationId('') }} />
             </label>
             {selectedStay ? (
               <div className="flex items-center justify-between rounded-sm border bg-secondary/5 p-3 text-sm">

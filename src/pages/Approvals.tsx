@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/Toast'
 import { useAppSelector } from '@/store/hooks'
 import ReceiptPreviewModal from '@/components/pos/ReceiptPreviewModal'
+import ReasonModal from '@/components/ui/ReasonModal'
 import { type ReceiptProfile } from '@/components/pos/OrderReceipt'
 
 // How many already-decided (cancelled) orders to show below the live queue —
@@ -92,6 +93,7 @@ export default function Approvals() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [rejectTarget, setRejectTarget] = useState<{ kind: 'cancel'; order: PendingOrder } | { kind: 'return'; group: ReturnRequestGroup } | null>(null)
   const [reverted, setReverted] = useState<RevertedOrder[]>([])
 
   const load = useCallback(async () => {
@@ -127,19 +129,13 @@ export default function Approvals() {
     api<{ profile: ReceiptProfile }>('/business-profile').then((r) => setProfile(r.profile)).catch(() => {})
   }, [])
 
-  async function decide(order: PendingOrder, action: 'approve' | 'reject') {
-    let note: string | undefined
-    if (action === 'reject') {
-      const input = window.prompt(`Reject the cancellation of order #${order.orderNumber}? Optional note for the waiter:`, '')
-      if (input === null) return
-      note = input.trim() || undefined
-    } else if (!window.confirm(`Approve cancelling order #${order.orderNumber}? It will be marked cancelled.`)) {
-      return
-    }
+  async function decide(order: PendingOrder, action: 'approve' | 'reject', note?: string) {
+    if (action === 'approve' && !window.confirm(`Approve cancelling order #${order.orderNumber}? It will be marked cancelled.`)) return
     setBusyId(order.id)
     try {
       await api(`/pos/orders/${order.id}/cancel/${action}`, { method: 'POST', body: JSON.stringify(action === 'reject' ? { note } : {}) })
       toast.success(action === 'approve' ? `Order #${order.orderNumber} cancelled.` : `Cancellation of #${order.orderNumber} rejected.`)
+      setRejectTarget(null)
       await load()
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : 'Could not record the decision')
@@ -148,22 +144,16 @@ export default function Approvals() {
     }
   }
 
-  async function decideReturnGroup(group: ReturnRequestGroup, action: 'approve' | 'reject') {
+  async function decideReturnGroup(group: ReturnRequestGroup, action: 'approve' | 'reject', note?: string) {
     const summary = group.requests.map((request) => `${request.quantity} x ${request.orderItem.menuItem?.name ?? request.orderItem.service?.name ?? 'item'}${request.orderItem.variant ?? request.orderItem.serviceVariant ? ` (${(request.orderItem.variant ?? request.orderItem.serviceVariant)!.name})` : ''}`).join(', ')
-    let note: string | undefined
-    if (action === 'reject') {
-      const input = window.prompt(`Reject return request for order #${group.order.orderNumber}? Optional note for the waiter:`, '')
-      if (input === null) return
-      note = input.trim() || undefined
-    } else if (!window.confirm(`Approve returning ${summary} from order #${group.order.orderNumber}? Stock will be returned and the order total reduced.`)) {
-      return
-    }
+    if (action === 'approve' && !window.confirm(`Approve returning ${summary} from order #${group.order.orderNumber}? Stock will be returned and the order total reduced.`)) return
     setBusyId(group.order.id)
     try {
       for (const request of group.requests) {
         await api(`/pos/return-requests/${request.id}/${action}`, { method: 'POST', body: JSON.stringify(action === 'reject' ? { note } : {}) })
       }
       toast.success(action === 'approve' ? `Return approved for #${group.order.orderNumber}.` : `Return rejected for #${group.order.orderNumber}.`)
+      setRejectTarget(null)
       await load()
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : 'Could not record the decision')
@@ -253,7 +243,7 @@ export default function Approvals() {
 
               <div className="mt-4 flex flex-wrap gap-2">
                 <ActionButton tone="success" icon={<LuBadgeCheck />} loading={busyId === order.id} onClick={() => void decide(order, 'approve')}>Approve cancellation</ActionButton>
-                <ActionButton tone="danger" icon={<LuX />} disabled={busyId === order.id} onClick={() => void decide(order, 'reject')}>Reject</ActionButton>
+                <ActionButton tone="danger" icon={<LuX />} disabled={busyId === order.id} onClick={() => setRejectTarget({ kind: 'cancel', order })}>Reject</ActionButton>
                 <ActionButton tone="neutral" icon={<LuReceiptText />} onClick={() => setReceiptId(order.id)}>Receipt</ActionButton>
               </div>
             </article>
@@ -317,7 +307,7 @@ export default function Approvals() {
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
                 <ActionButton tone="success" icon={<LuBadgeCheck />} loading={busyId === group.order.id} onClick={() => void decideReturnGroup(group, 'approve')}>Approve return</ActionButton>
-                <ActionButton tone="danger" icon={<LuX />} disabled={busyId === group.order.id} onClick={() => void decideReturnGroup(group, 'reject')}>Reject</ActionButton>
+                <ActionButton tone="danger" icon={<LuX />} disabled={busyId === group.order.id} onClick={() => setRejectTarget({ kind: 'return', group })}>Reject</ActionButton>
                 <ActionButton tone="neutral" icon={<LuReceiptText />} onClick={() => setReceiptId(group.order.id)}>Receipt</ActionButton>
               </div>
             </article>
@@ -400,6 +390,22 @@ export default function Approvals() {
       )}
 
       {receiptId && <ReceiptPreviewModal orderId={receiptId} profile={profile} onClose={() => setReceiptId(null)} />}
+
+      {rejectTarget && (
+        <ReasonModal
+          title={rejectTarget.kind === 'cancel' ? `Reject cancellation of order #${rejectTarget.order.orderNumber}?` : `Reject return request for order #${rejectTarget.group.order.orderNumber}?`}
+          message="Optional note for the waiter."
+          required={false}
+          confirmLabel="Reject"
+          tone="danger"
+          busy={busyId === (rejectTarget.kind === 'cancel' ? rejectTarget.order.id : rejectTarget.group.order.id)}
+          onCancel={() => setRejectTarget(null)}
+          onConfirm={(note) => {
+            if (rejectTarget.kind === 'cancel') void decide(rejectTarget.order, 'reject', note || undefined)
+            else void decideReturnGroup(rejectTarget.group, 'reject', note || undefined)
+          }}
+        />
+      )}
     </div>
   )
 }

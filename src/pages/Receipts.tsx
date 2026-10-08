@@ -13,6 +13,8 @@ import ReceiptPreviewModal from '@/components/pos/ReceiptPreviewModal'
 import PageBanner from '@/components/ui/PageBanner'
 import ActionButton from '@/components/ui/ActionButton'
 import StatusPill, { type PillTone } from '@/components/ui/StatusPill'
+import ReasonModal from '@/components/ui/ReasonModal'
+import { TouchInput } from '@/components/ui/TouchInput'
 
 type PaymentStatus = 'UNPAID' | 'PARTIAL' | 'PAID'
 type ReceiptRow = ReceiptOrder & { total: number; paid: number; paymentStatus?: PaymentStatus; createdBy: string | null; customer?: { firstName: string; lastName: string | null; phone: string | null } | null }
@@ -82,6 +84,7 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
   const [manageId, setManageId] = useState<string | null>(null)
   const [receiptOrderId, setReceiptOrderId] = useState<string | null>(null)
   const [voidingId, setVoidingId] = useState<string | null>(null)
+  const [voidTarget, setVoidTarget] = useState<ReceiptRow | null>(null)
 
   const { fixed: fixedLocation, options: pickableLocations, selectedId: selectedLocationId, setLocation, effectiveId: effectiveLocationId } = useWorkingLocation(locations, { persist: false })
   const assignedLocationCount = user?.locations.length ?? 0
@@ -145,13 +148,12 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
 
   useEffect(() => { void load() }, [load])
 
-  async function voidSale(order: ReceiptRow) {
-    const reason = window.prompt(`Void completed sale #${order.orderNumber}? Give a reason:`)?.trim()
-    if (!reason) return
+  async function voidSale(order: ReceiptRow, reason: string) {
     setVoidingId(order.id)
     try {
       await api(`/pos/orders/${order.id}/void`, { method: 'POST', body: JSON.stringify({ reason }) })
       toast.success(`Order #${order.orderNumber} voided.`)
+      setVoidTarget(null)
       await load()
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : 'Could not void this sale')
@@ -211,7 +213,7 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
               Search
               <span className="relative">
                 <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Order #, table, or customer…" className="input pl-9 font-normal normal-case tracking-normal" />
+                <TouchInput value={search} onValueChange={setSearch} placeholder="Order #, table, or customer…" className="input pl-9 font-normal normal-case tracking-normal" />
               </span>
             </label>
 
@@ -351,7 +353,7 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
                           <ActionButton tone="neutral" icon={<LuPrinter />} title="View / print receipt" onClick={() => setReceiptOrderId(order.id)} />
                           <ActionButton tone="neutral" icon={<LuReceiptText />} title="Manage / request a return" onClick={() => setManageId(order.id)} />
                           {isSuperAdmin && order.status === 'COMPLETED' && (
-                            <ActionButton tone="danger" icon={voidingId === order.id ? <LuLoaderCircle className="animate-spin" /> : <LuBan />} title="Void completed sale" onClick={() => void voidSale(order)} />
+                            <ActionButton tone="danger" icon={voidingId === order.id ? <LuLoaderCircle className="animate-spin" /> : <LuBan />} title="Void completed sale" onClick={() => setVoidTarget(order)} />
                           )}
                         </div>
                       </td>
@@ -379,6 +381,17 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
           orderId={receiptOrderId}
           profile={profile}
           onClose={() => setReceiptOrderId(null)}
+        />
+      )}
+
+      {voidTarget && (
+        <ReasonModal
+          title={`Void completed sale #${voidTarget.orderNumber}?`}
+          tone="danger"
+          confirmLabel="Void sale"
+          busy={voidingId === voidTarget.id}
+          onCancel={() => setVoidTarget(null)}
+          onConfirm={(reason) => void voidSale(voidTarget, reason)}
         />
       )}
     </div>
