@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { LuBedDouble, LuLoaderCircle, LuPlus, LuSearch, LuUserRound, LuX } from 'react-icons/lu'
 import { api } from '@/lib/api'
-import { cn } from '@/lib/utils'
 import { TouchInput } from '@/components/ui/TouchInput'
 
 export type PickedCustomer = { id: string; firstName: string; lastName: string | null; phone: string }
@@ -20,15 +19,15 @@ type Stay = { id: string; reservationNo: string; customer: PickedCustomer; room:
 const fullName = (c: { firstName: string; lastName: string | null }) => `${c.firstName} ${c.lastName ?? ''}`.trim()
 
 export function partyLabel(party: SaleParty): string {
-  if (party.kind === 'WALK_IN') return 'Walk-in Customer'
+  if (party.kind === 'WALK_IN') return 'Choose a customer'
   if (party.kind === 'ROOM') return `Room ${party.roomNumber} · ${fullName(party.customer)}`
   return party.customer.phone ? `${fullName(party.customer)} · ${party.customer.phone}` : fullName(party.customer)
 }
 
 /** Full-screen "Choose Customer" pop-up: search customers or checked-in
- * rooms, tap an occupied room straight off the touch grid, quick-add a
- * customer (name + phone only), or keep the sale as a walk-in. */
-export default function CustomerSelectModal({ party, onChange, onClose }: {
+ * rooms, or quick-add a customer (name + phone only). Every sale is tied to
+ * someone — there's no walk-in/anonymous option here. */
+export default function CustomerSelectModal({ onChange, onClose }: {
   party: SaleParty
   onChange: (party: SaleParty) => void
   onClose: () => void
@@ -180,13 +179,6 @@ export default function CustomerSelectModal({ party, onChange, onClose }: {
             </>
           )}
         </div>
-
-        {!creating && (
-          <button type="button" onClick={() => { onChange({ kind: 'WALK_IN' }); onClose() }} className={cn('flex items-center justify-between border-t p-4 text-left text-sm hover:bg-muted/40', party.kind === 'WALK_IN' && 'bg-secondary/5')}>
-            <span className="inline-flex items-center gap-2 font-semibold"><LuUserRound className="size-4 text-muted-foreground" /> Walk-in Customer</span>
-            <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Default</span>
-          </button>
-        )}
       </div>
     </div>
   )

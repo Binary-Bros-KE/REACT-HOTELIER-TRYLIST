@@ -163,13 +163,14 @@ export default function ServicesPointOfSale() {
 
   /** Opens a running tab for the current sale; it is paid when the service ends. */
   async function startService() {
+    if (party.kind === 'WALK_IN') { setCustomerModalOpen(true); toast.error('Choose a customer before starting this service'); return }
     setStarting(true)
     try {
       const { order } = await api<{ order: CreatedOrder }>('/pos/service-orders', {
         method: 'POST',
         body: JSON.stringify({
           locationId: effectiveLocationId || undefined,
-          customerId: party.kind === 'WALK_IN' ? undefined : party.customer.id,
+          customerId: party.customer.id,
           label: label.trim() || undefined,
           items: cart.map(linePayload),
         }),
@@ -373,7 +374,7 @@ export default function ServicesPointOfSale() {
           ) : (
             <div className="space-y-2 px-4">
               <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Label a running service (Pool, Room 5, KDA 123A)" maxLength={120} className="w-full rounded-sm border bg-background px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-ring" />
-              <button disabled={cart.length === 0 || needsLocationChoice || starting} onClick={() => void startService()} className="flex w-full items-center justify-center gap-2 border-2 border-secondary py-2 text-xs font-bold uppercase tracking-wider text-secondary transition hover:bg-secondary/10 disabled:opacity-50">{starting && <LuLoaderCircle className="animate-spin" />}Start service · pay at the end</button>
+              <button disabled={cart.length === 0 || needsLocationChoice || starting || party.kind === 'WALK_IN'} onClick={() => void startService()} className="flex w-full items-center justify-center gap-2 border-2 border-secondary py-2 text-xs font-bold uppercase tracking-wider text-secondary transition hover:bg-secondary/10 disabled:opacity-50">{starting && <LuLoaderCircle className="animate-spin" />}Start service · pay at the end</button>
             </div>
           )}
 
