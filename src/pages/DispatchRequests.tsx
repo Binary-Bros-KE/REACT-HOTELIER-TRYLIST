@@ -68,8 +68,9 @@ const STATUS_LABEL = { REQUESTED: 'Waiting', DISPATCHED: 'Dispatched', REJECTED:
 /**
  * The order read dish by dish: each dish, then the stock ingredients it takes,
  * with what the dish asks for and what the store holds. When `sending` is given,
- * each ingredient also gets the quantity the store will send (keyed by product,
- * so the same product in two dishes is one number).
+ * each ingredient also gets the quantity the store will send. Send quantities
+ * are keyed by dish row, not product, so the same product used by two dishes
+ * can be shorted on one dish without changing the other.
  */
 function DishList({
   dishes,
@@ -79,7 +80,7 @@ function DishList({
 }: {
   dishes: Dish[]
   requesting: boolean
-  sending?: { quantities: Record<string, string>; onChange: (productId: string, value: string) => void }
+  sending?: { quantities: Record<string, string>; onChange: (rowKey: string, value: string) => void }
   onEditDishStock?: (dish: Dish) => void
 }) {
   // What the whole request asks of each product, across every dish.
@@ -91,8 +92,10 @@ function DishList({
   if (dishes.length === 0) return null
   return (
     <div className="mt-3 space-y-4">
-      {dishes.map((dish, index) => (
-        <div key={index} className="border-l-4 border-accent pl-3">
+      {dishes.map((dish, index) => {
+        const dishKey = `${index}:${dish.menuItemId ?? 'item'}:${dish.variantId ?? 'base'}`
+        return (
+        <div key={dishKey} className="border-l-4 border-accent pl-3">
           <div className="flex items-center justify-between gap-2">
             <p className="font-semibold">{qty(dish.quantity)} × {dish.name}</p>
             {onEditDishStock && dish.recipeId && requesting && (
@@ -114,15 +117,16 @@ function DishList({
               </thead>
               <tbody>
                 {dish.ingredients.map((g) => {
+                  const rowKey = `${dishKey}:${g.productId}`
                   const short = requesting && g.storeQty < (totalAsked.get(g.productId) ?? g.quantity)
                   return (
-                    <tr key={g.productId} className="border-t border-dashed">
+                    <tr key={rowKey} className="border-t border-dashed">
                       <td className="py-1">{g.name} <span className="text-xs text-muted-foreground">{g.unit}</span></td>
                       <td className="py-1 text-right tabular-nums">{qty(g.quantity)}</td>
                       {requesting && <td className={cn('py-1 text-right tabular-nums', short && 'font-semibold text-destructive')}>{qty(g.storeQty)}</td>}
                       {sending && (
                         <td className="py-1 text-right">
-                          <input type="number" min="0" step="any" className="input h-7 w-20 text-right" value={sending.quantities[g.productId] ?? ''} onChange={(e) => sending.onChange(g.productId, e.target.value)} />
+                          <input type="number" min="0" step="any" className="input h-7 w-20 text-right" value={sending.quantities[rowKey] ?? ''} onChange={(e) => sending.onChange(rowKey, e.target.value)} />
                         </td>
                       )}
                     </tr>
@@ -132,7 +136,8 @@ function DishList({
             </table>
           )}
         </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
@@ -302,33 +307,55 @@ export default function DispatchRequests() {
 
 function DispatchModal({ request, onClose, onDone, onDishStock }: { request: Request; onClose: () => void; onDone: () => void; onDishStock: (dish: Dish) => void }) {
   const toast = useToast()
-  // Quantities are per product. A recipe correction can change the list, so anything not yet typed defaults to what was asked.
+  // Quantities are per visible dish ingredient row. We aggregate by product
+  // only at submit time because the backend dispatch item is still per product.
   const [quantities, setQuantities] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
-  const sendFor = (productId: string, asked: number) => (quantities[productId] !== undefined ? Number(quantities[productId]) : asked)
+  const dishLines = useMemo(() => request.dishes.flatMap((dish, dishIndex) => {
+    const dishKey = `${dishIndex}:${dish.menuItemId ?? 'item'}:${dish.variantId ?? 'base'}`
+    return dish.ingredients.map((ingredient) => ({
+      ...ingredient,
+      rowKey: `${dishKey}:${ingredient.productId}`,
+    }))
+  }), [request.dishes])
   const askedByProduct = useMemo(() => {
     const totals = new Map<string, number>()
     for (const item of request.items) totals.set(item.productId, Number(item.requestedQty))
     return totals
   }, [request.items])
-  const partial = [...askedByProduct].some(([productId, asked]) => sendFor(productId, asked) < asked)
-  const anything = [...askedByProduct].some(([productId, asked]) => sendFor(productId, asked) > 0)
+  const sendForRow = (rowKey: string, asked: number) => (quantities[rowKey] !== undefined ? Number(quantities[rowKey]) : asked)
+  const sendTotals = useMemo(() => {
+    const totals = new Map<string, number>()
+    if (dishLines.length === 0) {
+      for (const item of request.items) totals.set(item.productId, quantities[item.id] !== undefined ? Number(quantities[item.id]) : Number(item.requestedQty))
+      return totals
+    }
+    for (const line of dishLines) totals.set(line.productId, (totals.get(line.productId) ?? 0) + sendForRow(line.rowKey, line.quantity))
+    return totals
+  }, [dishLines, quantities, request.items])
+  const partial = [...askedByProduct].some(([productId, asked]) => (sendTotals.get(productId) ?? 0) < asked)
+  const anything = [...sendTotals.values()].some((send) => send > 0)
 
-  function setSend(productId: string, value: string) {
-    setQuantities((q) => ({ ...q, [productId]: value }))
+  function setSend(rowKey: string, value: string) {
+    setQuantities((q) => ({ ...q, [rowKey]: value }))
   }
 
   async function save() {
     setSaving(true)
     try {
-      const items = request.items.map((i) => ({ itemId: i.id, quantity: sendFor(i.productId, Number(i.requestedQty)) || 0 }))
+      const items = request.items.map((i) => ({ itemId: i.id, quantity: sendTotals.get(i.productId) || 0 }))
       await api(`/dispatch-requests/${request.id}/dispatch`, { method: 'POST', body: JSON.stringify({ items }) })
       onDone()
     } catch (cause) { toast.error(cause instanceof Error ? cause.message : 'Could not dispatch'); setSaving(false) }
   }
 
   // The sending view shows the same quantities the card did, plus the send column.
-  const sending = { quantities: Object.fromEntries([...askedByProduct].map(([productId, asked]) => [productId, quantities[productId] ?? String(asked)])), onChange: setSend }
+  const sending = {
+    quantities: dishLines.length > 0
+      ? Object.fromEntries(dishLines.map((line) => [line.rowKey, quantities[line.rowKey] ?? String(line.quantity)]))
+      : Object.fromEntries(request.items.map((item) => [item.id, quantities[item.id] ?? String(item.requestedQty)])),
+    onChange: setSend,
+  }
 
   return (
     <ModalShell kicker={request.requestNo} title={`Dispatch for order #${request.orderNumber}`} subtitle={`${request.fromLocation.name} → ${request.toLocation.name}${request.rungUpBy ? ` · rung up by ${request.rungUpBy}` : ''}`} onClose={onClose} size="md"
