@@ -330,12 +330,12 @@ function receiptBranding(profile: ReceiptProfile): ReceiptBranding {
 function logoSizeForPrinter(image: HTMLImageElement, cols: number): { width: number; height: number } {
   const nativeWidth = image.naturalWidth || image.width || 1
   const nativeHeight = image.naturalHeight || image.height || 1
-  const maxWidth = Math.min(384, Math.max(160, cols * 8))
-  const maxHeight = 96
-  const scale = Math.min(maxWidth / nativeWidth, maxHeight / nativeHeight, 1)
+  const maxWidth = Math.min(384, Math.max(240, cols * 8))
+  const maxHeight = 160
+  const scale = Math.min(maxWidth / nativeWidth, maxHeight / nativeHeight)
   return {
-    width: Math.max(64, Math.floor((nativeWidth * scale) / 8) * 8),
-    height: Math.max(24, Math.floor((nativeHeight * scale) / 8) * 8),
+    width: Math.max(160, Math.floor((nativeWidth * scale) / 8) * 8),
+    height: Math.max(56, Math.floor((nativeHeight * scale) / 8) * 8),
   }
 }
 
@@ -389,7 +389,9 @@ export function buildReceiptBytes(order: ReceiptOrder, profile: ReceiptProfile, 
   // location's own receipt header text --------
   if (branding.showLogo && logo) {
     const size = logoSizeForPrinter(logo, cols)
+    e.raw([0x1b, 0x61, 0x01])
     e.image(logo, size.width, size.height, 'threshold', 180)
+    e.raw([0x1b, 0x61, 0x00])
     e.newline(1)
   }
   if (profile?.businessName && branding.showName) {
@@ -404,10 +406,9 @@ export function buildReceiptBytes(order: ReceiptOrder, profile: ReceiptProfile, 
       for (const line of wrapWords(profile.businessName.toUpperCase(), cols)) e.line(center(line, cols))
       e.bold(false)
     } else {
-      const nameWidth = Math.max(8, Math.floor(cols / 2))
-      e.size(2, 2).bold(true)
-      for (const line of wrapWords(profile.businessName.toUpperCase(), nameWidth)) e.line(center(line, nameWidth))
-      e.bold(false).size(1, 1)
+      e.bold(true)
+      for (const line of wrapWords(profile.businessName.toUpperCase(), cols)) e.line(center(line, cols))
+      e.bold(false)
     }
   }
   const place = [profile?.address, profile?.city].filter(Boolean).join(', ')
