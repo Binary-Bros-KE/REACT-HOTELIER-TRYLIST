@@ -8,6 +8,18 @@ import { formatKes } from '@/components/shifts/ShiftSummaryModal'
 import { useNow, useShift, type ShiftRow } from '@/components/shifts/shiftContext'
 
 const fullName = (s: ShiftRow) => `${s.employee.firstName} ${s.employee.lastName}`
+
+/** Who's on shift, grouped by their default location (Housekeeping, Main Bar, Restaurant...),
+ * each location's own staff sorted by name, locations sorted alphabetically with "Unassigned" last. */
+function groupByLocation(staff: ShiftRow[]): [string, ShiftRow[]][] {
+  const groups = new Map<string, ShiftRow[]>()
+  for (const s of staff) {
+    const name = s.employee.defaultLocation?.name ?? 'Unassigned'
+    groups.set(name, [...(groups.get(name) ?? []), s])
+  }
+  for (const rows of groups.values()) rows.sort((a, b) => fullName(a).localeCompare(fullName(b)))
+  return [...groups.entries()].sort(([a], [b]) => (a === 'Unassigned' ? 1 : b === 'Unassigned' ? -1 : a.localeCompare(b)))
+}
 const clock = (iso: string | null) => (iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--')
 
 function Panel({ title, count, hint, children }: { title: string; count?: number; hint?: string; children: ReactNode }) {
@@ -46,6 +58,7 @@ function LiveClock({ since }: { since: string | null }) {
 function OnShiftCard({ s }: { s: ShiftRow }) {
   const { openSummary, busyKey, forceEnd } = useShift()
   const open = s.summary?.pendingOrders ?? 0
+  const tasks = s.summary?.pendingHousekeepingTasks ?? 0
   return (
     <article className="flex items-center gap-3 border border-l-4 border-l-success bg-card px-3 py-2.5 shadow-sm">
       <Avatar size="md" />
@@ -58,6 +71,7 @@ function OnShiftCard({ s }: { s: ShiftRow }) {
         <div className="mt-1 flex flex-wrap items-center gap-2">
           <LiveClock since={s.approvedStartAt} />
           {open > 0 && <span className="inline-flex items-center gap-1 bg-warning/15 px-1.5 py-1 text-[10px] font-bold uppercase tracking-wide text-warning"><LuTriangleAlert className="size-3" />{open} open</span>}
+          {tasks > 0 && <span className="inline-flex items-center gap-1 bg-secondary/15 px-1.5 py-1 text-[10px] font-bold uppercase tracking-wide text-secondary"><LuClipboardCheck className="size-3" />{tasks} task{tasks === 1 ? '' : 's'}</span>}
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
@@ -149,8 +163,15 @@ export default function ShiftTeamPanels() {
 
       {isSupervisor && activeStaff.length > 0 && (
         <Panel title="Currently on shift" count={activeStaff.length} hint="Live — clocks run from the approved start">
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {activeStaff.map((s) => <OnShiftCard key={s.id} s={s} />)}
+          <div className="space-y-5">
+            {groupByLocation(activeStaff).map(([location, staff]) => (
+              <div key={location}>
+                <p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">{location} <span className="font-normal normal-case text-muted-foreground/70">· {staff.length}</span></p>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {staff.map((s) => <OnShiftCard key={s.id} s={s} />)}
+                </div>
+              </div>
+            ))}
           </div>
         </Panel>
       )}

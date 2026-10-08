@@ -20,7 +20,7 @@ export type ShiftSession = {
   varianceNote?: string | null
   reviewedAt?: string | null
   reviewReason?: string | null
-  employee: { id: string; firstName: string; lastName: string; jobTitle: string; supervisorId: string | null; isSupervisor: boolean }
+  employee: { id: string; firstName: string; lastName: string; jobTitle: string; supervisorId: string | null; isSupervisor: boolean; defaultLocation: { id: string; name: string } | null }
 }
 
 export type CategoryRow = { id: string; label: string; detail: string | null; createdAt: string; total: number }
@@ -54,6 +54,7 @@ export type ShiftSummary = {
   complimentaryCount: number
   creditSales: number
   pendingOrders: number
+  pendingHousekeepingTasks: number
   byPaymentMethod: { name: string; total: number; count: number }[]
   byCategory?: { rooms: CategorySummary; food: CategorySummary; products: CategorySummary; services: CategorySummary; memberships: CategorySummary }
   categorizedItems?: { food: ItemSummary[]; products: ItemSummary[]; services: ItemSummary[] }

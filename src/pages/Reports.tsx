@@ -312,7 +312,7 @@ export default function Reports() {
         approvedEndAt: summary.to,
         rejectionReason: null,
         cashVariance: null,
-        employee: { id: employee.id, firstName: employee.firstName, lastName: employee.lastName, jobTitle: rangeLabel(period, report.range.start, report.range.end, startHour ?? 0), supervisorId: null, isSupervisor: false },
+        employee: { id: employee.id, firstName: employee.firstName, lastName: employee.lastName, jobTitle: rangeLabel(period, report.range.start, report.range.end, startHour ?? 0), supervisorId: null, isSupervisor: false, defaultLocation: null },
       }
       setEmployeeBreakdown({ session, summary })
     } catch (cause) {
