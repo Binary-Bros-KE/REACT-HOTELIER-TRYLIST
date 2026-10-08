@@ -68,13 +68,8 @@ function buildSectionDoc(overview: Overview, loc: LocationOverview): ReportDocDa
     kicker: 'Inventory Report',
     rangeLabel: rangeLabelFor(overview),
     generatedAt: new Date().toISOString(),
-    cards: [
-      { label: 'Products', value: loc.totalProducts.toLocaleString() },
-      { label: 'Units On Hand', value: loc.totalUnits.toLocaleString() },
-      { label: 'Low Stock', value: loc.lowStockCount.toLocaleString(), hint: 'At or below reorder level' },
-      { label: 'Out of Stock', value: loc.outOfStockCount.toLocaleString() },
-      { label: 'Stock Value', value: formatKes(loc.stockValue) },
-    ],
+    dense: true,
+    cards: [],
     sections: [{
       title: `${loc.name} products (${productTagLabel(loc.type)})`,
       compact: true,
@@ -91,13 +86,8 @@ function buildReportDoc(overview: Overview): ReportDocData {
     kicker: 'Reports',
     rangeLabel: rangeLabelFor(overview),
     generatedAt: new Date().toISOString(),
-    cards: [
-      { label: 'Total Products', value: o.totalProducts.toLocaleString() },
-      { label: 'Total Units On Hand', value: o.totalUnits.toLocaleString() },
-      { label: 'Low Stock', value: o.lowStockCount.toLocaleString(), hint: 'At or below reorder level' },
-      { label: 'Out of Stock', value: o.outOfStockCount.toLocaleString() },
-      { label: 'Stock Value', value: formatKes(o.stockValue) },
-    ],
+    dense: true,
+    cards: [],
     sections: [
       { title: 'Stock Value by Category', columns: [{ label: 'Category' }, { label: 'Units', align: 'right' }, { label: 'Value', align: 'right' }, { label: '% of Total', align: 'right' }], rows: o.byCategory.map((c) => [c.category, c.units.toLocaleString(), formatKes(c.value), `${c.percent}%`]) },
       ...overview.locations.map((loc): ReportSection => {
