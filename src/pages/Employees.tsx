@@ -242,6 +242,7 @@ export default function Employees() {
   async function saveEmployee(event: FormEvent) {
     event.preventDefault()
     if (form.hasSystemAccess && form.pin && form.pin !== form.confirmPin) { setError("PIN and confirmation don't match"); return }
+    if (form.locationIds.length === 0) { setError('Assign at least one location'); return }
     setSaving(true)
     setError('')
     try {
@@ -462,7 +463,7 @@ export default function Employees() {
                   {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
                 </select>
               </Field>
-              <Field label="Working Locations" className="sm:col-span-2">
+              <Field label="Working Locations" className="sm:col-span-2" required>
                 {locations.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No locations set up — staff work anywhere by default.</p>
                 ) : (
@@ -477,7 +478,7 @@ export default function Employees() {
                     </div>
                     <span className="mt-1.5 block text-xs text-muted-foreground">
                       {form.locationIds.length === 0
-                        ? 'None selected — can work at any location (the POS asks which each time).'
+                        ? 'Choose at least one location.'
                         : form.locationIds.length === 1
                           ? 'Pinned to one location — the POS uses it automatically.'
                           : 'Pinned to several — the POS lets them pick one of these per sale.'}
