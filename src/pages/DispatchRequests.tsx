@@ -64,6 +64,34 @@ const qty = (value: string | number) => Number(value).toLocaleString('en-KE', { 
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString('en-KE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—')
 const STATUS_TONE = { REQUESTED: 'warning', DISPATCHED: 'success', REJECTED: 'danger', CANCELLED: 'muted' } as const
 const STATUS_LABEL = { REQUESTED: 'Waiting', DISPATCHED: 'Dispatched', REJECTED: 'Rejected', CANCELLED: 'Cancelled' } as const
+const STOCK_EPSILON = 0.000001
+
+function dishKeyFor(dish: Dish, index: number) {
+  return `${index}:${dish.menuItemId ?? 'item'}:${dish.variantId ?? 'base'}`
+}
+
+function dishRowKey(dish: Dish, index: number, productId: string) {
+  return `${dishKeyFor(dish, index)}:${productId}`
+}
+
+function buildDishAllocations(dishes: Dish[]) {
+  const consumed = new Map<string, number>()
+  const rows = new Map<string, { available: number; defaultSend: number; short: boolean }>()
+  dishes.forEach((dish, dishIndex) => {
+    dish.ingredients.forEach((ingredient) => {
+      const used = consumed.get(ingredient.productId) ?? 0
+      const available = Math.max(ingredient.storeQty - used, 0)
+      const defaultSend = Math.min(ingredient.quantity, available)
+      rows.set(dishRowKey(dish, dishIndex, ingredient.productId), {
+        available,
+        defaultSend,
+        short: available + STOCK_EPSILON < ingredient.quantity,
+      })
+      consumed.set(ingredient.productId, used + defaultSend)
+    })
+  })
+  return rows
+}
 
 /**
  * The order read dish by dish: each dish, then the stock ingredients it takes,
@@ -83,17 +111,12 @@ function DishList({
   sending?: { quantities: Record<string, string>; onChange: (rowKey: string, value: string) => void }
   onEditDishStock?: (dish: Dish) => void
 }) {
-  // What the whole request asks of each product, across every dish.
-  const totalAsked = useMemo(() => {
-    const totals = new Map<string, number>()
-    for (const dish of dishes) for (const g of dish.ingredients) totals.set(g.productId, (totals.get(g.productId) ?? 0) + g.quantity)
-    return totals
-  }, [dishes])
+  const allocations = useMemo(() => buildDishAllocations(dishes), [dishes])
   if (dishes.length === 0) return null
   return (
     <div className="mt-3 space-y-4">
       {dishes.map((dish, index) => {
-        const dishKey = `${index}:${dish.menuItemId ?? 'item'}:${dish.variantId ?? 'base'}`
+        const dishKey = dishKeyFor(dish, index)
         return (
         <div key={dishKey} className="border-l-4 border-accent pl-3">
           <div className="flex items-center justify-between gap-2">
@@ -111,19 +134,20 @@ function DishList({
                 <tr className="text-left text-[10px] uppercase tracking-wider text-muted-foreground">
                   <th className="py-1 font-semibold">Ingredient</th>
                   <th className="py-1 text-right font-semibold">Asked</th>
-                  {requesting && <th className="py-1 text-right font-semibold">In store</th>}
+                  {requesting && <th className="py-1 text-right font-semibold">Available</th>}
                   {sending && <th className="w-24 py-1 text-right font-semibold">Send</th>}
                 </tr>
               </thead>
               <tbody>
                 {dish.ingredients.map((g) => {
                   const rowKey = `${dishKey}:${g.productId}`
-                  const short = requesting && g.storeQty < (totalAsked.get(g.productId) ?? g.quantity)
+                  const allocation = allocations.get(rowKey) ?? { available: g.storeQty, defaultSend: Math.min(g.quantity, g.storeQty), short: g.storeQty + STOCK_EPSILON < g.quantity }
+                  const short = requesting && allocation.short
                   return (
                     <tr key={rowKey} className="border-t border-dashed">
                       <td className="py-1">{g.name} <span className="text-xs text-muted-foreground">{g.unit}</span></td>
                       <td className="py-1 text-right tabular-nums">{qty(g.quantity)}</td>
-                      {requesting && <td className={cn('py-1 text-right tabular-nums', short && 'font-semibold text-destructive')}>{qty(g.storeQty)}</td>}
+                      {requesting && <td className={cn('py-1 text-right tabular-nums', short && 'font-semibold text-destructive')}>{qty(allocation.available)}</td>}
                       {sending && (
                         <td className="py-1 text-right">
                           <input type="number" min="0" step="any" className="input h-7 w-20 text-right" value={sending.quantities[rowKey] ?? ''} onChange={(e) => sending.onChange(rowKey, e.target.value)} />
@@ -311,11 +335,11 @@ function DispatchModal({ request, onClose, onDone, onDishStock }: { request: Req
   // only at submit time because the backend dispatch item is still per product.
   const [quantities, setQuantities] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
+  const allocations = useMemo(() => buildDishAllocations(request.dishes), [request.dishes])
   const dishLines = useMemo(() => request.dishes.flatMap((dish, dishIndex) => {
-    const dishKey = `${dishIndex}:${dish.menuItemId ?? 'item'}:${dish.variantId ?? 'base'}`
     return dish.ingredients.map((ingredient) => ({
       ...ingredient,
-      rowKey: `${dishKey}:${ingredient.productId}`,
+      rowKey: dishRowKey(dish, dishIndex, ingredient.productId),
     }))
   }), [request.dishes])
   const askedByProduct = useMemo(() => {
@@ -323,16 +347,17 @@ function DispatchModal({ request, onClose, onDone, onDishStock }: { request: Req
     for (const item of request.items) totals.set(item.productId, Number(item.requestedQty))
     return totals
   }, [request.items])
-  const sendForRow = (rowKey: string, asked: number) => (quantities[rowKey] !== undefined ? Number(quantities[rowKey]) : asked)
+  const defaultSendForRow = (rowKey: string, asked: number) => allocations.get(rowKey)?.defaultSend ?? asked
+  const sendForRow = (rowKey: string, asked: number) => (quantities[rowKey] !== undefined ? Number(quantities[rowKey]) : defaultSendForRow(rowKey, asked))
   const sendTotals = useMemo(() => {
     const totals = new Map<string, number>()
     if (dishLines.length === 0) {
-      for (const item of request.items) totals.set(item.productId, quantities[item.id] !== undefined ? Number(quantities[item.id]) : Number(item.requestedQty))
+      for (const item of request.items) totals.set(item.productId, quantities[item.id] !== undefined ? Number(quantities[item.id]) : Math.min(Number(item.requestedQty), item.storeQty ?? Number(item.requestedQty)))
       return totals
     }
     for (const line of dishLines) totals.set(line.productId, (totals.get(line.productId) ?? 0) + sendForRow(line.rowKey, line.quantity))
     return totals
-  }, [dishLines, quantities, request.items])
+  }, [allocations, dishLines, quantities, request.items])
   const partial = [...askedByProduct].some(([productId, asked]) => (sendTotals.get(productId) ?? 0) < asked)
   const anything = [...sendTotals.values()].some((send) => send > 0)
 
@@ -352,8 +377,8 @@ function DispatchModal({ request, onClose, onDone, onDishStock }: { request: Req
   // The sending view shows the same quantities the card did, plus the send column.
   const sending = {
     quantities: dishLines.length > 0
-      ? Object.fromEntries(dishLines.map((line) => [line.rowKey, quantities[line.rowKey] ?? String(line.quantity)]))
-      : Object.fromEntries(request.items.map((item) => [item.id, quantities[item.id] ?? String(item.requestedQty)])),
+      ? Object.fromEntries(dishLines.map((line) => [line.rowKey, quantities[line.rowKey] ?? String(defaultSendForRow(line.rowKey, line.quantity))]))
+      : Object.fromEntries(request.items.map((item) => [item.id, quantities[item.id] ?? String(Math.min(Number(item.requestedQty), item.storeQty ?? Number(item.requestedQty)))])),
     onChange: setSend,
   }
 
