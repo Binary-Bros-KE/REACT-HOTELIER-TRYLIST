@@ -330,13 +330,19 @@ function receiptBranding(profile: ReceiptProfile): ReceiptBranding {
 function logoSizeForPrinter(image: HTMLImageElement, cols: number): { width: number; height: number } {
   const nativeWidth = image.naturalWidth || image.width || 1
   const nativeHeight = image.naturalHeight || image.height || 1
-  const maxWidth = Math.min(384, Math.max(240, cols * 8))
-  const maxHeight = 160
+  const maxWidth = Math.min(448, Math.max(288, cols * 10))
+  const maxHeight = 208
   const scale = Math.min(maxWidth / nativeWidth, maxHeight / nativeHeight)
   return {
-    width: Math.max(160, Math.floor((nativeWidth * scale) / 8) * 8),
-    height: Math.max(56, Math.floor((nativeHeight * scale) / 8) * 8),
+    width: Math.max(224, Math.floor((nativeWidth * scale) / 8) * 8),
+    height: Math.max(72, Math.floor((nativeHeight * scale) / 8) * 8),
   }
+}
+
+function websiteUrl(profile: ReceiptProfile): string | null {
+  const website = profile?.website?.trim()
+  if (!website) return null
+  return /^https?:\/\//i.test(website) ? website : `https://${website}`
 }
 
 async function loadReceiptLogo(profile: ReceiptProfile): Promise<HTMLImageElement | null> {
@@ -406,9 +412,11 @@ export function buildReceiptBytes(order: ReceiptOrder, profile: ReceiptProfile, 
       for (const line of wrapWords(profile.businessName.toUpperCase(), cols)) e.line(center(line, cols))
       e.bold(false)
     } else {
-      e.bold(true)
-      for (const line of wrapWords(profile.businessName.toUpperCase(), cols)) e.line(center(line, cols))
-      e.bold(false)
+      const headlineCols = Math.max(cols, Math.floor(cols * 1.33))
+      const nameWidth = Math.max(8, Math.floor(headlineCols / 2))
+      e.font('B').size(2, 2).bold(true)
+      for (const line of wrapWords(profile.businessName.toUpperCase(), nameWidth)) e.line(center(line, nameWidth))
+      e.bold(false).size(1, 1).font('A')
     }
   }
   const place = [profile?.address, profile?.city].filter(Boolean).join(', ')
@@ -496,6 +504,14 @@ export function buildReceiptBytes(order: ReceiptOrder, profile: ReceiptProfile, 
 
   // -------- footer (location's own, else a default) --------
   for (const l of receiptFooterText(order).split('\n')) e.line(center(l, cols))
+  const site = websiteUrl(profile)
+  if (site) {
+    e.newline(1)
+    e.line(center('Scan for our website', cols))
+    e.raw([0x1b, 0x61, 0x01])
+    e.qrcode(site, { model: 2, size: compact ? 4 : 5, errorlevel: 'm' })
+    e.raw([0x1b, 0x61, 0x00])
+  }
   e.newline(4).cut()
   return e.encode()
 }

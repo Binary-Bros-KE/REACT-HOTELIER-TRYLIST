@@ -14,6 +14,7 @@ declare module '@point-of-sale/receipt-printer-encoder' {
     constructor(options?: EncoderOptions)
     initialize(): this
     codepage(name: string): this
+    font(value: string): this
     text(value: string): this
     line(value: string): this
     newline(count?: number): this

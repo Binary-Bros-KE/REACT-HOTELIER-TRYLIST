@@ -75,6 +75,7 @@ export type ReceiptProfile = {
   city: string | null
   primaryPhone: string | null
   kraPin: string | null
+  website?: string | null
 } | null
 
 import { resolveLogoUrl } from '@/lib/api'
