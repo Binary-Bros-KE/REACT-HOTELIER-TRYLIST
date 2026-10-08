@@ -303,7 +303,58 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
         ) : visible.length === 0 ? (
           <div className="min-h-64 p-16 text-center text-sm text-muted-foreground">No sales {search.trim() || paymentFilter !== 'ALL' || statusFilter !== 'ALL' || employeeFilter || dateFrom || dateTo || periodMode === 'shift' ? 'match this view' : 'yet'}.</div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          <div className="grid gap-3 p-4 md:hidden">
+            {visible.map((order) => {
+              const badge = badgeFor(order)
+              const owed = Math.max(0, order.total - order.paid)
+              return (
+                <article key={order.id} className="border bg-background p-3 text-sm shadow-sm" onClick={() => setManageId(order.id)}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-semibold">#{order.orderNumber}</p>
+                      {order.items.some((i) => i.listPrice) && <span className="mt-1 inline-block"><StatusPill tone="warning">Price changed</StatusPill></span>}
+                    </div>
+                    <StatusPill tone={badge.tone}>{badge.label}</StatusPill>
+                  </div>
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    {order.table?.label ?? (isServices ? '' : 'Takeaway')}
+                    {order.createdBy && staffNames[order.createdBy] && <span className="ml-1.5 inline-flex items-center gap-1"><LuUserRound className="size-3" /> {staffNames[order.createdBy]}</span>}
+                  </p>
+                  {order.customer && (
+                    <p className="mt-1 text-xs text-muted-foreground">{order.customer.firstName} {order.customer.lastName ?? ''}{order.customer.phone ? ` · ${order.customer.phone}` : ''}</p>
+                  )}
+                  <p className="mt-1 text-xs text-muted-foreground">{new Date(order.createdAt).toLocaleString('en-KE')} · {order.saleType === 'COMPLIMENTARY' ? (order.complimentaryRecipientName || order.complimentarySession?.title || 'No payment') : [...new Set(order.payments.map((p) => p.paymentMethod.name))].join(', ') || '—'}</p>
+                  <div className="mt-2.5 flex items-center justify-between border-t pt-2">
+                    <div>
+                      {order.status !== 'CANCELLED' && (
+                        <>
+                          <span className="block text-xs text-muted-foreground">Paid</span>
+                          <span className="font-semibold tabular-nums">{formatKes(order.paid)}</span>
+                          {owed > 0.01 && <span className="block text-[11px] font-semibold text-warning">owing {formatKes(owed)}</span>}
+                        </>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      <span className="block text-xs text-muted-foreground">Total</span>
+                      <span className="font-semibold tabular-nums">{formatKes(order.total)}</span>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+                    {order.status !== 'CANCELLED' && owed > 0.01 && (
+                      <ActionButton tone="warning" icon={<LuWallet />} title="Take payment" onClick={() => setManageId(order.id)} />
+                    )}
+                    <ActionButton tone="neutral" icon={<LuPrinter />} title="View / print receipt" onClick={() => setReceiptOrderId(order.id)} />
+                    <ActionButton tone="neutral" icon={<LuReceiptText />} title="Manage / request a return" onClick={() => setManageId(order.id)} />
+                    {isSuperAdmin && order.status === 'COMPLETED' && (
+                      <ActionButton tone="danger" icon={voidingId === order.id ? <LuLoaderCircle className="animate-spin" /> : <LuBan />} title="Void completed sale" onClick={() => setVoidTarget(order)} />
+                    )}
+                  </div>
+                </article>
+              )
+            })}
+          </div>
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full min-w-[960px] text-left text-sm">
               <thead className="bg-primary text-primary-foreground">
                 <tr>
@@ -363,6 +414,7 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
               </tbody>
             </table>
           </div>
+          </>
         )}
       </section>
 
