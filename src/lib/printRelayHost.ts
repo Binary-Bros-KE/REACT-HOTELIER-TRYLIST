@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useAppDispatch } from '@/store/hooks'
 import { api } from '@/lib/api'
-import { getThermalSettings, buildDispatchSlipBytes, buildReceiptBytes, sendLocal } from '@/lib/thermalPrinter'
+import { getThermalSettings, buildDispatchSlipBytes, buildReceiptBytesForPrint, sendLocal } from '@/lib/thermalPrinter'
 import { listPendingPrintJobs, claimPrintJob, completePrintJob, failPrintJob } from '@/lib/printRelay'
 import type { ReceiptOrder, ReceiptProfile } from '@/components/pos/OrderReceipt'
 import { setPrintJobCounts } from '@/store/printJobsSlice'
@@ -56,7 +56,7 @@ export function usePrintRelayHost(): void {
               bytes = buildDispatchSlipBytes(claimed.slip, profileRef.current ?? null, s)
             } else {
               const { order } = await api<{ order: ReceiptOrder }>(`/pos/orders/${claimed.orderId}`)
-              bytes = buildReceiptBytes(order, profileRef.current ?? null, s)
+              bytes = await buildReceiptBytesForPrint(order, profileRef.current ?? null, s)
             }
             await sendLocal(bytes, s)
             await completePrintJob(job.id)

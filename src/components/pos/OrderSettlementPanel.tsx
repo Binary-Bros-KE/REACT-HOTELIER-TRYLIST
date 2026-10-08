@@ -132,6 +132,7 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
   const canRequestReturn = !!order?.servedAt && ['SERVED', 'COMPLETED'].includes(order.status) && (isSuperAdmin || Date.now() - new Date(order.servedAt).getTime() <= RETURN_WINDOW_MS)
   const pendingReturnTotal = order?.items.reduce((sum, item) => sum + pendingReturnQty(item), 0) ?? 0
   const roomBillSettlement = order ? roomBillSettlementText(order) : null
+  const isLinkedBill = linkedOrders.length > 1
 
   function stopStkPoll() {
     if (stkPollRef.current.timer) window.clearTimeout(stkPollRef.current.timer)
@@ -343,13 +344,14 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
     setPaying(true)
     setError('')
     try {
-      const endpoint = order.billGroupId && linkedOrders.length > 1 ? `/pos/bill-groups/${order.billGroupId}/payments` : `/pos/orders/${order.id}/payments`
+      const paymentAmount = isLinkedBill ? remaining : Number(amount) || remaining
+      const endpoint = order.billGroupId && isLinkedBill ? `/pos/bill-groups/${order.billGroupId}/payments` : `/pos/orders/${order.id}/payments`
       const response = await api<{ order?: Order; orders?: Order[] }>(endpoint, {
         method: 'POST',
         body: JSON.stringify(
           mode === 'PAY'
-            ? { method: 'PAY', paymentMethodId, amount: Number(amount) || remaining, reference: reference || undefined }
-            : { method: 'ROOM', reservationId, amount: Number(amount) || remaining },
+            ? { method: 'PAY', paymentMethodId, amount: paymentAmount, reference: reference || undefined }
+            : { method: 'ROOM', reservationId, amount: paymentAmount },
         ),
       })
       const updatedOrder = response.order ?? response.orders?.find((row) => row.id === order.id) ?? response.orders?.[0]
@@ -413,7 +415,7 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
                   on the printer icon (ReceiptPreviewModal), so it doesn't
                   need repeating here too. */}
               <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                <SettlementStat label={linkedOrders.length > 1 ? 'Linked total' : 'Total'} value={formatKes(displayTotal)} />
+                <SettlementStat label={isLinkedBill ? 'Linked total' : 'Total'} value={formatKes(displayTotal)} />
                 <SettlementStat label="Items" value={String(order.items.reduce((sum, item) => sum + item.quantity, 0))} />
                 <SettlementStat label={order.table ? 'Table' : 'Channel'} value={order.table ? order.table.label : 'Takeaway'} />
                 <SettlementStat label="Served by" value={order.servedBy ? `${order.servedBy.firstName} ${order.servedBy.lastName}` : '—'} />
@@ -429,11 +431,11 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
                   </span>
                 </div>
                 <div className="mt-2 space-y-1 text-sm">
-                  <div className="flex justify-between text-muted-foreground"><span>{linkedOrders.length > 1 ? 'Linked total' : 'Total'}</span><span>{formatKes(displayTotal)}</span></div>
+                  <div className="flex justify-between text-muted-foreground"><span>{isLinkedBill ? 'Linked total' : 'Total'}</span><span>{formatKes(displayTotal)}</span></div>
                   <div className="flex justify-between text-muted-foreground"><span>Paid</span><span className="text-success">{formatKes(displayPaid)}</span></div>
                   <div className="flex justify-between border-t pt-1 text-base"><span className="font-semibold">Balance due</span><span className="font-bold">{formatKes(remaining)}</span></div>
                 </div>
-                {linkedOrders.length > 1 && (
+                {isLinkedBill && (
                   <div className="mt-3 space-y-1 border-t pt-2">
                     <p className="text-[10.5px] font-semibold uppercase tracking-wide text-muted-foreground">Linked orders</p>
                     {linkedOrders.map((linked) => (
@@ -602,7 +604,8 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
                         </label>
                         <label className="block text-sm font-medium">
                           Amount
-                          <TouchInput required type="number" keyboardMode="number" min="0" step="0.01" max={remaining} className="input mt-1.5" value={amount} onValueChange={setAmount} />
+                          <TouchInput required type="number" keyboardMode="number" min="0" step="0.01" max={remaining} disabled={isLinkedBill} className="input mt-1.5 disabled:bg-muted disabled:text-muted-foreground" value={isLinkedBill ? String(remaining) : amount} onValueChange={setAmount} />
+                          {isLinkedBill && <p className="mt-1 text-xs font-semibold text-muted-foreground">Linked bills clear in full with one code.</p>}
                         </label>
                       </div>
                       {isMpesaSelected && (
@@ -663,7 +666,8 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
                       )}
                       <label className="block text-sm font-medium">
                         Amount
-                        <TouchInput required type="number" keyboardMode="number" min="0" step="0.01" max={remaining} className="input mt-1.5" value={amount} onValueChange={setAmount} />
+                        <TouchInput required type="number" keyboardMode="number" min="0" step="0.01" max={remaining} disabled={isLinkedBill} className="input mt-1.5 disabled:bg-muted disabled:text-muted-foreground" value={isLinkedBill ? String(remaining) : amount} onValueChange={setAmount} />
+                        {isLinkedBill && <p className="mt-1 text-xs font-semibold text-muted-foreground">Linked bills charge the full balance.</p>}
                       </label>
                     </div>
                   )}

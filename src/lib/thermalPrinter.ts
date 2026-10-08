@@ -1,5 +1,6 @@
 import ReceiptPrinterEncoder from '@point-of-sale/receipt-printer-encoder'
 import type { ReceiptOrder, ReceiptProfile } from '@/components/pos/OrderReceipt'
+import { resolveLogoUrl } from '@/lib/api'
 import { receiptFooterText, receiptHeaderText, receiptItemName, receiptVariantSuffix, receiptPhone, servedByName, showsTaxAsAddedOn } from '@/lib/receiptFields'
 import { createPrintJob } from '@/lib/printRelay'
 
@@ -310,7 +311,52 @@ function wrapWords(text: string, width: number): string[] {
   return lines
 }
 
-export function buildReceiptBytes(order: ReceiptOrder, profile: ReceiptProfile, s: ThermalSettings): Uint8Array {
+type ReceiptBranding = {
+  showLogo: boolean
+  showName: boolean
+  logoUrl: string | null
+}
+
+function receiptBranding(profile: ReceiptProfile): ReceiptBranding {
+  const mode = profile?.documentBrandingMode ?? 'NAME'
+  const logoUrl = profile?.documentLogoUrl ? resolveLogoUrl(profile.documentLogoUrl) : null
+  return {
+    showLogo: Boolean(logoUrl && mode !== 'NAME'),
+    showName: mode !== 'LOGO',
+    logoUrl,
+  }
+}
+
+function logoSizeForPrinter(image: HTMLImageElement, cols: number): { width: number; height: number } {
+  const nativeWidth = image.naturalWidth || image.width || 1
+  const nativeHeight = image.naturalHeight || image.height || 1
+  const maxWidth = Math.min(384, Math.max(160, cols * 8))
+  const maxHeight = 96
+  const scale = Math.min(maxWidth / nativeWidth, maxHeight / nativeHeight, 1)
+  return {
+    width: Math.max(64, Math.floor((nativeWidth * scale) / 8) * 8),
+    height: Math.max(24, Math.floor((nativeHeight * scale) / 8) * 8),
+  }
+}
+
+async function loadReceiptLogo(profile: ReceiptProfile): Promise<HTMLImageElement | null> {
+  const branding = receiptBranding(profile)
+  if (!branding.showLogo || !branding.logoUrl || typeof Image === 'undefined') return null
+  return new Promise((resolve) => {
+    const image = new Image()
+    image.crossOrigin = 'anonymous'
+    image.onload = () => resolve(image)
+    image.onerror = () => resolve(null)
+    image.src = branding.logoUrl!
+  })
+}
+
+export async function buildReceiptBytesForPrint(order: ReceiptOrder, profile: ReceiptProfile, s: ThermalSettings): Promise<Uint8Array> {
+  const logo = await loadReceiptLogo(profile)
+  return buildReceiptBytes(order, profile, s, logo)
+}
+
+export function buildReceiptBytes(order: ReceiptOrder, profile: ReceiptProfile, s: ThermalSettings, logo?: HTMLImageElement | null): Uint8Array {
   const cols = Math.max(24, Math.min(64, Math.round(s.columns) || 42))
   const compact = cols <= 35
   const isComplementary = order.saleType === 'COMPLIMENTARY'
@@ -337,9 +383,16 @@ export function buildReceiptBytes(order: ReceiptOrder, profile: ReceiptProfile, 
     else row(l, r)
   }
 
-  // -------- header: business name (large, caps, centered) down through the
+  const branding = receiptBranding(profile)
+
+  // -------- header: document logo/name down through the
   // location's own receipt header text --------
-  if (profile?.businessName) {
+  if (branding.showLogo && logo) {
+    const size = logoSizeForPrinter(logo, cols)
+    e.image(logo, size.width, size.height, 'threshold', 180)
+    e.newline(1)
+  }
+  if (profile?.businessName && branding.showName) {
     // Symmetric double width+height — the height-only mode used before this
     // (size(1,2)) rendered as ugly, narrow, widely-spaced glyphs on several
     // ESC/POS clones (Aclas included); scaling both axes together keeps the
@@ -628,7 +681,7 @@ export async function printReceipt(order?: ReceiptOrder | null, profile?: Receip
     return { method: 'relay', jobId: job.id }
   }
 
-  const bytes = buildReceiptBytes(order, profile ?? null, s)
+  const bytes = await buildReceiptBytesForPrint(order, profile ?? null, s)
   await sendLocal(bytes, s)
   return { method: 'thermal' }
 }

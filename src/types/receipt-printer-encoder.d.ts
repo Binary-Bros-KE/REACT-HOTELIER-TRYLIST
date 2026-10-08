@@ -29,7 +29,7 @@ declare module '@point-of-sale/receipt-printer-encoder' {
     box(options: Record<string, unknown>, contents: string): this
     barcode(value: string, symbology: string, options?: Record<string, unknown>): this
     qrcode(value: string, options?: Record<string, unknown>): this
-    image(element: unknown, width: number, height: number, mode?: string): this
+    image(element: unknown, width: number, height: number, algorithm?: string, threshold?: number): this
     cut(value?: 'full' | 'partial'): this
     raw(data: number[] | Uint8Array): this
     encode(): Uint8Array
