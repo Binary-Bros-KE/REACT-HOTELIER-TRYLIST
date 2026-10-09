@@ -39,7 +39,7 @@ type DocumentRow = {
   convertedDocuments: { id: string; documentNo: string; type: DocType; status: Status }[]
   sourceDocument: { id: string; documentNo: string; type: DocType; status: Status } | null
 }
-type Options = { customers: Customer[]; locations: Location[]; paymentMethods: PaymentMethod[]; tax: { taxRate: string | number; taxMode: TaxMode; taxTreatment: TaxTreatment } }
+type Options = { customers: Customer[]; locations: Location[]; paymentMethods: PaymentMethod[]; tax: { taxRate: string | number; taxMode: TaxMode; taxTreatment: TaxTreatment }; units: { id: string; name: string }[] }
 
 const money = (value: number) => `KSh ${value.toLocaleString('en-KE', { maximumFractionDigits: 2 })}`
 const today = () => new Date().toISOString().slice(0, 10)
@@ -53,7 +53,7 @@ export default function CommercialDocuments({ type }: { type: DocType }) {
   const isInvoice = type === 'INVOICE'
   const [documents, setDocuments] = useState<DocumentRow[]>([])
   const [summary, setSummary] = useState({ total: 0, value: 0, paid: 0, balance: 0, overdue: 0 })
-  const [options, setOptions] = useState<Options>({ customers: [], locations: [], paymentMethods: [], tax: { taxRate: 16, taxMode: 'INCLUSIVE', taxTreatment: 'STANDARD' } })
+  const [options, setOptions] = useState<Options>({ customers: [], locations: [], paymentMethods: [], tax: { taxRate: 16, taxMode: 'INCLUSIVE', taxTreatment: 'STANDARD' }, units: [] })
   const [sources, setSources] = useState<SourceOptions>({ roomRates: [], services: [], folios: [], orders: [] })
   const { fixed: fixedLocation, options: pickableLocations, setLocation, effectiveId } = useWorkingLocation(options.locations, { persist: false })
   const [profile, setProfile] = useState<DocProfile>(null)
@@ -417,7 +417,10 @@ function DocumentEditor({ type, document, options, sources, fixedLocation, locat
               {form.lines.map((line, index) => <div key={index} className="grid gap-3 p-3 lg:grid-cols-[1.4fr_.55fr_.55fr_.7fr_auto]">
                 <input required value={line.description} onChange={(e) => setLine(index, { description: e.target.value })} placeholder="Description" className="input" />
                 <input required type="number" min="0.001" step="0.001" value={line.quantity} onChange={(e) => setLine(index, { quantity: e.target.value })} placeholder="Qty" className="input" />
-                <input value={line.unitLabel} onChange={(e) => setLine(index, { unitLabel: e.target.value })} placeholder="Unit" className="input" />
+                <select value={options.units.find((u) => u.name.toLowerCase() === line.unitLabel.toLowerCase())?.name ?? line.unitLabel} onChange={(e) => setLine(index, { unitLabel: e.target.value })} className="input">
+                  <option value="">Unit</option>
+                  {options.units.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}
+                </select>
                 <input required type="number" min="0" step="0.01" value={line.unitPrice} onChange={(e) => setLine(index, { unitPrice: e.target.value })} placeholder="Unit price" className="input" />
                 <button type="button" onClick={() => setForm((f) => ({ ...f, lines: f.lines.filter((_, i) => i !== index) }))} disabled={form.lines.length === 1} className="rounded-sm border px-3 disabled:opacity-40"><LuTrash2 /></button>
                 <div className="grid gap-2 sm:grid-cols-[minmax(0,.5fr)_minmax(0,1fr)] lg:col-span-5">
