@@ -550,7 +550,7 @@ export default function PointOfSale() {
 
   async function submitOrder() {
     if (!cart.length || submitting) return
-    if (party.kind === 'WALK_IN') { setCustomerModalOpen(true); toast.error('Choose a customer before posting this order'); return }
+    if (saleType === 'COMPLIMENTARY' && party.kind === 'WALK_IN') { setCustomerModalOpen(true); toast.error('Choose a customer before posting this complimentary order'); return }
     setSubmitting(true)
     setError('')
     try {
@@ -559,7 +559,7 @@ export default function PointOfSale() {
         body: JSON.stringify({
           tableId: tableId || undefined,
           locationId: effectiveLocationId || undefined,
-          customerId: party.customer.id,
+          customerId: party.kind === 'WALK_IN' ? undefined : party.customer.id,
           reservationId: party.kind === 'ROOM' ? party.reservationId : undefined,
           discount: saleType === 'COMPLIMENTARY' ? 0 : financials.discount,
           saleType,
@@ -1265,7 +1265,7 @@ export default function PointOfSale() {
                   <LuPause className="size-3.5" /> Hold
                 </button>
                 <button
-                  disabled={sentPulse || cart.length === 0 || submitting || needsLocationChoice || party.kind === 'WALK_IN'}
+                  disabled={sentPulse || cart.length === 0 || submitting || needsLocationChoice || (saleType === 'COMPLIMENTARY' && party.kind === 'WALK_IN')}
                   onClick={() => void submitOrder()}
                   className={cn(
                     'flex flex-1 items-center justify-center gap-2 rounded-sm py-2.5 text-sm font-bold transition',

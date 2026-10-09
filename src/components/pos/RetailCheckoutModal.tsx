@@ -2,12 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { LuCircleAlert, LuLoaderCircle, LuX } from 'react-icons/lu'
 import { api } from '@/lib/api'
-import { CustomerSelectField, partyLabel, type PickedCustomer, type SaleParty } from './CustomerSelectModal'
+import { CustomerSelectField, partyLabel, type SaleParty } from './CustomerSelectModal'
 import { TouchInput } from '@/components/ui/TouchInput'
 
 export type PaymentMethod = { id: string; name: string; requiresReference: boolean }
 export type CreatedOrder = { id: string; orderNumber: number }
-type CheckedInStay = { id: string; reservationNo: string; customer: PickedCustomer; room: { number: string } }
+type CheckedInStay = { id: string; reservationNo: string; customer: { firstName: string; lastName: string | null }; room: { number: string } }
 
 const formatKes = (price: number) => `KSh ${price.toLocaleString('en-KE', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
 
@@ -74,7 +74,6 @@ export default function RetailCheckoutModal({ items, lines, total, channel, loca
 
   async function submit(event: FormEvent) {
     event.preventDefault()
-    if (party.kind === 'WALK_IN') { setError('Choose a customer before completing this sale'); return }
     if (mode === 'PAY' && !paymentMethodId) return
     if (mode === 'ROOM' && !reservationId) { setError('Choose a checked-in stay to bill this to'); return }
     if (mode === 'PAY' && selectedMethod?.requiresReference && !reference.trim()) { setError(`${selectedMethod.name} requires a reference number`); return }
@@ -90,7 +89,7 @@ export default function RetailCheckoutModal({ items, lines, total, channel, loca
             channel,
             locationId,
             discount,
-            customerId: party.customer.id,
+            customerId: party.kind === 'WALK_IN' ? undefined : party.customer.id,
             items: lines ?? items.map((item) => channel === 'PRODUCTS' ? { productId: item.id, quantity: item.quantity } : { serviceId: item.id, quantity: item.quantity }),
           }),
         })
@@ -147,7 +146,7 @@ export default function RetailCheckoutModal({ items, lines, total, channel, loca
         </div>
 
         <div className="mt-4">
-          {party.kind !== 'WALK_IN'
+          {controlledParty
             ? <p className="rounded-sm border bg-muted/40 px-3 py-2 text-sm"><span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Customer</span><span className="ml-2 font-medium">{partyLabel(party)}</span></p>
             : <CustomerSelectField party={party} onChange={setParty} />}
         </div>
@@ -180,22 +179,13 @@ export default function RetailCheckoutModal({ items, lines, total, channel, loca
             {selectedStay ? (
               <div className="flex items-center justify-between rounded-sm border bg-secondary/5 p-3 text-sm">
                 <span>Room {selectedStay.room.number} — {selectedStay.customer.firstName} {selectedStay.customer.lastName ?? ''} ({selectedStay.reservationNo})</span>
-                <button type="button" onClick={() => { setReservationId(''); setParty({ kind: 'WALK_IN' }) }} className="text-xs font-semibold text-secondary hover:underline">Change</button>
+                <button type="button" onClick={() => setReservationId('')} className="text-xs font-semibold text-secondary hover:underline">Change</button>
               </div>
             ) : (
               <div className="max-h-40 space-y-1 overflow-y-auto">
                 {stays.length === 0 && <p className="p-2 text-center text-xs text-muted-foreground">No checked-in stays match.</p>}
                 {stays.map((stay) => (
-                  <button
-                    key={stay.id}
-                    type="button"
-                    onClick={() => {
-                      setReservationId(stay.id)
-                      // The room's own guest is this sale's customer — no separate pick needed.
-                      setParty({ kind: 'ROOM', reservationId: stay.id, reservationNo: stay.reservationNo, roomNumber: stay.room.number, customer: stay.customer })
-                    }}
-                    className="block w-full rounded-sm border p-2.5 text-left text-sm hover:bg-muted/40"
-                  >
+                  <button key={stay.id} type="button" onClick={() => setReservationId(stay.id)} className="block w-full rounded-sm border p-2.5 text-left text-sm hover:bg-muted/40">
                     Room {stay.room.number} — {stay.customer.firstName} {stay.customer.lastName ?? ''} <span className="text-xs text-muted-foreground">({stay.reservationNo})</span>
                   </button>
                 ))}
@@ -207,7 +197,7 @@ export default function RetailCheckoutModal({ items, lines, total, channel, loca
 
         <div className="mt-5 flex justify-end gap-2">
           <button type="button" onClick={() => void close()} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Cancel</button>
-          <button disabled={submitting || party.kind === 'WALK_IN' || (mode === 'PAY' ? !paymentMethodId : !reservationId)} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+          <button disabled={submitting || (mode === 'PAY' ? !paymentMethodId : !reservationId)} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
             {submitting && <LuLoaderCircle className="animate-spin" />} {mode === 'PAY' ? 'Complete sale' : 'Bill to room'}
           </button>
         </div>
