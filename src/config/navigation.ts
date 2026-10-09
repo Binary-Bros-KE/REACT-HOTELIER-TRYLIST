@@ -127,6 +127,8 @@ export const navigation: NavGroup[] = [
       { label: 'Receipts', href: '/reception/receipts', icon: LuReceiptText, moduleKey: 'POS' },
       { label: 'Products Stock', href: '/reception/product-stock', icon: LuBoxes, moduleKey: 'POS' },
       { label: 'Stock Requests', href: '/reception/stock-requests', icon: LuClipboardList },
+      { label: 'Invoices', href: '/reception/invoices', icon: LuFileText },
+      { label: 'Quotations', href: '/reception/quotations', icon: LuSignature },
       { label: 'Daily Expenses', href: '/reception/daily-expenses', icon: LuReceipt },
     ],
   },
