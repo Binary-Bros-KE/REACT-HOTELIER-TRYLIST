@@ -11,8 +11,9 @@ export function receiptToText(order: ReceiptOrder, profile: ReceiptProfile, shar
   const isComplementary = order.saleType === 'COMPLIMENTARY'
   const paid = order.payments.reduce((sum, p) => sum + Number(p.amount), 0)
   const owed = Math.max(0, order.financials.total - paid)
-  const creditOverdue = !isComplementary && owed > 0.01 && order.creditExpectedAt ? new Date(order.creditExpectedAt).getTime() < Date.now() : false
-  const statusText = isComplementary ? 'Complementary' : creditOverdue ? 'Overdue credit' : owed > 0.01 ? 'On credit' : order.status
+  const onCredit = order.status === 'COMPLETED' && owed > 0.01
+  const creditOverdue = !isComplementary && onCredit && order.creditExpectedAt ? new Date(order.creditExpectedAt).getTime() < Date.now() : false
+  const statusText = isComplementary ? 'Complementary' : order.billedToRoomAt && owed > 0.01 ? 'Billed to room' : creditOverdue ? 'Overdue credit' : onCredit ? 'On credit' : owed > 0.01 ? 'Pending' : order.status
   if (profile?.businessName) lines.push(profile.businessName.toUpperCase())
   const place = [profile?.address, profile?.city].filter(Boolean).join(', ')
   if (place) lines.push(place)

@@ -108,7 +108,7 @@ export default function OrderReceipt({ order, profile }: { order: ReceiptOrder; 
   const isComplementary = order.saleType === 'COMPLIMENTARY'
   const paid = order.payments.reduce((sum, p) => sum + Number(p.amount), 0)
   const owed = Math.max(0, order.financials.total - paid)
-  const creditOverdue = !isComplementary && owed > 0.01 && order.creditExpectedAt ? new Date(order.creditExpectedAt).getTime() < Date.now() : false
+  const creditOverdue = !isComplementary && order.status === 'COMPLETED' && owed > 0.01 && order.creditExpectedAt ? new Date(order.creditExpectedAt).getTime() < Date.now() : false
   const roomBilled = Boolean(order.billedToRoomAt)
   // "On credit" means the order was already completed with money still
   // owed — before that (still OPEN/PREPARING/READY/SERVED), nothing has
