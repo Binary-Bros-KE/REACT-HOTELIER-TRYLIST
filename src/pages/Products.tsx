@@ -185,6 +185,7 @@ export default function Products() {
   const [adjustError, setAdjustError] = useState('')
   const [showUnits, setShowUnits] = useState(false)
   const [units, setUnits] = useState<{ id: string; name: string }[]>([])
+  const [packExpanded, setPackExpanded] = useState(false)
 
   const loadProducts = useCallback(async () => {
     setLoading(true)
@@ -256,6 +257,7 @@ export default function Products() {
   function openCreate() {
     setEditing(null)
     setForm(emptyForm)
+    setPackExpanded(false)
     setMovements(null)
     setError('')
     setShowForm(true)
@@ -290,6 +292,7 @@ export default function Products() {
       isExpenseItem: product.isExpenseItem ?? false,
       expenseCategoryId: product.expenseCategoryId ?? '',
     })
+    setPackExpanded(Boolean(product.packUnitId || product.packLabel || product.packSize))
     setMovements(null)
     setError('')
     setShowForm(true)
@@ -652,7 +655,7 @@ export default function Products() {
 
             <FieldGroup title="Classification">
               <Field label="Unit of Measure" required>
-                <div className="flex gap-2"><select required className="input" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })}>
+                <div className="flex gap-2"><select required className="input" value={units.find((u) => u.name.toLowerCase() === form.unit.toLowerCase())?.name ?? form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })}>
                   <option value="" disabled>Select a unit of measure…</option>
                   {units.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}
                 </select><QuickNewButton onClick={() => setQuickAdd('unit')} /></div>
@@ -665,21 +668,37 @@ export default function Products() {
             </FieldGroup>
 
             <FieldGroup title="Pack / Container">
-              <p className="text-xs text-muted-foreground sm:col-span-2">
-                For bar bottles, kegs and cases: say what one pack holds. Staff will enter and view packs first, while stock is still stored in the measured unit behind the scenes. Leave blank for items you just count.
-              </p>
-              <Field label="Pack label"><input placeholder="e.g. bottle, can, keg" value={form.packLabel} onChange={(e) => setForm({ ...form, packLabel: e.target.value })} className="input" /></Field>
-              <Field label="Contains (per pack)"><input type="number" min="0" step="0.001" placeholder="e.g. 750" value={form.packSize} onChange={(e) => setForm({ ...form, packSize: e.target.value })} className="input" /></Field>
-              <Field label="Measured in" className="sm:col-span-2">
-                <div className="flex gap-2">
-                  <select className="input" value={form.packUnitId} onChange={(e) => setForm({ ...form, packUnitId: e.target.value })}>
-                    <option value="">Select a unit of measure…</option>
-                    {units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                  </select>
-                  <QuickNewButton onClick={() => setQuickAdd('packUnit')} />
-                  <button type="button" onClick={() => setShowUnits(true)} className="shrink-0 rounded-sm border px-3 text-sm font-medium hover:bg-muted">Manage</button>
-                </div>
-              </Field>
+              <label className="flex cursor-pointer items-center gap-2 text-sm font-medium sm:col-span-2">
+                <input
+                  type="checkbox"
+                  checked={packExpanded}
+                  onChange={(e) => {
+                    setPackExpanded(e.target.checked)
+                    if (!e.target.checked) setForm((f) => ({ ...f, packLabel: '', packSize: '', packUnitId: '' }))
+                  }}
+                  className="size-4 accent-secondary"
+                />
+                This product is tracked in packs (bottles, kegs, cases)
+              </label>
+              {packExpanded && (
+                <>
+                  <p className="text-xs text-muted-foreground sm:col-span-2">
+                    Say what one pack holds. Staff will enter and view packs first, while stock is still stored in the measured unit behind the scenes.
+                  </p>
+                  <Field label="Pack label"><input placeholder="e.g. bottle, can, keg" value={form.packLabel} onChange={(e) => setForm({ ...form, packLabel: e.target.value })} className="input" /></Field>
+                  <Field label="Contains (per pack)"><input type="number" min="0" step="0.001" placeholder="e.g. 750" value={form.packSize} onChange={(e) => setForm({ ...form, packSize: e.target.value })} className="input" /></Field>
+                  <Field label="Measured in" className="sm:col-span-2">
+                    <div className="flex gap-2">
+                      <select className="input" value={form.packUnitId} onChange={(e) => setForm({ ...form, packUnitId: e.target.value })}>
+                        <option value="">Select a unit of measure…</option>
+                        {units.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                      </select>
+                      <QuickNewButton onClick={() => setQuickAdd('packUnit')} />
+                      <button type="button" onClick={() => setShowUnits(true)} className="shrink-0 rounded-sm border px-3 text-sm font-medium hover:bg-muted">Manage</button>
+                    </div>
+                  </Field>
+                </>
+              )}
             </FieldGroup>
 
             <FieldGroup title="Stock">
