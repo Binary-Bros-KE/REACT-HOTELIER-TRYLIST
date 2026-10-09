@@ -1265,7 +1265,7 @@ export default function PointOfSale() {
                   <LuPause className="size-3.5" /> Hold
                 </button>
                 <button
-                  disabled={sentPulse || cart.length === 0 || submitting || needsLocationChoice || (saleType === 'COMPLIMENTARY' && party.kind === 'WALK_IN')}
+                  disabled={sentPulse || cart.length === 0 || submitting || needsLocationChoice}
                   onClick={() => void submitOrder()}
                   className={cn(
                     'flex flex-1 items-center justify-center gap-2 rounded-sm py-2.5 text-sm font-bold transition',
