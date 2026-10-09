@@ -97,7 +97,7 @@ export default function CustomerSelectModal({ party, onChange, onClose }: {
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4">
-      <div className="flex max-h-[88vh] w-full max-w-md flex-col overflow-hidden border-2 border-foreground/25 bg-card shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+      <div className="flex h-[88vh] w-full max-w-md flex-col overflow-hidden border-2 border-foreground/25 bg-card shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
         <div className="flex items-start justify-between border-b-4 border-accent bg-muted/60 px-5 py-4">
           <div>
             <h2 className="font-display text-xl font-semibold">Choose Customer</h2>
