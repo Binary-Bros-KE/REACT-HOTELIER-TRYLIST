@@ -338,6 +338,9 @@ export default function Sidebar({ className, mobile = false, onNavigate }: Sideb
               <LuLogOut className="size-4" />
             </button>
           </div>
+          <p className="mt-2 text-center text-[10px] leading-tight text-sidebar-foreground" title={`HOTELIER app version ${__APP_VERSION__}`}>
+            {collapsed ? `v${__APP_VERSION__}` : `HOTELIER v${__APP_VERSION__}`}
+          </p>
         </div>
       )}
     </motion.aside>
