@@ -1,5 +1,6 @@
 import { useState, type InputHTMLAttributes, type PointerEvent, type TextareaHTMLAttributes } from 'react'
-import { LuDelete } from 'react-icons/lu'
+import { LuDelete, LuKeyboard } from 'react-icons/lu'
+import { cn } from '@/lib/utils'
 
 export const POS_TOUCH_KEYBOARD_KEY = 'hotelier_pos_touch_keyboard'
 
@@ -42,6 +43,28 @@ function TouchKeyboard({ value, onChange, onClose, mode = 'text' }: { value: str
   )
 }
 
+/** Shown only once the client has switched touch keyboards on for this
+ * device — tapping it is what opens the on-screen keyboard. Focusing the
+ * field never opens it on its own, so a device with a real keyboard never
+ * sees a popup just from clicking in. */
+function KeyboardToggleButton({ open, onToggle, align = 'middle' }: { open: boolean; onToggle: () => void; align?: 'middle' | 'top' }) {
+  return (
+    <button
+      type="button"
+      onPointerDown={(event) => event.preventDefault()}
+      onClick={onToggle}
+      title="Show on-screen keyboard"
+      className={cn(
+        'absolute right-1.5 rounded-sm p-1 text-muted-foreground hover:bg-muted',
+        align === 'middle' ? 'top-1/2 -translate-y-1/2' : 'top-1.5',
+        open && 'bg-muted text-foreground',
+      )}
+    >
+      <LuKeyboard className="size-4" />
+    </button>
+  )
+}
+
 type TouchInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'> & {
   value: string
   onValueChange: (value: string) => void
@@ -49,7 +72,7 @@ type TouchInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'on
   touchKeyboardEnabled?: boolean
 }
 
-export function TouchInput({ value, onValueChange, keyboardMode = 'text', touchKeyboardEnabled, onFocus, ...props }: TouchInputProps) {
+export function TouchInput({ value, onValueChange, keyboardMode = 'text', touchKeyboardEnabled, className, ...props }: TouchInputProps) {
   const [open, setOpen] = useState(false)
   const enabled = touchKeyboardEnabled ?? readPosTouchKeyboardSetting()
   return (
@@ -58,9 +81,10 @@ export function TouchInput({ value, onValueChange, keyboardMode = 'text', touchK
         {...props}
         value={value}
         inputMode={props.inputMode ?? (keyboardMode === 'number' ? 'decimal' : undefined)}
-        onFocus={(event) => { onFocus?.(event); if (enabled) setOpen(true) }}
         onChange={(event) => onValueChange(event.target.value)}
+        className={cn(className, enabled && 'pr-9')}
       />
+      {enabled && <KeyboardToggleButton open={open} onToggle={() => setOpen((o) => !o)} align="middle" />}
       {enabled && open && <TouchKeyboard value={value} onChange={onValueChange} onClose={() => setOpen(false)} mode={keyboardMode} />}
     </span>
   )
@@ -73,7 +97,7 @@ type TouchTextareaProps = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, 'val
   touchKeyboardEnabled?: boolean
 }
 
-export function TouchTextarea({ value, onValueChange, keyboardMode = 'text', touchKeyboardEnabled, onFocus, ...props }: TouchTextareaProps) {
+export function TouchTextarea({ value, onValueChange, keyboardMode = 'text', touchKeyboardEnabled, className, ...props }: TouchTextareaProps) {
   const [open, setOpen] = useState(false)
   const enabled = touchKeyboardEnabled ?? readPosTouchKeyboardSetting()
   return (
@@ -81,9 +105,10 @@ export function TouchTextarea({ value, onValueChange, keyboardMode = 'text', tou
       <textarea
         {...props}
         value={value}
-        onFocus={(event) => { onFocus?.(event); if (enabled) setOpen(true) }}
         onChange={(event) => onValueChange(event.target.value)}
+        className={cn(className, enabled && 'pr-9')}
       />
+      {enabled && <KeyboardToggleButton open={open} onToggle={() => setOpen((o) => !o)} align="top" />}
       {enabled && open && <TouchKeyboard value={value} onChange={onValueChange} onClose={() => setOpen(false)} mode={keyboardMode} />}
     </span>
   )
