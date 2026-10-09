@@ -117,12 +117,22 @@ type ActiveOrder = {
   items: { id: string; quantity: number; addedAfterSend?: boolean; dispatchRequest?: { status: 'REQUESTED' | 'DISPATCHED' | 'REJECTED' | 'CANCELLED' } | null; menuItem: { name: string } | null; variant: { name: string } | null; returnRequests?: { id: string; status: 'PENDING' | 'APPROVED' | 'REJECTED'; quantity: number }[] }[]
 }
 type CompletedOrder = ActiveOrder & { paid: number; paymentStatus: 'UNPAID' | 'PARTIAL' | 'PAID'; updatedAt: string }
+// Marker written by POST /dispatch-requests/:id/reject (dispatch.routes.ts)
+// so the frontend can tell this specific kind of auto-cancellation apart
+// from a manual void/approval-cancel and offer a retry.
+const STORE_REJECT_NOTE = 'Auto-cancelled: store rejected the dispatch request'
 type CancelledOrder = ActiveOrder & {
   statusBeforeCancel: string | null
   cancelReason: string | null
   cancelRequestedAt: string | null
   cancelDecidedAt: string | null
   cancelDecisionNote: string | null
+  customer: { id: string; firstName: string; lastName: string | null; phone: string } | null
+  items: (ActiveOrder['items'][number] & {
+    menuItemId: string | null
+    variantId: string | null
+    addons: { addon: { id: string } }[]
+  })[]
 }
 
 const NON_FINAL_STATUSES = ['OPEN', 'PREPARING', 'READY', 'SERVED']
@@ -532,6 +542,28 @@ export default function PointOfSale() {
     setHeldSales((current) => current.filter((h) => h.key !== held.key))
   }
 
+  // "Retry" on a store-rejected cancelled order: reload its lines into the
+  // New Sale cart so the waiter can drop/adjust the problem item and resend,
+  // instead of retyping the whole order from scratch.
+  function retryOrder(order: CancelledOrder) {
+    const lines: CartLine[] = []
+    let skipped = 0
+    for (const item of order.items) {
+      const menuItem = item.menuItemId ? menuItems.find((m) => m.id === item.menuItemId) : undefined
+      if (!menuItem) { skipped += 1; continue }
+      const variant = item.variantId ? menuItem.variants.find((v) => v.id === item.variantId) ?? null : null
+      const addons = item.addons.map((a) => allAddons.find((c) => c.id === a.addon.id)).filter((a): a is CatalogAddon => Boolean(a))
+      lines.push({ key: crypto.randomUUID(), item: menuItem, variant, addons, quantity: item.quantity })
+    }
+    resetSale()
+    setCart(lines)
+    if (order.table) setTableId(tables.find((t) => t.label === order.table?.label)?.id ?? '')
+    setParty(order.customer ? { kind: 'CUSTOMER', customer: order.customer } : { kind: 'WALK_IN' })
+    setTab('NEW')
+    if (lines.length === 0) toast.error('Nothing to reload', 'Those items are no longer on the menu — build the order from scratch.')
+    else toast.info('Order reloaded', skipped > 0 ? `${skipped} item${skipped === 1 ? '' : 's'} could not be reloaded (no longer on the menu).` : 'Review it and send again.')
+  }
+
   function discardHeldSale(key: string) {
     setHeldSales((current) => current.filter((h) => h.key !== key))
   }
@@ -819,6 +851,9 @@ export default function PointOfSale() {
                       <p className="mt-0.5 text-xs">{order.cancelReason || <span className="italic text-muted-foreground">—</span>}</p>
                       {order.cancelDecisionNote && <p className="mt-1 text-[11px] text-muted-foreground">Admin note: {order.cancelDecisionNote}</p>}
                     </div>
+                    {order.cancelDecisionNote === STORE_REJECT_NOTE && (
+                      <button onClick={() => retryOrder(order)} className="mt-3 inline-flex items-center gap-1.5 rounded-sm border px-3 py-1.5 text-xs font-semibold hover:bg-muted"><LuPencil className="size-3.5" /> Update &amp; Retry</button>
+                    )}
                   </article>
                 )
               })}
