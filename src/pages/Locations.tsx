@@ -75,6 +75,7 @@ type LocationRow = {
   requireStoreDispatch: boolean
   allowOutOfStockOrders: boolean
   dispatchAutoPrint: boolean
+  orderTicketAutoPrint: boolean
   dispatchFromLocationId: string | null
   receiptHeader: string | null
   receiptFooter: string | null
@@ -104,6 +105,7 @@ type LocationForm = {
   requireStoreDispatch: boolean
   allowOutOfStockOrders: boolean
   dispatchAutoPrint: boolean
+  orderTicketAutoPrint: boolean
   dispatchFromLocationId: string
   receiptHeader: string
   receiptFooter: string
@@ -121,6 +123,7 @@ const emptyLocationForm: LocationForm = {
   requireStoreDispatch: false,
   allowOutOfStockOrders: false,
   dispatchAutoPrint: true,
+  orderTicketAutoPrint: false,
   dispatchFromLocationId: '',
   receiptHeader: '', receiptFooter: '', invoiceHeader: '', invoiceFooter: '', quotationHeader: '', quotationFooter: '',
 }
@@ -189,6 +192,7 @@ export default function Locations() {
       requireStoreDispatch: location.requireStoreDispatch,
       allowOutOfStockOrders: location.allowOutOfStockOrders,
       dispatchAutoPrint: location.dispatchAutoPrint,
+      orderTicketAutoPrint: location.orderTicketAutoPrint ?? false,
       dispatchFromLocationId: location.dispatchFromLocationId ?? '',
       receiptHeader: location.receiptHeader ?? '',
       receiptFooter: location.receiptFooter ?? '',
@@ -463,6 +467,15 @@ export default function Locations() {
                     )
                   })}
                 </div>
+                {form.serveMode === 'COUNTER' && (
+                  <label className={cn('mt-3 flex cursor-pointer items-start gap-2.5 border p-3 transition-colors', form.orderTicketAutoPrint ? 'border-secondary bg-secondary/10' : 'bg-muted/40')}>
+                    <input type="checkbox" checked={form.orderTicketAutoPrint} onChange={(e) => setForm({ ...form, orderTicketAutoPrint: e.target.checked })} className="mt-0.5 size-4 accent-secondary" />
+                    <span>
+                      <span className="block text-sm font-semibold">Print an order ticket at the counter</span>
+                      <span className="block text-xs text-muted-foreground">Every time a waiter posts an order here, adds to it, changes or removes an item, or an order is cancelled, the counter&apos;s printer prints what changed - what the barman works from. Not a receipt (no prices). Needs a printer set up on the counter computer.</span>
+                    </span>
+                  </label>
+                )}
                 {form.serveMode === 'KITCHEN' && (
                   <div className={cn('mt-3 border p-3 transition-colors', form.requireStoreDispatch ? 'border-secondary bg-secondary/10' : 'bg-muted/40')}>
                     <label className="flex cursor-pointer items-start gap-2.5">

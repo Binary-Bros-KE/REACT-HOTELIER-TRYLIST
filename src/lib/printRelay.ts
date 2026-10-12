@@ -11,7 +11,9 @@ import type { DispatchSlip } from '@/lib/thermalPrinter'
  */
 
 export type PrintJobStatus = 'PENDING' | 'CLAIMED' | 'DONE' | 'FAILED'
-export type PendingPrintJob = { id: string; orderId: string; kind: 'RECEIPT' | 'DISPATCH'; createdAt: string; nudgedAt: string | null }
+// ORDER_TICKET: what a waiter posted to / changed on a counter order, laid out by the server.
+export type PrintJobKind = 'RECEIPT' | 'DISPATCH' | 'ORDER_TICKET'
+export type PendingPrintJob = { id: string; orderId: string; kind: PrintJobKind; createdAt: string; nudgedAt: string | null }
 
 export async function createPrintJob(orderId: string, printerId: string): Promise<{ id: string; status: PrintJobStatus }> {
   const response = await api<{ job: { id: string; status: PrintJobStatus; createdAt: string } }>(`/pos/orders/${orderId}/print-jobs`, { method: 'POST', body: JSON.stringify({ printerId }) })
@@ -36,11 +38,13 @@ export async function nudgePrintJob(id: string): Promise<void> {
 }
 
 /** Atomically claims a job before printing it — returns null if another
- * device already claimed it first (a normal race, not an error). */
-export async function claimPrintJob(id: string): Promise<{ id: string; orderId: string; kind: 'RECEIPT' | 'DISPATCH'; slip: DispatchSlip | null } | null> {
+ * device already claimed it first (a normal race, not an error). `columns`
+ * is this printer's line width, for jobs the server lays out itself (`data`,
+ * base64 ESC/POS bytes). */
+export async function claimPrintJob(id: string, columns?: number): Promise<{ id: string; orderId: string; kind: PrintJobKind; slip: DispatchSlip | null; data: string | null } | null> {
   try {
-    const response = await api<{ job: { id: string; orderId: string; kind: 'RECEIPT' | 'DISPATCH' }; slip?: DispatchSlip | null }>(`/pos/print-jobs/${id}/claim`, { method: 'POST', body: '{}' })
-    return { ...response.job, slip: response.slip ?? null }
+    const response = await api<{ job: { id: string; orderId: string; kind: PrintJobKind }; slip?: DispatchSlip | null; data?: string | null }>(`/pos/print-jobs/${id}/claim`, { method: 'POST', body: JSON.stringify(columns ? { columns } : {}) })
+    return { ...response.job, slip: response.slip ?? null, data: response.data ?? null }
   } catch {
     return null
   }

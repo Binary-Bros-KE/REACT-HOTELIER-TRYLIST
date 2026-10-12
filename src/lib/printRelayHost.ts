@@ -42,7 +42,7 @@ export function usePrintRelayHost(): void {
         dispatch(setPrintJobCounts({ pendingCount: jobs.length, nudgedCount: jobs.filter((j) => j.nudgedAt).length }))
         for (const job of jobs) {
           if (cancelled) break
-          const claimed = await claimPrintJob(job.id)
+          const claimed = await claimPrintJob(job.id, s.columns)
           if (!claimed) continue // another device's poll won the race — fine
           try {
             if (profileRef.current === undefined) {
@@ -50,7 +50,11 @@ export function usePrintRelayHost(): void {
               profileRef.current = profile
             }
             let bytes: Uint8Array
-            if (claimed.kind === 'DISPATCH') {
+            if (claimed.kind === 'ORDER_TICKET') {
+              // A counter order ticket: the server sends the finished bytes.
+              if (!claimed.data) throw new Error('This order ticket is no longer available')
+              bytes = Uint8Array.from(atob(claimed.data), (c) => c.charCodeAt(0))
+            } else if (claimed.kind === 'DISPATCH') {
               // The store's slip for a kitchen's ingredient request - the slip itself came with the claim.
               if (!claimed.slip) throw new Error('This dispatch request is no longer available')
               bytes = buildDispatchSlipBytes(claimed.slip, profileRef.current ?? null, s)
