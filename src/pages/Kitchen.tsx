@@ -193,6 +193,9 @@ function DispatchPanel({ dispatch, working, onDispatch, compact }: { dispatch: D
 
 function Ticket({ order, now, working, onAdvance, onRelease, onDispatch }: { order: Order; now: number; working: boolean; onAdvance: () => void; onRelease: () => void; onDispatch: (action: DispatchAction) => void }) {
   const currentUserId = useAppSelector((state) => state.auth.user?.id)
+  // A Super Admin can finish or release another chef's ticket when that chef isn't around.
+  const isSuperAdmin = useAppSelector((state) => state.auth.user?.role?.name === 'Super Admin')
+  const claimedByOther = order.status === 'PREPARING' && order.preparingBy !== currentUserId
   const dispatch = order.dispatch
   const needsRequest = Boolean(dispatch?.required) && dispatch?.state === 'NEEDS_REQUEST'
   const waitingOnStore = Boolean(dispatch?.required) && dispatch?.state === 'WAITING'
@@ -232,19 +235,20 @@ function Ticket({ order, now, working, onAdvance, onRelease, onDispatch }: { ord
             {working ? <LuLoaderCircle className="animate-spin" /> : <LuStore />}{working ? 'Requesting…' : order.status === 'OPEN' ? 'Send to the store' : 'Send added items to the store'}
           </button>
         ) : (
-        order.status === 'PREPARING' && order.preparingBy !== currentUserId ? (
+        claimedByOther && !isSuperAdmin ? (
           <button disabled className="mt-4 flex w-full items-center justify-center gap-2 bg-muted py-3 text-sm font-bold uppercase tracking-wide text-muted-foreground">
             <LuLoaderCircle className="size-4" /> {order.preparedByName ? `Being prepared by ${order.preparedByName}` : 'Being prepared'}
           </button>
         ) : (
           <>
+            {claimedByOther && <p className="mt-4 text-xs font-semibold text-muted-foreground">{order.preparedByName ? `Claimed by ${order.preparedByName}` : 'Claimed by another chef'} · you can finish it as Super Admin</p>}
             <button
               disabled={working}
               onClick={onAdvance}
               className={cn('mt-4 flex w-full items-center justify-center gap-2 py-3 text-sm font-bold uppercase tracking-wide transition hover:brightness-110 disabled:opacity-60', order.status === 'OPEN' ? 'bg-primary text-primary-foreground' : 'bg-success text-success-foreground')}
             >
               {working ? <LuLoaderCircle className="animate-spin" /> : order.status === 'OPEN' ? <LuFlame /> : <LuCheck />}
-              {working ? 'Updating…' : order.status === 'OPEN' ? 'Claim and start' : 'Mark ready'}
+              {working ? 'Updating…' : order.status === 'OPEN' ? 'Claim and start' : claimedByOther ? `Mark ready for ${order.preparedByName ?? 'chef'}` : 'Mark ready'}
             </button>
             {order.status === 'PREPARING' && (
               <button type="button" disabled={working} onClick={onRelease} className="mt-2 w-full text-center text-xs font-semibold text-muted-foreground underline disabled:opacity-60">Release back to the queue</button>
