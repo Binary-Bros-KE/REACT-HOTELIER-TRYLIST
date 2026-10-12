@@ -43,7 +43,7 @@ type Request = {
   items: Item[]
   fromLocation: { name: string }
   toLocation: { name: string }
-  order: { table: { label: string } | null }
+  order: { status: string; table: { label: string } | null }
 }
 type Tab = 'pending' | 'history'
 type RecipeEdit = { requestId: string; recipe: RecipeDetail; products: RecipeProduct[] }
@@ -66,6 +66,10 @@ const qty = (value: string | number) => Number(value).toLocaleString('en-KE', { 
 const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString('en-KE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—')
 const STATUS_TONE = { REQUESTED: 'warning', DISPATCHED: 'success', REJECTED: 'danger', CANCELLED: 'muted' } as const
 const STATUS_LABEL = { REQUESTED: 'Waiting', DISPATCHED: 'Dispatched', REJECTED: 'Rejected', CANCELLED: 'Cancelled' } as const
+// A request cancelled while its order lives on was withdrawn by the kitchen
+// (the order is still in the queue); only a cancelled order reads as Cancelled.
+const statusLabel = (request: Pick<Request, 'status' | 'order'>) =>
+  request.status === 'CANCELLED' && request.order.status !== 'CANCELLED' ? 'Withdrawn' : STATUS_LABEL[request.status]
 const STOCK_EPSILON = 0.000001
 
 function dishKeyFor(dish: Dish, index: number) {
@@ -305,7 +309,7 @@ export default function DispatchRequests() {
                       <h3 className="font-display text-lg font-semibold">Order #{request.orderNumber}{request.order.table ? ` · ${request.order.table.label}` : ''}</h3>
                       <p className="text-xs text-muted-foreground">{request.rungUpBy ? `Rung up by ${request.rungUpBy} · ` : ''}{request.fromLocation.name} → {request.toLocation.name}</p>
                     </div>
-                    <StatusPill tone={STATUS_TONE[request.status]}>{STATUS_LABEL[request.status]}</StatusPill>
+                    <StatusPill tone={STATUS_TONE[request.status]}>{statusLabel(request)}</StatusPill>
                   </div>
                   <DishList
                     dishes={request.dishes}
@@ -315,7 +319,7 @@ export default function DispatchRequests() {
                   {!waiting && request.dishes.length === 0 && <p className="mt-3 text-sm text-muted-foreground">No dishes recorded.</p>}
                   <p className="mt-3 text-xs text-muted-foreground">
                     Requested {when(request.requestedAt)}{request.requestedByName ? ` by ${request.requestedByName}` : ''}
-                    {request.status !== 'REQUESTED' && request.respondedAt ? ` · ${STATUS_LABEL[request.status].toLowerCase()} ${when(request.respondedAt)}${request.respondedByName ? ` by ${request.respondedByName}` : ''}` : ''}
+                    {request.status !== 'REQUESTED' && request.respondedAt ? ` · ${statusLabel(request).toLowerCase()} ${when(request.respondedAt)}${request.respondedByName ? ` by ${request.respondedByName}` : ''}` : ''}
                   </p>
                   {request.rejectReason && <p className="mt-1 text-xs text-destructive">Reason: {request.rejectReason}</p>}
                   <div className="mt-auto flex flex-wrap gap-2 pt-4">

@@ -13,6 +13,7 @@ export type PurchaseOrderDocData = {
   expectedDate: string | null
   reference: string | null
   notes: string | null
+  // Always 0 on a purchase: tax is worked out per line (see items[].taxRate).
   taxRate: string
   subtotal: string
   taxAmount: string
@@ -20,14 +21,26 @@ export type PurchaseOrderDocData = {
   supplier: { name: string }
   requisition: { requisitionNo: string } | null
   createdByEmployee: Employee
-  items: { product: { name: string; unit: string; packSize: string | null; packLabel: string | null; packUnit: { id: string; name: string } | null }; quantity: string; unitCost: string; lineTotal: string; note: string | null }[]
+  items: { product: { name: string; unit: string; packSize: string | null; packLabel: string | null; packUnit: { id: string; name: string } | null }; quantity: string; unitCost: string; lineTotal: string; note: string | null; taxRate?: string; taxAmount?: string; taxTreatment?: string }[]
 }
 
 const fullName = (e: Employee) => (e ? `${e.firstName} ${e.lastName}` : '')
 
 export default function PurchaseOrderDocument({ data, profile }: { data: PurchaseOrderDocData; profile: DocProfile }) {
   const currency = profile?.currency ?? 'KES'
-  const rate = Number(data.taxRate) || 0
+  // Group the taxed lines by rate - the header rate is never set, so it can't
+  // label the tax (it read "Tax (0%)" next to a VAT amount).
+  const taxBands = [...data.items.reduce((bands, i) => {
+    const tax = Number(i.taxAmount) || 0
+    const rate = Number(i.taxRate) || 0
+    if (tax <= 0 || rate <= 0 || (i.taxTreatment && i.taxTreatment !== 'STANDARD')) return bands
+    const band = bands.get(rate) ?? { rate, net: 0, tax: 0, gross: 0 }
+    band.tax += tax
+    band.gross += Number(i.lineTotal) || 0
+    band.net = band.gross - band.tax
+    return bands.set(rate, band)
+  }, new Map<number, { rate: number; net: number; tax: number; gross: number }>()).values()].sort((a, b) => a.rate - b.rate)
+  const taxLabel = taxBands.length === 1 ? `VAT (${taxBands[0].rate}%)` : taxBands.length > 1 ? 'VAT' : 'Tax'
   const lines: DocLine[] = data.items.map((i) => ({
     name: i.product.name,
     sub: i.note ?? undefined,
@@ -59,12 +72,12 @@ export default function PurchaseOrderDocument({ data, profile }: { data: Purchas
         <Totals
           rows={[
             { key: 'Subtotal', value: money(data.subtotal, currency) },
-            { key: `Tax (${rate}%)`, value: money(data.taxAmount, currency) },
+            { key: taxLabel, value: money(data.taxAmount, currency) },
           ]}
           grand={{ key: 'Total', value: money(data.total, currency) }}
         />
 
-        {rate > 0 ? (
+        {taxBands.length > 0 ? (
           <View>
             <Text style={s.breakLabel}>TAX BREAKDOWN</Text>
             <View style={s.table}>
@@ -74,12 +87,14 @@ export default function PurchaseOrderDocument({ data, profile }: { data: Purchas
                 <Text style={[s.thText, s.colMoney]}>TAX</Text>
                 <Text style={[s.thText, s.colMoney]}>GROSS</Text>
               </View>
-              <View style={[s.tr, { borderBottomWidth: 0 }]}>
-                <Text style={[s.td, s.colName]}>Standard ({rate}%)</Text>
-                <Text style={[s.td, s.colMoney]}>{money(data.subtotal, currency)}</Text>
-                <Text style={[s.td, s.colMoney]}>{money(data.taxAmount, currency)}</Text>
-                <Text style={[s.td, s.colMoney]}>{money(data.total, currency)}</Text>
-              </View>
+              {taxBands.map((band, index) => (
+                <View key={band.rate} style={[s.tr, index === taxBands.length - 1 ? { borderBottomWidth: 0 } : {}]}>
+                  <Text style={[s.td, s.colName]}>Standard ({band.rate}%)</Text>
+                  <Text style={[s.td, s.colMoney]}>{money(band.net, currency)}</Text>
+                  <Text style={[s.td, s.colMoney]}>{money(band.tax, currency)}</Text>
+                  <Text style={[s.td, s.colMoney]}>{money(band.gross, currency)}</Text>
+                </View>
+              ))}
             </View>
           </View>
         ) : null}

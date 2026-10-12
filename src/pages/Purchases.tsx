@@ -462,7 +462,7 @@ export default function Purchases() {
         <div className="flex flex-col gap-3 border-b p-4 sm:flex-row sm:items-center">
           <label className="relative flex-1">
             <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search PO number, supplier or reference…" className="w-full rounded-sm border bg-background py-2.5 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search PO, GRN, supplier or reference…" className="w-full rounded-sm border bg-background py-2.5 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
           </label>
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as 'all' | Status)} className="rounded-sm border bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring">
             <option value="all">All statuses</option>
@@ -815,7 +815,7 @@ export default function Purchases() {
                       </div>
                       <ul className="mt-1.5 space-y-0.5 text-xs text-muted-foreground">
                         {r.items.map((it) => (
-                          <li key={it.id}>{packAndUnit(Number(it.quantity), Number(it.product.packSize) || 0, it.product.packLabel ?? '', it.product.packUnit?.name ?? it.product.unit)} {it.product.name} @ {formatKes(Number(it.unitCost))}</li>
+                          <li key={it.id}>{it.product ? `${packAndUnit(Number(it.quantity), Number(it.product.packSize) || 0, it.product.packLabel ?? '', it.product.packUnit?.name ?? it.product.unit)} ${it.product.name}` : Number(it.quantity).toLocaleString('en-KE')} @ {formatKes(Number(it.unitCost))}</li>
                         ))}
                       </ul>
                       {r.note && <p className="mt-1.5 text-xs italic text-muted-foreground">{r.note}</p>}

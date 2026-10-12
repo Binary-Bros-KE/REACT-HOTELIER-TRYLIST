@@ -62,11 +62,11 @@ export default function Kitchen() {
   }), [orders])
   const usesStore = orders.some((order) => order.dispatch?.required) || updatedOrders.some((order) => order.dispatch?.required)
 
-  async function dispatchAction(order: Order, action: 'request-dispatch' | 'cancel-dispatch') {
+  async function dispatchAction(order: Order, action: DispatchAction) {
     setWorkingId(order.id); setError(''); setNotice('')
     try {
       await api(`/kitchen/orders/${order.id}/${action}`, { method: 'POST', body: JSON.stringify({}) })
-      setNotice(action === 'request-dispatch' ? `Order #${order.orderNumber}: ingredients requested from the store.` : `Order #${order.orderNumber}: request withdrawn.`)
+      setNotice(`Order #${order.orderNumber}: ingredients requested from the store.`)
       await load(true)
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not update the store request') }
     finally { setWorkingId('') }
@@ -172,19 +172,16 @@ export default function Kitchen() {
   )
 }
 
-type DispatchAction = 'request-dispatch' | 'cancel-dispatch'
+// The kitchen can only ask the store; it can't withdraw a request (or cancel the
+// order). Only the store's reject ends a waiting request - and with it the order.
+type DispatchAction = 'request-dispatch'
 
 /** The store-dispatch step of a ticket: what the chef has to do before (or while) cooking. */
 function DispatchPanel({ dispatch, working, onDispatch, compact }: { dispatch: Dispatch; working: boolean; onDispatch: (action: DispatchAction) => void; compact?: boolean }) {
   if (!dispatch.required || dispatch.state === 'NOTHING_NEEDED') return null
   if (dispatch.state === 'DISPATCHED') return <p className="mt-3 flex items-center gap-2 border border-success/30 bg-success/10 p-2.5 text-xs font-semibold text-success"><LuPackageOpen /> Ingredients dispatched by the store</p>
   if (dispatch.state === 'WAITING') {
-    return (
-      <div className="mt-3 flex items-center justify-between gap-2 border border-warning/40 bg-warning/10 p-2.5 text-xs font-semibold text-warning">
-        <span className="flex items-center gap-2"><LuStore /> Waiting for store approval…</span>
-        <button type="button" disabled={working} onClick={() => onDispatch('cancel-dispatch')} className="underline disabled:opacity-60">Withdraw</button>
-      </div>
-    )
+    return <p className="mt-3 flex items-center gap-2 border border-warning/40 bg-warning/10 p-2.5 text-xs font-semibold text-warning"><LuStore /> Waiting for store approval…</p>
   }
   return (
     <div className="mt-3 space-y-2">

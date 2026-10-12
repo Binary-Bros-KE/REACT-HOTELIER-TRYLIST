@@ -21,7 +21,7 @@ type License = {
   isActive: boolean
 }
 
-const APP_VERSION = '1.0.0'
+const APP_VERSION = __APP_VERSION__
 const licenseStatusStyles: Record<LicenseStatus, string> = {
   TRIAL: 'border-warning/70 text-warning',
   ACTIVE: 'border-success/70 text-success',

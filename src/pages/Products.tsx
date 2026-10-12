@@ -5,6 +5,7 @@ import {
   LuBoxes,
   LuCircleAlert,
   LuCircleCheck,
+  LuHistory,
   LuLoaderCircle,
   LuPackage,
   LuPackagePlus,
@@ -26,6 +27,7 @@ import UnitsOfMeasureModal from '@/components/UnitsOfMeasureModal'
 import PackQtyInput, { packAndUnit } from '@/components/ui/PackQtyInput'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import { PRODUCT_TAG_OPTIONS, productTagLabel } from '@/lib/productTags'
+import ProductHistoryModal, { MOVEMENT_LABELS } from '@/components/ProductHistoryModal'
 
 type Category = { id: string; name: string; level: number; parentId: string | null }
 type Location = { id: string; name: string; type?: string; isActive?: boolean }
@@ -64,15 +66,6 @@ type Product = {
   createdAt: string
 }
 type Summary = { total: number; active: number; inactive: number; lowStock: number }
-type MovementType =
-  | 'OPENING_STOCK' | 'PURCHASE' | 'SALE' | 'TRANSFER_IN' | 'TRANSFER_OUT' | 'RETURN'
-  | 'DAMAGE_LOSS' | 'ADJUSTMENT' | 'BORROWED_IN' | 'RETURNED_BORROWED_STOCK' | 'LENT_OUT' | 'LOAN_RETURNED'
-const MOVEMENT_LABELS: Record<MovementType, string> = {
-  OPENING_STOCK: 'Opening stock', PURCHASE: 'Purchase', SALE: 'Sale', TRANSFER_IN: 'Transfer in',
-  TRANSFER_OUT: 'Transfer out', RETURN: 'Return', DAMAGE_LOSS: 'Damage / loss', ADJUSTMENT: 'Adjustment',
-  BORROWED_IN: 'Borrowed in', RETURNED_BORROWED_STOCK: 'Returned borrowed', LENT_OUT: 'Lent out', LOAN_RETURNED: 'Loan returned',
-}
-type Movement = { id: string; type: MovementType; location: { id: string; name: string }; quantity: string; note: string | null; occurredAt: string }
 
 // Matches the backend's MANUAL_MOVEMENT_TYPES (products.routes.ts) — the
 // only types the "Adjust stock" action is allowed to record. Everything
@@ -174,7 +167,7 @@ export default function Products() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
-  const [movements, setMovements] = useState<Movement[] | null>(null)
+  const [historyProduct, setHistoryProduct] = useState<Product | null>(null)
   const [transfer, setTransfer] = useState(emptyTransfer)
   const [showTransfer, setShowTransfer] = useState(false)
   const [transferring, setTransferring] = useState(false)
@@ -258,7 +251,6 @@ export default function Products() {
     setEditing(null)
     setForm(emptyForm)
     setPackExpanded(false)
-    setMovements(null)
     setError('')
     setShowForm(true)
   }
@@ -293,10 +285,8 @@ export default function Products() {
       expenseCategoryId: product.expenseCategoryId ?? '',
     })
     setPackExpanded(Boolean(product.packUnitId || product.packLabel || product.packSize))
-    setMovements(null)
     setError('')
     setShowForm(true)
-    api<{ movements: Movement[] }>(`/products/${product.id}/movements`).then((r) => setMovements(r.movements)).catch(() => setMovements([]))
   }
 
   async function saveProduct(event: FormEvent) {
@@ -543,6 +533,7 @@ export default function Products() {
                         {low && <span className="keep-round border border-dashed border-warning/70 px-2 py-0.5 text-xs font-semibold text-warning">Low</span>}
                         {!product.isActive && <span className="keep-round border border-dashed border-muted-foreground/50 px-2 py-0.5 text-xs font-semibold text-muted-foreground">Inactive</span>}
                         <button onClick={() => openAdjust(product)} title="Add or remove stock" className="rounded-sm border p-2 text-muted-foreground hover:bg-success/10 hover:text-success"><LuPackagePlus /></button>
+                        <button onClick={() => setHistoryProduct(product)} title="Stock history" className="rounded-sm border p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuHistory /></button>
                         <button onClick={() => openTransfer(product)} title="Transfer stock" className="rounded-sm border p-2 text-muted-foreground hover:bg-accent/10 hover:text-accent"><LuArrowLeftRight /></button>
                         <button onClick={() => openEdit(product)} title="Edit product" className="rounded-sm border p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuPencil /></button>
                         <button onClick={() => void deleteProduct(product)} title="Delete product" className="rounded-sm border p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><LuTrash2 /></button>
@@ -616,6 +607,7 @@ export default function Products() {
                       <td className="px-5 py-4">
                         <div className="flex justify-end gap-1">
                           <button onClick={() => openAdjust(product)} title="Add or remove stock" className="rounded-sm p-2 text-muted-foreground hover:bg-success/10 hover:text-success"><LuPackagePlus /></button>
+                          <button onClick={() => setHistoryProduct(product)} title="Stock history" className="rounded-sm p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuHistory /></button>
                           <button onClick={() => openTransfer(product)} title="Transfer stock" className="rounded-sm p-2 text-muted-foreground hover:bg-accent/10 hover:text-accent"><LuArrowLeftRight /></button>
                           <button onClick={() => openEdit(product)} title="Edit product" className="rounded-sm p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuPencil /></button>
                           <button onClick={() => void deleteProduct(product)} title="Delete product" className="rounded-sm p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><LuTrash2 /></button>
@@ -808,20 +800,6 @@ export default function Products() {
               <input type="checkbox" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} className="size-4 accent-secondary" />
             </label>
 
-            {editing && movements && movements.length > 0 && (
-              <div className="mt-6 border-t pt-5">
-                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Recent Stock Movements</p>
-                <div className="space-y-1.5">
-                  {movements.slice(0, 5).map((m) => (
-                    <div key={m.id} className="flex items-center justify-between rounded-sm bg-muted/50 px-3 py-2 text-xs">
-                      <span className="font-medium">{MOVEMENT_LABELS[m.type] ?? m.type} · {m.location.name}{m.note ? ` — ${m.note}` : ''}</span>
-                      <span className={cn('font-semibold', Number(m.quantity) < 0 ? 'text-destructive' : 'text-success')}>{Number(m.quantity) > 0 ? '+' : ''}{packAndUnit(Number(m.quantity), packSizeNum, form.packLabel, editing.packUnit?.name ?? editing.unit)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
             <div className="mt-6 flex justify-end gap-2 border-t pt-5">
               <button type="button" onClick={() => setShowForm(false)} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Cancel</button>
               <button disabled={saving} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
@@ -832,6 +810,8 @@ export default function Products() {
           </form>
         </div>
       )}
+
+      {historyProduct && <ProductHistoryModal product={historyProduct} onClose={() => setHistoryProduct(null)} />}
 
       {showTransfer && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
