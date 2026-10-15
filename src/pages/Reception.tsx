@@ -328,6 +328,19 @@ export default function Reception() {
     }
   }
 
+  async function confirmBooking(reservation: Reservation) {
+    setWorking(reservation.id);
+    try {
+      await at(`/reception/reservations/${reservation.id}/confirm`, { method: "PATCH" });
+      toast.success(`${reservation.customer.firstName}'s booking is confirmed.`);
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not confirm the booking");
+    } finally {
+      setWorking("");
+    }
+  }
+
   async function markNoShow(reservation: Reservation) {
     if (!window.confirm(`Mark ${reservation.customer.firstName} ${reservation.customer.lastName} as a no-show?`)) return;
     setWorking(reservation.id);
@@ -445,11 +458,13 @@ export default function Reception() {
                       </td>
                       <td className="px-5 py-3.5">
                         <Pill tone={STATUS_TONE[b.status]}>{titleCase(b.status)}</Pill>
+                        {b.source === "WEBSITE" && <p className="mt-1"><Pill tone="secondary">Web booking</Pill></p>}
                       </td>
                       <td className="px-5 py-3.5">
                         <div className="flex flex-wrap justify-end gap-2">
                           {(b.status === "PENDING" || b.status === "CONFIRMED") && (
                             <>
+                              {b.status === "PENDING" && <ActionButton tone="secondary" icon={<LuCheck />} loading={working === b.id} onClick={() => void confirmBooking(b)}>Confirm</ActionButton>}
                               <ActionButton tone="primary" icon={<LuLogIn />} loading={working === b.id} onClick={() => void checkIn(b)}>Check in</ActionButton>
                               {isSuperAdmin && <ActionButton tone="danger" icon={<LuBan />} title="Cancel reservation" onClick={() => setCancelling(b)} />}
                               {new Date(b.checkIn) <= new Date() && (
