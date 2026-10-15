@@ -54,7 +54,13 @@ export default function PrinterSettings() {
     try {
       const list = await listBridgePrinters(url)
       setBridge({ checking: false, up, printers: list.printers, error: '' })
-      setS((cur) => (cur.address ? cur : saveThermalSettings({ address: list.default ?? cur.address })))
+      // A saved name this machine doesn't have (e.g. carried over from another
+      // PC) would show as the first option yet still be sent — replace it.
+      setS((cur) =>
+        cur.address && list.printers.some((p) => p.name === cur.address)
+          ? cur
+          : saveThermalSettings({ address: list.default ?? list.printers[0]?.name ?? '' }),
+      )
     } catch (cause) {
       setBridge({ checking: false, up, printers: [], error: cause instanceof Error ? cause.message : 'Could not list printers' })
     }
