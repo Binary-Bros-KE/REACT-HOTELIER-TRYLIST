@@ -5,8 +5,10 @@ import {
   LuBoxes,
   LuCircleAlert,
   LuCircleCheck,
+  LuEqual,
   LuHistory,
   LuLoaderCircle,
+  LuMinus,
   LuPackage,
   LuPackagePlus,
   LuPencil,
@@ -27,7 +29,7 @@ import UnitsOfMeasureModal from '@/components/UnitsOfMeasureModal'
 import PackQtyInput, { packAndUnit } from '@/components/ui/PackQtyInput'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import { PRODUCT_TAG_OPTIONS, productTagLabel } from '@/lib/productTags'
-import ProductHistoryModal, { MOVEMENT_LABELS } from '@/components/ProductHistoryModal'
+import ProductHistoryModal from '@/components/ProductHistoryModal'
 
 type Category = { id: string; name: string; level: number; parentId: string | null }
 type Location = { id: string; name: string; type?: string; isActive?: boolean }
@@ -67,25 +69,20 @@ type Product = {
 }
 type Summary = { total: number; active: number; inactive: number; lowStock: number }
 
-// Matches the backend's MANUAL_MOVEMENT_TYPES (products.routes.ts) — the
-// only types the "Adjust stock" action is allowed to record. Everything
-// except ADJUSTMENT only ever adds to stock; the quantity input's sign
-// convention is enforced both here (min="0") and again server-side.
-type ManualMovementType = 'PURCHASE' | 'RETURN' | 'DAMAGE_LOSS' | 'ADJUSTMENT' | 'OPENING_STOCK'
-const MANUAL_MOVEMENT_TYPES: ManualMovementType[] = ['PURCHASE', 'RETURN', 'DAMAGE_LOSS', 'ADJUSTMENT', 'OPENING_STOCK']
+// Matches the backend's STOCK_CHANGE_MODES (products.routes.ts) — the
+// "Add or remove stock" actions. OVERRIDE sets the count to what was
+// physically counted; the server works out the difference.
+type StockChangeMode = 'INCREASE' | 'DECREASE' | 'OVERRIDE'
+const STOCK_CHANGE_MODES: { mode: StockChangeMode; label: string; hint: string; icon: ReactNode }[] = [
+  { mode: 'INCREASE', label: 'Increase', hint: 'Add to stock', icon: <LuPlus /> },
+  { mode: 'DECREASE', label: 'Decrease', hint: 'Take from stock', icon: <LuMinus /> },
+  { mode: 'OVERRIDE', label: 'Override', hint: 'Set the exact count', icon: <LuEqual /> },
+]
 const PRODUCT_TAG_VALUES = new Set<string>(PRODUCT_TAG_OPTIONS.map((option) => option.value))
-const MANUAL_MOVEMENT_HINTS: Record<ManualMovementType, string> = {
-  PURCHASE: 'Stock bought in outside the normal Purchases/Goods-Receipt flow — adds to stock.',
-  RETURN: 'Stock physically handed back in (e.g. a customer return) — adds to stock.',
-  DAMAGE_LOSS: 'Enter how much was lost — this always reduces stock, regardless of sign.',
-  ADJUSTMENT: 'A plain count correction. Enter a positive number to add, negative to remove.',
-  OPENING_STOCK: "A baseline this product didn't get when it was created — adds to stock.",
-}
-
-function manualMovementDelta(type: ManualMovementType, quantity: number) {
+function stockChangeDelta(mode: StockChangeMode, quantity: number, current: number) {
   if (!Number.isFinite(quantity)) return 0
-  if (type === 'DAMAGE_LOSS') return -Math.abs(quantity)
-  return quantity
+  if (mode === 'OVERRIDE') return quantity - current
+  return mode === 'DECREASE' ? -Math.abs(quantity) : Math.abs(quantity)
 }
 
 function signedPackAndUnit(qty: number, packSize: number, packLabel: string, unitName: string) {
@@ -131,7 +128,7 @@ const emptyForm: ProductForm = {
 }
 const emptyTransfer = { productId: '', productName: '', fromLocationId: '', toLocationId: '', quantity: '', stockByLocation: [] as StockByLocation[], packSize: 0, packLabel: '', unitName: '' }
 const emptyAdjust = {
-  productId: '', productName: '', type: '' as ManualMovementType | '',
+  productId: '', productName: '', mode: '' as StockChangeMode | '',
   locationId: '', quantity: '', unitCost: '', note: '', stockByLocation: [] as StockByLocation[],
   packSize: 0, packLabel: '', unitName: '',
 }
@@ -364,8 +361,8 @@ export default function Products() {
     setAdjust({
       productId: product.id,
       productName: product.name,
-      type: '',
-      locationId: '',
+      mode: '',
+      locationId: locations.length === 1 ? locations[0].id : '',
       quantity: '',
       unitCost: product.unitCost ?? '',
       note: '',
@@ -386,10 +383,10 @@ export default function Products() {
       await api(`/products/${adjust.productId}/movements`, {
         method: 'POST',
         body: JSON.stringify({
-          type: adjust.type || undefined,
+          mode: adjust.mode,
           locationId: adjust.locationId,
           quantity: Number(adjust.quantity),
-          unitCost: adjust.unitCost ? Number(adjust.unitCost) : undefined,
+          unitCost: adjust.mode === 'INCREASE' && adjust.unitCost ? Number(adjust.unitCost) : undefined,
           note: adjust.note.trim() || undefined,
         }),
       })
@@ -409,7 +406,7 @@ export default function Products() {
   const adjustCurrentQty = Number(adjust.stockByLocation.find((stock) => stock.locationId === adjust.locationId)?.quantity ?? 0)
   const adjustEnteredQty = Number(adjust.quantity)
   const hasAdjustQuantity = adjust.quantity.trim() !== '' && Number.isFinite(adjustEnteredQty)
-  const adjustDelta = hasAdjustQuantity && adjust.type ? manualMovementDelta(adjust.type, adjustEnteredQty) : 0
+  const adjustDelta = hasAdjustQuantity && adjust.mode ? stockChangeDelta(adjust.mode, adjustEnteredQty, adjustCurrentQty) : 0
   const adjustAfterQty = adjustCurrentQty + adjustDelta
   const adjustWouldGoNegative = hasAdjustQuantity && adjustAfterQty < 0
 
@@ -877,7 +874,8 @@ export default function Products() {
               <div className="-mx-6 -mt-6 border-b-4 border-accent bg-muted/60 px-6 py-4">
                 <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">Add or remove stock</p>
                 <h2 className="mt-1 font-display text-2xl font-semibold">{adjust.productName}</h2>
-                <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                <p className="mt-3 text-xs font-medium text-muted-foreground">Tap the location to change:</p>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
                   {locations.length === 0 ? (
                     <div className="rounded-sm border bg-muted/30 p-3 text-sm text-muted-foreground">No locations configured yet.</div>
                   ) : locations.map((location) => {
@@ -912,24 +910,31 @@ export default function Products() {
 
               <div className="mt-5 space-y-4">
                 <Field label="Action" required>
-                  <select required className="input" value={adjust.type} onChange={(e) => setAdjust({ ...adjust, type: e.target.value as ManualMovementType })}>
-                    <option value="" disabled>Select action</option>
-                    {MANUAL_MOVEMENT_TYPES.map((t) => <option key={t} value={t}>{MOVEMENT_LABELS[t]}</option>)}
-                  </select>
-                  {adjust.type && <span className="mt-1 block text-xs text-muted-foreground">{MANUAL_MOVEMENT_HINTS[adjust.type]}</span>}
+                  <div className="grid grid-cols-3 gap-2">
+                    {STOCK_CHANGE_MODES.map((option) => {
+                      const selected = adjust.mode === option.mode
+                      return (
+                        <button
+                          key={option.mode}
+                          type="button"
+                          onClick={() => setAdjust({ ...adjust, mode: option.mode })}
+                          className={cn(
+                            'flex flex-col items-center gap-1 rounded-sm border bg-background px-2 py-3 text-center transition hover:border-secondary/60 hover:bg-secondary/5',
+                            selected && 'border-secondary bg-secondary/10 ring-2 ring-secondary/15',
+                          )}
+                        >
+                          <span className="text-lg text-secondary">{option.icon}</span>
+                          <span className="text-sm font-semibold">{option.label}</span>
+                          <span className="text-[11px] leading-tight text-muted-foreground">{option.hint}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
                 </Field>
-                <Field label="Location" required>
-                  <select required className="input" value={adjust.locationId} onChange={(e) => setAdjust({ ...adjust, locationId: e.target.value })}>
-                    <option value="" disabled>Select location</option>
-                    {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-                  </select>
-                </Field>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Quantity" required>
+                <div className={cn('grid gap-3', adjust.mode === 'INCREASE' && 'grid-cols-2')}>
+                  <Field label={adjust.mode === 'OVERRIDE' ? 'New count' : 'Quantity'} required>
                     <PackQtyInput
                       required
-                      autoFocus
-                      allowNegative={adjust.type === 'ADJUSTMENT'}
                       value={adjust.quantity}
                       onChange={(v) => setAdjust({ ...adjust, quantity: v })}
                       packSize={adjust.packSize}
@@ -937,9 +942,9 @@ export default function Products() {
                       unitName={adjust.unitName}
                     />
                   </Field>
-                  <Field label="Unit cost (KSh)"><input type="number" min="0" step="0.01" placeholder="Optional" value={adjust.unitCost} onChange={(e) => setAdjust({ ...adjust, unitCost: e.target.value })} className="input" /></Field>
+                  {adjust.mode === 'INCREASE' && <Field label="Unit cost (KSh)"><input type="number" min="0" step="0.01" placeholder="Optional" value={adjust.unitCost} onChange={(e) => setAdjust({ ...adjust, unitCost: e.target.value })} className="input" /></Field>}
                 </div>
-                {adjustLocation && hasAdjustQuantity && (
+                {adjustLocation && adjust.mode && hasAdjustQuantity && (
                   <div className={cn('rounded-sm border bg-muted/30 p-3', adjustWouldGoNegative && 'border-destructive/30 bg-destructive/10')}>
                     <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{adjustLocation.name}</p>
                     <div className="mt-3 grid grid-cols-3 gap-2 text-center">
@@ -969,7 +974,7 @@ export default function Products() {
 
             <div className="flex shrink-0 justify-end gap-2 border-t bg-card p-5">
               <button type="button" onClick={() => setShowAdjust(false)} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Cancel</button>
-              <button disabled={adjusting || !adjust.type || !adjust.locationId} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+              <button disabled={adjusting || !adjust.mode || !adjust.locationId || !hasAdjustQuantity || adjustDelta === 0 || adjustWouldGoNegative} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
                 {adjusting && <LuLoaderCircle className="animate-spin" />}
                 Record
               </button>
