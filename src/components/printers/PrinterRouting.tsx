@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
-import { LuLoaderCircle, LuPlus, LuPrinter } from 'react-icons/lu'
+import { LuLoaderCircle, LuPlus, LuPrinter, LuTriangleAlert } from 'react-icons/lu'
 import { api } from '@/lib/api'
 import { useToast } from '@/components/ui/Toast'
 import type { ThermalSettings } from '@/lib/thermalPrinter'
 
-type Printer = { id: string; name: string; isActive: boolean; isDefault: boolean; locationId: string; location: { id: string; name: string } }
+type Printer = { id: string; name: string; isActive: boolean; isDefault: boolean; hostSeenAt: string | null; locationId: string; location: { id: string; name: string } }
 type Location = { id: string; name: string; isActive?: boolean }
+
+// A printing computer checks in every few seconds (recorded at most every 30s),
+// so nothing for this long means no computer is picking up queued receipts.
+const HOST_STALE_MS = 90_000
 
 /** Which printer this device's receipts go to, and which printer this computer drives for other devices. */
 export default function PrinterRouting({ settings, onChange }: { settings: ThermalSettings; onChange: (patch: Partial<ThermalSettings>) => void }) {
@@ -58,7 +62,12 @@ export default function PrinterRouting({ settings, onChange }: { settings: Therm
   }
 
   const active = (printers ?? []).filter((p) => p.isActive)
-  const hosted = active.find((p) => p.id === settings.hostPrinterId)
+  // Phones on "No printer here" (and the print-sheet mode) can't print for anyone.
+  const canHost = settings.connection !== 'relay' && settings.connection !== 'dialog'
+  const hosted = canHost ? active.find((p) => p.id === settings.hostPrinterId) : undefined
+  const unhosted = (p: Printer) =>
+    p.id !== hosted?.id && (!p.hostSeenAt || Date.now() - Date.parse(p.hostSeenAt) > HOST_STALE_MS)
+  const working = active.find((p) => p.id === settings.workingPrinterId)
 
   return (
     <section className="mb-6 border border-border bg-card p-6 shadow-sm">
@@ -80,7 +89,14 @@ export default function PrinterRouting({ settings, onChange }: { settings: Therm
               <option value="">Choose a printer</option>
               {active.map((p) => <option key={p.id} value={p.id}>{p.location.name} — {p.name}</option>)}
             </select>
+            {!canHost && working && unhosted(working) && (
+              <span className="mt-1.5 flex gap-1.5 text-xs font-medium text-warning">
+                <LuTriangleAlert className="mt-0.5 size-3.5 shrink-0" />
+                No computer is printing for {working.name} right now, so receipts from here will wait. On the computer with the printer, set “This computer prints for” to {working.name} and keep HOTELIER open.
+              </span>
+            )}
           </label>
+          {canHost ? (
           <label className="block text-sm font-medium">
             <span className="mb-1.5 block">This computer prints for</span>
             <select value={settings.hostPrinterId} onChange={(e) => onChange({ hostPrinterId: e.target.value })} className="input">
@@ -89,6 +105,9 @@ export default function PrinterRouting({ settings, onChange }: { settings: Therm
             </select>
             {hosted && <span className="mt-1.5 block text-xs text-muted-foreground">Receipts for {hosted.name} print from this computer while it stays open with its printer connected.</span>}
           </label>
+          ) : (
+            <p className="text-xs text-muted-foreground sm:pt-7">This device has no printer, so it doesn’t print anyone else’s receipts. Set “This computer prints for” on the computer the printer is connected to.</p>
+          )}
         </div>
       )}
 
@@ -103,6 +122,12 @@ export default function PrinterRouting({ settings, onChange }: { settings: Therm
                   <b>{p.name}</b> <span className="text-muted-foreground">· {p.location.name}</span>
                   {!p.isActive && <span className="ml-2 text-xs font-bold uppercase text-destructive">Off</span>}
                   {p.isDefault && <span className="ml-2 text-xs font-bold uppercase text-secondary">Default</span>}
+                  {p.isActive && unhosted(p) && (
+                    <span className="mt-1 flex items-center gap-1.5 text-xs font-medium text-warning">
+                      <LuTriangleAlert className="size-3.5 shrink-0" />
+                      No computer is printing for this. Receipts sent from phones will wait.
+                    </span>
+                  )}
                 </span>
                 <span className="flex gap-2">
                   {p.isActive && !p.isDefault && <button type="button" onClick={() => update(p, { isDefault: true })} className="border px-2.5 py-1 text-xs font-semibold hover:bg-muted">Make default</button>}
