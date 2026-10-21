@@ -13,12 +13,12 @@ export default function ModalShell({ kicker, title, subtitle, onClose, footer, s
   /** True when this modal can open on top of another one (e.g. a quick-create popup
    * launched from inside a form modal) - bumps it above the base z-50 so it isn't
    * silently painted underneath, matching the z-[60] convention used elsewhere for
-   * stacked modals. */
-  stacked?: boolean
+   * stacked modals. "top" (z-[70]) is for a quick-create opened from a modal that is itself stacked. */
+  stacked?: boolean | 'top'
   children: ReactNode
 }) {
   return (
-    <div className={cn('fixed inset-0 flex items-center justify-center bg-black/60 p-4', stacked ? 'z-[60]' : 'z-50')}>
+    <div className={cn('fixed inset-0 flex items-center justify-center bg-black/60 p-4', stacked === 'top' ? 'z-[70]' : stacked ? 'z-[60]' : 'z-50')}>
       <div className={cn(
         'flex max-h-[92vh] w-full flex-col overflow-hidden border-2 border-foreground/25 bg-card shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]',
         size === 'sm' ? 'max-w-md' : size === 'md' ? 'max-w-xl' : size === 'lg' ? 'max-w-2xl' : 'max-w-4xl',

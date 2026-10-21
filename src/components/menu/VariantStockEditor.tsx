@@ -78,7 +78,7 @@ function mergedIngredients(recipe: RecipeInfo, overrides: Override[]) {
  * editable from Kitchen > Recipes, reusable on any other item) instead of
  * leaving them as an easily-lost, one-off override set.
  */
-export default function VariantStockEditor({ value, onChange, productOptions, recipes, allowOverrides = true, label = 'Stock this variant uses', onRecipeCreated }: {
+export default function VariantStockEditor({ value, onChange, productOptions, recipes, allowOverrides = true, label = 'Stock this variant uses', onRecipeCreated, onNewRecipe, onNewProduct }: {
   value: VariantStock
   onChange: (next: VariantStock) => void
   productOptions: { value: string; label: string; hint?: string }[]
@@ -88,6 +88,10 @@ export default function VariantStockEditor({ value, onChange, productOptions, re
   label?: string
   /** Lets the parent add the freshly-created recipe to its own list so it shows up immediately. Omit to hide recipe-creation here. */
   onRecipeCreated?: (recipe: RecipeInfo) => void
+  /** Opens the parent's full recipe editor; `select` picks the saved recipe here. Replaces the name-only "+ New". */
+  onNewRecipe?: (select: (recipe: RecipeInfo) => void) => void
+  /** Opens the parent's quick product form; `select` picks the created product here. */
+  onNewProduct?: (select: (productId: string) => void) => void
 }) {
   const toast = useToast()
   const [extraProduct, setExtraProduct] = useState('')
@@ -142,7 +146,12 @@ export default function VariantStockEditor({ value, onChange, productOptions, re
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_8rem] sm:items-end">
           <label className="min-w-0 text-xs font-medium">Product
             <span className="mt-1 block">
-              <SearchableSelect options={productOptions} value={value.stockProductId} onChange={(v) => onChange({ ...value, stockProductId: v })} placeholder="Select a product" searchPlaceholder="Search products…" emptyText="No products match." />
+              <span className="flex gap-2">
+                <span className="min-w-0 flex-1"><SearchableSelect options={productOptions} value={value.stockProductId} onChange={(v) => onChange({ ...value, stockProductId: v })} placeholder="Select a product" searchPlaceholder="Search products…" emptyText="No products match." /></span>
+                {onNewProduct && (
+                  <button type="button" onClick={() => onNewProduct((productId) => onChange({ ...value, stockProductId: productId }))} title="Create a new product" className="shrink-0 whitespace-nowrap border px-2.5 py-2 text-xs font-semibold hover:bg-muted">+ New</button>
+                )}
+              </span>
             </span>
           </label>
           <label className="text-xs font-medium">Consumes
@@ -159,7 +168,9 @@ export default function VariantStockEditor({ value, onChange, productOptions, re
                 <SearchableSelect options={recipeOptions} value={value.recipeId} onChange={(v) => onChange({ ...value, recipeId: v, overrides: [] })} placeholder={recipeOptions.length ? 'Select a recipe' : 'No recipes yet - add one under Kitchen > Recipes'} searchPlaceholder="Search recipes…" emptyText="No recipes match." />
               </span>
             </label>
-            {onRecipeCreated && (
+            {onNewRecipe ? (
+              <button type="button" onClick={() => onNewRecipe((created) => onChange({ ...value, recipeId: created.id, overrides: [] }))} title="Create a new recipe with its ingredients" className="shrink-0 whitespace-nowrap border px-2.5 py-2 text-xs font-semibold hover:bg-muted">+ New</button>
+            ) : onRecipeCreated && (
               <button type="button" disabled={savingRecipe} onClick={() => void handleCreateBlank()} title="Create a new, empty recipe" className="shrink-0 whitespace-nowrap border px-2.5 py-2 text-xs font-semibold hover:bg-muted disabled:opacity-60">+ New</button>
             )}
           </div>

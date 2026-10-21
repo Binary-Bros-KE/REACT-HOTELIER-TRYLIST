@@ -25,6 +25,9 @@ import { cn } from '@/lib/utils'
 import StatCard from '@/components/ui/StatCard'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import { taxCategoryText, type TaxMode, type TaxTreatment } from '@/lib/tax'
+import QuickProductModal, { type QuickProduct } from '@/components/products/QuickProductModal'
+import RecipeEditModal, { type RecipeDetail } from '@/components/recipes/RecipeEditModal'
+import { QuickNewButton } from '@/components/QuickAddModal'
 
 const TEMPERATURES = ['OTHER', 'HOT', 'COLD'] as const
 type Temperature = (typeof TEMPERATURES)[number]
@@ -229,6 +232,17 @@ export default function MenuItems() {
   )
   const recipeOptions = useMemo(() => recipes.map((r) => ({ value: r.id, label: r.name })), [recipes])
   const addRecipe = (recipe: Recipe) => setRecipes((prev) => [...prev, recipe].sort((a, b) => a.name.localeCompare(b.name)))
+  const addStockProduct = (product: StockProduct) => setStockProducts((prev) => [...prev, product].sort((a, b) => a.name.localeCompare(b.name)))
+  // Products and recipes can be created without leaving the item form (or the
+  // Variants modal). The pop-up lives at the page root, outside those forms, and
+  // `select` puts what was created straight into the field that asked for it.
+  const [creating, setCreating] = useState<
+    | { kind: 'product'; select: (productId: string) => void }
+    | { kind: 'recipe'; select: (recipe: Recipe) => void }
+    | null
+  >(null)
+  const newProduct = (select: (productId: string) => void) => setCreating({ kind: 'product', select })
+  const newRecipe = (select: (recipe: Recipe) => void) => setCreating({ kind: 'recipe', select })
 
   const summary = useMemo(() => ({
     total: items.length,
@@ -729,14 +743,19 @@ export default function MenuItems() {
               {form.stockMode === 'product' && (
                 <>
                   <Field label="Product">
-                    <SearchableSelect
-                      options={stockProductOptions}
-                      value={form.stockProductId}
-                      onChange={(value) => setForm({ ...form, stockProductId: value })}
-                      placeholder="Select a product"
-                      searchPlaceholder="Search products…"
-                      emptyText="No products match."
-                    />
+                    <div className="flex gap-2">
+                      <div className="min-w-0 flex-1">
+                        <SearchableSelect
+                          options={stockProductOptions}
+                          value={form.stockProductId}
+                          onChange={(value) => setForm({ ...form, stockProductId: value })}
+                          placeholder="Select a product"
+                          searchPlaceholder="Search products…"
+                          emptyText="No products match."
+                        />
+                      </div>
+                      <QuickNewButton title="Create a new product without leaving this form" onClick={() => newProduct((productId) => setForm((f) => ({ ...f, stockProductId: productId })))} />
+                    </div>
                   </Field>
                   <Field label="Consumes per sale">
                     <input
@@ -760,15 +779,20 @@ export default function MenuItems() {
               )}
               {form.stockMode === 'recipe' && (
                 <Field label="Recipe" className="sm:col-span-2">
-                  <SearchableSelect
-                    options={recipeOptions}
-                    value={form.recipeId}
-                    onChange={(value) => setForm({ ...form, recipeId: value })}
-                    placeholder={recipeOptions.length ? 'Select a recipe' : 'No recipes yet — add one under Kitchen → Recipes'}
-                    searchPlaceholder="Search recipes…"
-                    emptyText="No recipes match."
-                    disabled={recipeOptions.length === 0}
-                  />
+                  <div className="flex gap-2">
+                    <div className="min-w-0 flex-1">
+                      <SearchableSelect
+                        options={recipeOptions}
+                        value={form.recipeId}
+                        onChange={(value) => setForm({ ...form, recipeId: value })}
+                        placeholder={recipeOptions.length ? 'Select a recipe' : 'No recipes yet — create one with New'}
+                        searchPlaceholder="Search recipes…"
+                        emptyText="No recipes match."
+                        disabled={recipeOptions.length === 0}
+                      />
+                    </div>
+                    <QuickNewButton title="Create a new recipe without leaving this form" onClick={() => newRecipe((recipe) => setForm((f) => ({ ...f, recipeId: recipe.id })))} />
+                  </div>
                 </Field>
               )}
               {!!editing?._count.variants && form.stockMode !== 'none' && (
@@ -857,7 +881,7 @@ export default function MenuItems() {
                     </label>
                     <button type="button" onClick={addStagedVariant} disabled={!variantDraft.name.trim() || variantDraft.price === ''} className="rounded-sm bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-60">Add</button>
                   </div>
-                  <VariantStockEditor value={variantDraft.stock} onChange={(stock) => setVariantDraft({ ...variantDraft, stock })} productOptions={stockProductOptions} recipes={recipes} onRecipeCreated={addRecipe} />
+                  <VariantStockEditor value={variantDraft.stock} onChange={(stock) => setVariantDraft({ ...variantDraft, stock })} productOptions={stockProductOptions} recipes={recipes} onRecipeCreated={addRecipe} onNewRecipe={newRecipe} onNewProduct={newProduct} />
                 </div>
               </div>
             )}
@@ -912,6 +936,33 @@ export default function MenuItems() {
           onClose={() => setVariantsFor(null)}
           onChanged={load}
           onRecipeCreated={addRecipe}
+          onNewRecipe={newRecipe}
+          onNewProduct={newProduct}
+        />
+      )}
+
+      {creating?.kind === 'product' && (
+        <QuickProductModal
+          onClose={() => setCreating(null)}
+          onCreated={(product: QuickProduct) => {
+            addStockProduct(product)
+            creating.select(product.id)
+            setCreating(null)
+          }}
+        />
+      )}
+      {creating?.kind === 'recipe' && (
+        <RecipeEditModal
+          stacked
+          recipe={null}
+          products={stockProducts}
+          onProductCreated={addStockProduct}
+          onClose={() => setCreating(null)}
+          onSaved={(recipe: RecipeDetail) => {
+            addRecipe(recipe)
+            creating.select(recipe)
+            setCreating(null)
+          }}
         />
       )}
     </div>
@@ -979,9 +1030,11 @@ type VariantsModalProps = {
   onClose: () => void
   onChanged: () => Promise<void>
   onRecipeCreated: (recipe: Recipe) => void
+  onNewRecipe: (select: (recipe: Recipe) => void) => void
+  onNewProduct: (select: (productId: string) => void) => void
 }
 
-function VariantsModal({ item, recipes, stockProductOptions, onClose, onChanged, onRecipeCreated }: VariantsModalProps) {
+function VariantsModal({ item, recipes, stockProductOptions, onClose, onChanged, onRecipeCreated, onNewRecipe, onNewProduct }: VariantsModalProps) {
   const toast = useToast()
   const [variants, setVariants] = useState<Variant[]>([])
   const [loading, setLoading] = useState(true)
@@ -1110,7 +1163,7 @@ function VariantsModal({ item, recipes, stockProductOptions, onClose, onChanged,
             <label className="text-xs font-medium">SKU<input value={draft.sku} onChange={(e) => setDraft({ ...draft, sku: e.target.value })} placeholder="opt." className="input mt-1" /></label>
             <button disabled={busy || !draft.name.trim() || draft.price === ''} className="rounded-sm bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-60">Add</button>
           </div>
-          <VariantStockEditor value={draft.stock} onChange={(stock) => setDraft({ ...draft, stock })} productOptions={stockProductOptions} recipes={recipes} onRecipeCreated={onRecipeCreated} />
+          <VariantStockEditor value={draft.stock} onChange={(stock) => setDraft({ ...draft, stock })} productOptions={stockProductOptions} recipes={recipes} onRecipeCreated={onRecipeCreated} onNewRecipe={onNewRecipe} onNewProduct={onNewProduct} />
         </form>
 
         <div className="mt-5 space-y-2">
@@ -1131,7 +1184,7 @@ function VariantsModal({ item, recipes, stockProductOptions, onClose, onChanged,
                       <button onClick={() => setEditingId(null)} className="rounded-sm border px-2.5 py-2 text-xs font-semibold hover:bg-muted">Cancel</button>
                     </div>
                   </div>
-                  <VariantStockEditor value={editDraft.stock} onChange={(stock) => setEditDraft({ ...editDraft, stock })} productOptions={stockProductOptions} recipes={recipes} onRecipeCreated={onRecipeCreated} />
+                  <VariantStockEditor value={editDraft.stock} onChange={(stock) => setEditDraft({ ...editDraft, stock })} productOptions={stockProductOptions} recipes={recipes} onRecipeCreated={onRecipeCreated} onNewRecipe={onNewRecipe} onNewProduct={onNewProduct} />
                 </div>
               ) : (
                 <div className="flex items-center gap-2">

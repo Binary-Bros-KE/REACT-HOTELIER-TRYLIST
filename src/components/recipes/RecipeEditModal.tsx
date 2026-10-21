@@ -7,9 +7,11 @@ import ActionButton from '@/components/ui/ActionButton'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
+import QuickProductModal, { type QuickProduct } from '@/components/products/QuickProductModal'
 
 // The one recipe editor. Used by Kitchen > Recipes and by the store's dispatch screen,
-// so a correction made at dispatch is the same edit as one made on the Recipes page.
+// so a correction made at dispatch is the same edit as one made on the Recipes page,
+// and by the menu item form (stacked over it) to create a recipe on the spot.
 
 export type RecipeProduct = { id: string; name: string; unit: string }
 export type RecipeDetail = {
@@ -38,14 +40,27 @@ function formFrom(recipe: RecipeDetail | null): RecipeForm {
   }
 }
 
-export default function RecipeEditModal({ recipe, products, onClose, onSaved }: { recipe: RecipeDetail | null; products: RecipeProduct[]; onClose: () => void; onSaved: () => void }) {
+export default function RecipeEditModal({ recipe, products, onClose, onSaved, onProductCreated, stacked = false }: {
+  recipe: RecipeDetail | null
+  products: RecipeProduct[]
+  onClose: () => void
+  onSaved: (saved: RecipeDetail) => void
+  /** A product created from the "New product" button, so the parent's own list can include it too. */
+  onProductCreated?: (product: QuickProduct) => void
+  /** Opened on top of another modal (the menu item form). */
+  stacked?: boolean
+}) {
   const toast = useToast()
   const [form, setForm] = useState<RecipeForm>(() => formFrom(recipe))
+  const [productList, setProductList] = useState<RecipeProduct[]>(products)
+  const [newProduct, setNewProduct] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
   async function saveRecipe(event: FormEvent) {
     event.preventDefault()
+    // When stacked over the menu item form, this submit must not reach that form.
+    event.stopPropagation()
     setSaving(true)
     setError('')
     try {
@@ -54,9 +69,9 @@ export default function RecipeEditModal({ recipe, products, onClose, onSaved }: 
         steps: form.steps.map((s) => s.trim()).filter(Boolean),
         ingredients: form.ingredients.filter((i) => i.productId && i.quantity),
       }
-      await api(recipe ? `/recipes/${recipe.id}` : '/recipes', { method: recipe ? 'PATCH' : 'POST', body: JSON.stringify(payload) })
+      const saved = await api<{ recipe: RecipeDetail }>(recipe ? `/recipes/${recipe.id}` : '/recipes', { method: recipe ? 'PATCH' : 'POST', body: JSON.stringify(payload) })
       toast.success(recipe ? 'Recipe updated.' : 'Recipe created.')
-      onSaved()
+      onSaved(saved.recipe)
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Could not save recipe'
       setError(message)
@@ -84,10 +99,24 @@ export default function RecipeEditModal({ recipe, products, onClose, onSaved }: 
   }
   function addIngredient() { setForm({ ...form, ingredients: [...form.ingredients, { productId: '', quantity: '' }] }) }
   function removeIngredient(index: number) { setForm({ ...form, ingredients: form.ingredients.filter((_, i) => i !== index) }) }
+  // A just-created product fills the first empty ingredient row, else gets a new row.
+  function productCreated(product: QuickProduct) {
+    setProductList((cur) => [...cur, product].sort((a, b) => a.name.localeCompare(b.name)))
+    onProductCreated?.(product)
+    setNewProduct(false)
+    setForm((cur) => {
+      const empty = cur.ingredients.findIndex((row) => !row.productId)
+      const ingredients = empty >= 0
+        ? cur.ingredients.map((row, i) => (i === empty ? { ...row, productId: product.id } : row))
+        : [...cur.ingredients, { productId: product.id, quantity: '' }]
+      return { ...cur, ingredients }
+    })
+  }
 
   return (
     <ModalShell
       size="lg"
+      stacked={stacked}
       kicker={recipe ? 'Edit recipe' : 'New recipe'}
       title={recipe ? recipe.name : 'Add a recipe'}
       onClose={onClose}
@@ -138,7 +167,7 @@ export default function RecipeEditModal({ recipe, products, onClose, onSaved }: 
                   <SearchableSelect
                     value={row.productId}
                     onChange={(productId) => updateIngredient(index, { productId })}
-                    options={products.map((p) => ({ value: p.id, label: p.name }))}
+                    options={productList.map((p) => ({ value: p.id, label: p.name }))}
                     placeholder="Select product…"
                     searchPlaceholder="Search products..."
                     emptyText="No products match."
@@ -147,14 +176,18 @@ export default function RecipeEditModal({ recipe, products, onClose, onSaved }: 
                 <div className="w-28 shrink-0">
                   <input type="number" min="0" step="0.001" placeholder="Qty" value={row.quantity} onChange={(e) => updateIngredient(index, { quantity: e.target.value })} className="input" />
                 </div>
-                <span className="w-10 shrink-0 text-xs text-muted-foreground">{products.find((p) => p.id === row.productId)?.unit ?? ''}</span>
+                <span className="w-10 shrink-0 text-xs text-muted-foreground">{productList.find((p) => p.id === row.productId)?.unit ?? ''}</span>
                 <ActionButton tone="neutral" icon={<LuTrash2 />} title="Remove ingredient" onClick={() => removeIngredient(index)} />
               </div>
             ))}
-            <button type="button" onClick={addIngredient} className="inline-flex items-center gap-1.5 border-2 border-dashed px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-secondary hover:bg-secondary/5"><LuPlus className="size-3.5" /> Add ingredient</button>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={addIngredient} className="inline-flex items-center gap-1.5 border-2 border-dashed px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-secondary hover:bg-secondary/5"><LuPlus className="size-3.5" /> Add ingredient</button>
+              <button type="button" onClick={() => setNewProduct(true)} title="The ingredient isn't a product yet - create it here" className="inline-flex items-center gap-1.5 border-2 px-3 py-1.5 text-xs font-bold uppercase tracking-wider hover:bg-muted"><LuPlus className="size-3.5" /> New product</button>
+            </div>
           </div>
         </FieldGroup>
       </form>
+      {newProduct && <QuickProductModal onClose={() => setNewProduct(false)} onCreated={productCreated} />}
     </ModalShell>
   )
 }
