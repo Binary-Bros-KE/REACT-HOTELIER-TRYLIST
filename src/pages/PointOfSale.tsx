@@ -423,11 +423,16 @@ export default function PointOfSale() {
   // things over can't miss them, and the waiter can see they're waiting.
   const updatedLines = (o: ActiveOrder) => o.items.filter((i) => i.addedAfterSend)
   const updatedFirst = (a: ActiveOrder, b: ActiveOrder) => Number(updatedLines(b).length > 0) - Number(updatedLines(a).length > 0)
-  const readyActiveOrders = activeOrders.filter((o) => o.status === 'READY').sort(updatedFirst)
-  const readyCount = readyActiveOrders.length
+  // A counter order waiting for the barman is Pending; a kitchen order the chef finished is Ready.
+  const isCounterOrder = (order: ActiveOrder) => (order.location?.serveMode ?? serveMode) === 'COUNTER'
+  // The Awaiting service list is the barman's: only counter orders. Kitchen / store orders
+  // stay cards through their whole life (STORE > KITCHEN > PREPARING > READY > SERVED).
+  const readyActiveOrders = activeOrders.filter((o) => o.status === 'READY' && isCounterOrder(o)).sort(updatedFirst)
+  const inServeList = (o: ActiveOrder) => o.status === 'READY' && isCounterOrder(o)
+  const readyCount = activeOrders.filter((o) => o.status === 'READY').length
   // An order already in Awaiting service is counted there ("to serve") - serving it hands its
   // added items over too - so it isn't counted again as "updated".
-  const updatedCount = activeOrders.filter((o) => o.status !== 'READY' && updatedLines(o).length > 0).length
+  const updatedCount = activeOrders.filter((o) => !inServeList(o) && updatedLines(o).length > 0).length
   // Every stage an order passes through on its way to being served, shown as
   // its own labelled group in Active Orders — not just READY's priority
   // section — so a waiter can see what's still queued vs already cooking.
@@ -461,8 +466,6 @@ export default function PointOfSale() {
   // Mirrors the server: only an order nobody has started (OPEN) can be reverted. A counter
   // order is born READY, so it never shows Revert - after posting it's a return or Super Admin.
   const canRevertActiveOrder = (order: ActiveOrder) => order.status === 'OPEN' && !order.location?.requireStoreDispatch
-  // A counter order waiting for the barman is Pending; a kitchen order the chef finished is Ready.
-  const isCounterOrder = (order: ActiveOrder) => (order.location?.serveMode ?? serveMode) === 'COUNTER'
   // Mirrors PATCH /pos/orders/:id/serve: counter orders - the barman (POS_APPROVE_COUNTER) or
   // Super Admin; kitchen orders - the waiter who owns the order or Super Admin.
   const canServeOrder = (order: ActiveOrder) =>
@@ -915,7 +918,7 @@ export default function PointOfSale() {
                 </div>
               )}
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                {orderedActiveOrders.filter((order) => order.status !== 'READY').map((order) => {
+                {orderedActiveOrders.filter((order) => !inServeList(order)).map((order) => {
                   const stage = stageLabel(order)
                   const compBadge = complementaryBadge(order)
                   const pendingReturns = pendingReturnQuantity(order)
@@ -946,7 +949,7 @@ export default function PointOfSale() {
                         <button onClick={() => setReceiptOrderId(order.id)} title="Receipt" className="inline-flex items-center justify-center rounded-sm border p-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"><LuPrinter className="size-3.5" /></button>
                         <button onClick={() => setAddItemsOrder(order)} className="inline-flex items-center gap-1.5 rounded-sm border px-3 py-1.5 text-xs font-semibold hover:bg-muted"><LuPencil className="size-3.5" /> Manage</button>
                         {canRevertActiveOrder(order) && <button onClick={() => setRevertOrder(order)} className="inline-flex items-center gap-1.5 rounded-sm border border-destructive/30 px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/10"><LuTrash2 className="size-3.5" /> Revert</button>}
-                        {canServe && (
+                        {canServe && canServeOrder(order) && (
                           <button type="button" disabled={servingId === order.id} onClick={() => void serveOrder(order.id)} className="inline-flex items-center gap-1.5 rounded-sm bg-accent px-3 py-1.5 text-xs font-bold text-accent-foreground disabled:opacity-50">
                             {servingId === order.id ? <LuLoaderCircle className="size-3.5 animate-spin" /> : 'Serve Now'}
                           </button>
