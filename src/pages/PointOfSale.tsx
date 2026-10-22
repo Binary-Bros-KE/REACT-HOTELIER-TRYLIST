@@ -425,7 +425,9 @@ export default function PointOfSale() {
   const updatedFirst = (a: ActiveOrder, b: ActiveOrder) => Number(updatedLines(b).length > 0) - Number(updatedLines(a).length > 0)
   const readyActiveOrders = activeOrders.filter((o) => o.status === 'READY').sort(updatedFirst)
   const readyCount = readyActiveOrders.length
-  const updatedCount = activeOrders.filter((o) => updatedLines(o).length > 0).length
+  // An order already in Awaiting service is counted there ("to serve") - serving it hands its
+  // added items over too - so it isn't counted again as "updated".
+  const updatedCount = activeOrders.filter((o) => o.status !== 'READY' && updatedLines(o).length > 0).length
   // Every stage an order passes through on its way to being served, shown as
   // its own labelled group in Active Orders — not just READY's priority
   // section — so a waiter can see what's still queued vs already cooking.
