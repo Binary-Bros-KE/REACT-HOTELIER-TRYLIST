@@ -45,16 +45,23 @@ const money = (v: number) => `KSh ${v.toLocaleString('en-KE', { maximumFractionD
 export default function CasualLabourModal({ locations, onClose, onSaved }: { locations: { id: string; name: string }[]; onClose: () => void; onSaved: (payment: CasualPayment) => void }) {
   const toast = useToast()
   const [workers, setWorkers] = useState<Worker[]>([])
+  const [units, setUnits] = useState<{ id: string; name: string }[]>([])
   const [byDays, setByDays] = useState(false)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
     workerName: '', workerPhone: '', workerIdNo: '', job: '', workDate: today(), locationId: locations.length === 1 ? locations[0].id : '',
-    amount: '', quantity: '', unitLabel: 'days', rate: '', paymentMethod: 'CASH', reference: '', notes: '',
+    amount: '', quantity: '', unitLabel: '', rate: '', paymentMethod: 'CASH', reference: '', notes: '',
   })
   const set = (patch: Partial<typeof form>) => setForm((cur) => ({ ...cur, ...patch }))
 
   useEffect(() => {
     api<{ workers: Worker[] }>('/employee-salaries/casual/workers').then((r) => setWorkers(r.workers)).catch(() => {})
+    // "Days x rate" counts in one of the property's units of measure - Day(s) when there is one.
+    api<{ units: { id: string; name: string }[] }>('/units-of-measure').then((r) => {
+      setUnits(r.units)
+      const day = r.units.find((u) => /^days?$/i.test(u.name.trim()))
+      setForm((cur) => (cur.unitLabel ? cur : { ...cur, unitLabel: (day ?? r.units[0])?.name ?? '' }))
+    }).catch(() => {})
   }, [])
 
   // Picking a known labourer fills in what we already know about them.
@@ -72,7 +79,7 @@ export default function CasualLabourModal({ locations, onClose, onSaved }: { loc
   }
 
   const computed = byDays ? (Number(form.quantity) || 0) * (Number(form.rate) || 0) : Number(form.amount) || 0
-  const canSave = Boolean(form.workerName.trim() && form.job.trim() && form.workDate && computed > 0 && !saving)
+  const canSave = Boolean(form.workerName.trim() && form.job.trim() && form.workDate && computed > 0 && (!byDays || form.unitLabel) && !saving)
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -139,7 +146,13 @@ export default function CasualLabourModal({ locations, onClose, onSaved }: { loc
           {byDays ? (
             <div className="grid grid-cols-[1fr_1fr_1fr] gap-3">
               <Field label="How many" required><input type="number" min="0" step="0.5" className="input" value={form.quantity} onChange={(e) => set({ quantity: e.target.value })} placeholder="e.g. 3" /></Field>
-              <Field label="Of"><input className="input" value={form.unitLabel} onChange={(e) => set({ unitLabel: e.target.value })} placeholder="days" /></Field>
+              <Field label="Unit" required>
+                <select required className="input" value={form.unitLabel} onChange={(e) => set({ unitLabel: e.target.value })}>
+                  {!units.some((u) => u.name === form.unitLabel) && form.unitLabel && <option value={form.unitLabel}>{form.unitLabel}</option>}
+                  {units.length === 0 && !form.unitLabel && <option value="">No units yet</option>}
+                  {units.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}
+                </select>
+              </Field>
               <Field label="Rate (KSh)" required><input type="number" min="0" step="0.01" className="input" value={form.rate} onChange={(e) => set({ rate: e.target.value })} placeholder="e.g. 800" /></Field>
               <p className="col-span-3 text-sm font-semibold">Total: {money(computed)}</p>
             </div>
