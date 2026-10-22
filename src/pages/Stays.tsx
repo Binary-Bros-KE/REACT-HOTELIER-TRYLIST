@@ -78,6 +78,12 @@ function folioTotals(folio: Folio | null, bizTax: BizTax | null) {
   return { charges: fin.total, paid, balance: fin.total - paid, tax: fin }
 }
 
+// A cancelled or no-show stay is closed: its charges stay on the folio for the
+// record, but nothing is owed (reports exclude them the same way).
+function stayBalance(stay: { status: string }, balance: number) {
+  return stay.status === 'CANCELLED' || stay.status === 'NO_SHOW' ? 0 : balance
+}
+
 const STATUS_TONE: Record<ReservationStatus, PillTone> = {
   PENDING: 'warning',
   CONFIRMED: 'secondary',
@@ -186,6 +192,7 @@ export default function Stays() {
               <tbody className="divide-y">
                 {stays.map((stay) => {
                   const totals = folioTotals(stay.folio, bizTax)
+                  const balance = stayBalance(stay, totals.balance)
                   const info = deskOf(stay)
                   return (
                     <tr key={stay.id} className="cursor-pointer align-middle transition even:bg-muted/30 hover:bg-muted/60" onClick={() => setSelected(stay)}>
@@ -202,7 +209,7 @@ export default function Stays() {
                         {info.by && <p className="text-xs text-muted-foreground">by {info.by}</p>}
                       </td>
                       <td className="px-5 py-3.5"><StatusPill tone={STATUS_TONE[stay.status]}>{titleCase(stay.status)}</StatusPill></td>
-                      <td className={cn('px-5 py-3.5 text-right font-semibold tabular-nums', totals.balance > 0.005 && 'text-warning')}>{formatKes(totals.balance)}</td>
+                      <td className={cn('px-5 py-3.5 text-right font-semibold tabular-nums', balance > 0.005 && 'text-warning')}>{formatKes(balance)}</td>
                       <td className="px-5 py-3.5 text-right">
                         <ActionButton tone="neutral" icon={<LuEye />} title="View stay" onClick={() => setSelected(stay)} />
                       </td>
@@ -232,6 +239,7 @@ function StayDetailModal({ stay, onClose, onChanged }: { stay: Stay; onClose: ()
     api<{ profile: BizTax | null }>('/business-profile').then((r) => setBizTax(r.profile)).catch(() => {})
   }, [])
   const totals = folioTotals(stay.folio, bizTax)
+  const balance = stayBalance(stay, totals.balance)
   const info = deskOf(stay)
   const credit = Number(stay.folio?.creditAmount ?? 0)
   const owing = stay.folio?.creditOutstanding ?? 0
@@ -371,7 +379,7 @@ function StayDetailModal({ stay, onClose, onChanged }: { stay: Stay; onClose: ()
               {([
                 ['Charges', formatKes(totals.charges), 'bg-secondary'],
                 ['Paid', formatKes(totals.paid), 'bg-success'],
-                ['Balance', formatKes(totals.balance), totals.balance > 0.005 ? 'bg-warning' : 'bg-muted-foreground'],
+                ['Balance', formatKes(balance), balance > 0.005 ? 'bg-warning' : 'bg-muted-foreground'],
               ] as const).map(([label, value, bar]) => (
                 <div key={label} className="flex border bg-card">
                   <span className={cn('w-1.5 shrink-0', bar)} />
