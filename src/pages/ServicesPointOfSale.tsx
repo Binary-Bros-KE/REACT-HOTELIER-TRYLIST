@@ -12,6 +12,7 @@ import ReceiptPreviewModal from '@/components/pos/ReceiptPreviewModal'
 import type { ReceiptProfile } from '@/components/pos/OrderReceipt'
 import { resolveTax, type TaxMode, type TaxTreatment } from '@/lib/tax'
 import { computeFinancialsFromRows } from '@/lib/orderTotals'
+import { PosTouchToggle, TouchInput, usePosTouchKeyboard } from '@/components/ui/TouchInput'
 import ServiceOptionsModal from '@/components/services/ServiceOptionsModal'
 import ActiveServicesTab from '@/components/services/ActiveServicesTab'
 import { useToast } from '@/components/ui/Toast'
@@ -60,6 +61,7 @@ export default function ServicesPointOfSale() {
   const [categoryQuery, setCategoryQuery] = useState('')
   const categoryRef = useRef<HTMLDivElement>(null)
   const [search, setSearch] = useState('')
+  const [touchKeyboardEnabled, toggleTouchKeyboard] = usePosTouchKeyboard()
   const [cart, setCart] = useState<CartLine[]>([])
   const [serviceAddons, setServiceAddons] = useState<PosServiceAddon[]>([])
   // The options picker: a service being added, or an existing line being edited.
@@ -233,18 +235,19 @@ export default function ServicesPointOfSale() {
 
         <div className={cn('mt-6 flex flex-col gap-2.5 sm:flex-row', tab === 'ACTIVE' && 'hidden')}>
           <label className="relative flex-1">
-            <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search services…" className="w-full rounded-sm border bg-card py-2.5 pl-9 pr-3 text-sm shadow-sm outline-none focus:ring-2 focus:ring-ring" />
+            <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-primary" />
+            <TouchInput value={search} onValueChange={setSearch} touchKeyboardEnabled={touchKeyboardEnabled} placeholder="Search services…" className="w-full rounded-sm border border-primary bg-card py-2.5 pl-9 pr-3 text-sm shadow-sm outline-none focus:ring-2 focus:ring-ring" />
           </label>
+          <PosTouchToggle enabled={touchKeyboardEnabled} onToggle={toggleTouchKeyboard} />
           <div ref={categoryRef} className="relative sm:w-64">
-            <button type="button" onClick={() => { setCategoryOpen((v) => !v); setCategoryQuery('') }} className="flex w-full items-center justify-between gap-2 rounded-sm border bg-card px-3 py-2.5 text-sm font-medium shadow-sm outline-none focus:ring-2 focus:ring-ring">
+            <button type="button" onClick={() => { setCategoryOpen((v) => !v); setCategoryQuery('') }} className="flex w-full items-center justify-between gap-2 rounded-sm border border-primary bg-card px-3 py-2.5 text-sm font-medium shadow-sm outline-none focus:ring-2 focus:ring-ring">
               <span className="truncate">{activeCategory}</span>
               <LuChevronDown className={cn('size-4 shrink-0 text-muted-foreground transition-transform', categoryOpen && 'rotate-180')} />
             </button>
             {categoryOpen && (
               <div className="absolute z-20 mt-1 w-full rounded-sm border bg-card shadow-lg">
                 <div className="border-b p-2">
-                  <input autoFocus value={categoryQuery} onChange={(e) => setCategoryQuery(e.target.value)} placeholder="Search categories…" className="w-full rounded-sm border bg-background px-2.5 py-1.5 text-xs outline-none focus:ring-2 focus:ring-ring" />
+                  <TouchInput autoFocus value={categoryQuery} onValueChange={setCategoryQuery} touchKeyboardEnabled={touchKeyboardEnabled} placeholder="Search categories…" className="w-full rounded-sm border bg-background px-2.5 py-1.5 text-xs outline-none focus:ring-2 focus:ring-ring" />
                 </div>
                 <div className="scrollbar-thin max-h-56 overflow-y-auto py-1">
                   {filteredCategories.length === 0 ? (
@@ -348,7 +351,7 @@ export default function ServicesPointOfSale() {
           <div className="border-t p-4">
             <label className="flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Discount (KES)
-              <input type="number" min="0" step="1" value={discount} onChange={(e) => setDiscount(e.target.value)} className="w-24 rounded-sm border bg-background px-2 py-1 text-right text-xs font-semibold text-foreground outline-none focus:ring-2 focus:ring-ring" />
+              <TouchInput type="number" keyboardMode="number" min="0" step="1" value={discount} onValueChange={setDiscount} touchKeyboardEnabled={touchKeyboardEnabled} className="w-24 rounded-sm border bg-background px-2 py-1 text-right text-xs font-semibold text-foreground outline-none focus:ring-2 focus:ring-ring" />
             </label>
           </div>
 
@@ -372,7 +375,7 @@ export default function ServicesPointOfSale() {
             </div>
           ) : (
             <div className="space-y-2 px-4">
-              <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Label a running service (Pool, Room 5, KDA 123A)" maxLength={120} className="w-full rounded-sm border bg-background px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-ring" />
+              <TouchInput value={label} onValueChange={setLabel} touchKeyboardEnabled={touchKeyboardEnabled} placeholder="Label a running service (Pool, Room 5, KDA 123A)" maxLength={120} className="w-full rounded-sm border bg-background px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-ring" />
               <button disabled={cart.length === 0 || needsLocationChoice || starting} onClick={() => void startService()} className="flex w-full items-center justify-center gap-2 border-2 border-secondary py-2 text-xs font-bold uppercase tracking-wider text-secondary transition hover:bg-secondary/10 disabled:opacity-50">{starting && <LuLoaderCircle className="animate-spin" />}Start service · pay at the end</button>
             </div>
           )}

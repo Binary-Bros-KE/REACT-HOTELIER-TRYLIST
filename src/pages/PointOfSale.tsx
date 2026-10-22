@@ -2,7 +2,7 @@ import { computeFinancialsFromRows } from '@/lib/orderTotals'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   LuBan, LuBedDouble, LuBellRing, LuBuilding2, LuCheck, LuChevronDown, LuCircleAlert, LuCircleCheck, LuClipboardList, LuCoffee, LuGift, LuLoaderCircle, LuMapPin, LuMinus,
-  LuKeyboard, LuPause, LuPencil, LuPlus, LuPrinter, LuReceiptText, LuSearch, LuSlidersHorizontal, LuTrash2, LuUserRound, LuX,
+  LuPause, LuPencil, LuPlus, LuPrinter, LuReceiptText, LuSearch, LuSlidersHorizontal, LuTrash2, LuUserRound, LuX,
 } from 'react-icons/lu'
 import { api } from '@/lib/api'
 import { useToast } from '@/components/ui/Toast'
@@ -15,7 +15,7 @@ import ReceiptPreviewModal from '@/components/pos/ReceiptPreviewModal'
 import { type ReceiptOrder, type ReceiptProfile } from '@/components/pos/OrderReceipt'
 import { getThermalSettings, printReceipt } from '@/lib/thermalPrinter'
 import type { TaxMode, TaxTreatment } from '@/lib/tax'
-import { POS_TOUCH_KEYBOARD_KEY, TouchInput, readPosTouchKeyboardSetting } from '@/components/ui/TouchInput'
+import { PosTouchToggle, TouchInput, usePosTouchKeyboard } from '@/components/ui/TouchInput'
 import ReasonModal from '@/components/ui/ReasonModal'
 
 type StockProduct = { id: string; name: string; unit: string; packUnit: { id: string; name: string } | null }
@@ -239,7 +239,7 @@ export default function PointOfSale() {
   const [categoryQuery, setCategoryQuery] = useState('')
   const categoryRef = useRef<HTMLDivElement>(null)
   const [search, setSearch] = useState('')
-  const [touchKeyboardEnabled, setTouchKeyboardEnabled] = useState(readPosTouchKeyboardSetting)
+  const [touchKeyboardEnabled, toggleTouchKeyboard] = usePosTouchKeyboard()
   const [cart, setCart] = useState<CartLine[]>([])
   const [customizing, setCustomizing] = useState<MenuItem | null>(null)
   const [editingLine, setEditingLine] = useState<CartLine | null>(null)
@@ -397,13 +397,6 @@ export default function PointOfSale() {
     window.addEventListener('focus', onFocus)
     return () => { window.clearInterval(timer); window.removeEventListener('focus', onFocus) }
   }, [effectiveLocationId])
-  useEffect(() => {
-    try {
-      localStorage.setItem(POS_TOUCH_KEYBOARD_KEY, touchKeyboardEnabled ? 'true' : 'false')
-    } catch {
-      // Local device preference only.
-    }
-  }, [touchKeyboardEnabled])
   useEffect(() => {
     api<{ employees: { id: string; firstName: string; lastName: string | null }[] }>('/employees')
       .then((r) => setStaffNames(Object.fromEntries(r.employees.map((e) => [e.id, `${e.firstName} ${e.lastName ?? ''}`.trim()]))))
@@ -1002,29 +995,16 @@ export default function PointOfSale() {
         <div className="mt-4 grid grid-cols-1 gap-0 sm:mt-6 lg:grid-cols-[minmax(0,1fr)_24px_360px]">
           <section className="min-w-0">
             <div className="flex flex-col gap-2.5 sm:flex-row">
-              <div className="relative flex-1 rounded-sm ring-2 ring-border focus-within:ring-secondary">
-                <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <TouchInput value={search} onValueChange={setSearch} touchKeyboardEnabled={touchKeyboardEnabled} placeholder="Search menu…" className="w-full rounded-sm border bg-card py-2.5 pl-9 pr-3 text-sm shadow-sm outline-none focus:ring-2 focus:ring-ring" />
+              <div className="relative flex-1">
+                <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-primary" />
+                <TouchInput value={search} onValueChange={setSearch} touchKeyboardEnabled={touchKeyboardEnabled} placeholder="Search menu…" className="w-full rounded-sm border border-primary bg-card py-2.5 pl-9 pr-3 text-sm shadow-sm outline-none focus:ring-2 focus:ring-ring" />
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setTouchKeyboardEnabled((enabled) => !enabled)
-                }}
-                title="Toggle touch keyboard on this device"
-                className={cn(
-                  'inline-flex items-center justify-center gap-2 rounded-sm border px-3 py-2.5 text-xs font-bold uppercase tracking-wide shadow-sm',
-                  touchKeyboardEnabled ? 'border-secondary bg-secondary text-secondary-foreground' : 'bg-card text-muted-foreground hover:bg-muted',
-                )}
-              >
-                <LuKeyboard className="size-4" />
-                <span className="hidden xl:inline">Touch</span>
-              </button>
+              <PosTouchToggle enabled={touchKeyboardEnabled} onToggle={toggleTouchKeyboard} />
               <div ref={categoryRef} className="relative sm:w-64">
                 <button
                   type="button"
                   onClick={() => { setCategoryOpen((v) => !v); setCategoryQuery('') }}
-                  className="flex w-full items-center justify-between gap-2 rounded-sm border bg-card px-3 py-2.5 text-sm font-medium shadow-sm outline-none focus:ring-2 focus:ring-ring"
+                  className="flex w-full items-center justify-between gap-2 rounded-sm border border-primary bg-card px-3 py-2.5 text-sm font-medium shadow-sm outline-none focus:ring-2 focus:ring-ring"
                 >
                   <span className="truncate">{activeCategory}</span>
                   <LuChevronDown className={cn('size-4 shrink-0 text-muted-foreground transition-transform', categoryOpen && 'rotate-180')} />
