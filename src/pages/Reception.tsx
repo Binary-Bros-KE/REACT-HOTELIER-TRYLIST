@@ -182,8 +182,9 @@ function apiAt(locationId: string) {
     api<T>(path, { ...init, headers: { ...(locationId ? { "x-location-id": locationId } : {}), ...(init.headers as Record<string, string> | undefined) } });
 }
 
-type PillTone = "warning" | "secondary" | "success" | "muted" | "danger";
+type PillTone = "warning" | "secondary" | "success" | "muted" | "danger" | "info";
 const PILL_TONES: Record<PillTone, string> = {
+  info: "border-blue-500/70 bg-blue-50 text-blue-700",
   warning: "border-warning/70 text-warning",
   secondary: "border-secondary/70 text-secondary",
   success: "border-success/70 text-success",
@@ -366,6 +367,8 @@ export default function Reception() {
     const totals = folioTotals(b.folio, bizTax);
     const paid = totals.paid;
     const balance = totals.balance;
+    // A complimentary room has nothing to collect; only extras (if any) can still be owed.
+    if (b.roomSaleType === "COMPLIMENTARY") return { label: "Complimentary", tone: "info" as PillTone, detail: balance > 0.01 ? `${formatKes(balance)} extras due` : "No charge" };
     if (paid > 0.01 && balance > 0.01) return { label: "Partially paid", tone: "warning" as PillTone, detail: `${formatKes(paid)} paid · ${formatKes(balance)} due` };
     if (paid > 0.01 && balance <= 0.01) return { label: "Paid", tone: "success" as PillTone, detail: `${formatKes(paid)} paid` };
     return { label: "Pending", tone: "danger" as PillTone, detail: balance > 0.01 ? `${formatKes(balance)} due` : "No payment yet" };
