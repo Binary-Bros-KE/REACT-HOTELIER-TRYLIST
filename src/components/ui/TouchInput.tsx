@@ -36,8 +36,8 @@ export function PosTouchToggle({ enabled, onToggle }: { enabled: boolean; onTogg
       onClick={onToggle}
       title="Toggle touch keyboard on this device"
       className={cn(
-        'inline-flex items-center justify-center gap-2 rounded-sm border border-primary px-3 py-2.5 text-xs font-bold uppercase tracking-wide shadow-sm',
-        enabled ? 'bg-primary text-primary-foreground' : 'bg-card text-primary hover:bg-muted',
+        'inline-flex items-center justify-center gap-2 rounded-sm border border-primary/30 px-3 py-2.5 text-xs font-bold uppercase tracking-wide shadow-sm',
+        enabled ? 'bg-primary text-primary-foreground' : 'bg-card text-primary/80 hover:bg-muted',
       )}
     >
       <LuKeyboard className="size-4" />

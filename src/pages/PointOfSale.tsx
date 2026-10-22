@@ -422,6 +422,10 @@ export default function PointOfSale() {
   // counter/kitchen has engaged with) — flagged server-side so whoever hands
   // things over can't miss them, and the waiter can see they're waiting.
   const updatedLines = (o: ActiveOrder) => o.items.filter((i) => i.addedAfterSend)
+  const updatedFirst = (a: ActiveOrder, b: ActiveOrder) => Number(updatedLines(b).length > 0) - Number(updatedLines(a).length > 0)
+  const readyActiveOrders = activeOrders.filter((o) => o.status === 'READY').sort(updatedFirst)
+  const otherActiveOrders = activeOrders.filter((o) => o.status !== 'READY').sort(updatedFirst)
+  const readyCount = readyActiveOrders.length
   const updatedCount = activeOrders.filter((o) => updatedLines(o).length > 0).length
   // Every stage an order passes through on its way to being served, shown as
   // its own labelled group in Active Orders — not just READY's priority
@@ -431,40 +435,20 @@ export default function PointOfSale() {
     PREPARING: 'In the kitchen',
     SERVED: 'Served — awaiting payment',
   }
-  type OrderStage = 'STORE' | 'COUNTER' | 'KITCHEN' | 'PREPARING' | 'READY' | 'SERVED'
-  const stageFor = (order: ActiveOrder): OrderStage => {
-    const changedLines = updatedLines(order)
-    const stageLines = changedLines.length > 0 ? changedLines : order.items
-    if (stageLines.some((line) => line.dispatchRequest?.status === 'REQUESTED')) return 'STORE'
-    if (changedLines.length > 0) return (order.location?.serveMode ?? serveMode) === 'COUNTER' ? 'COUNTER' : 'KITCHEN'
-    if (order.status === 'PREPARING') return 'PREPARING'
-    if (order.status === 'READY') return 'READY'
-    if (order.status === 'SERVED') return 'SERVED'
-    return (order.location?.serveMode ?? serveMode) === 'COUNTER' ? 'COUNTER' : 'KITCHEN'
-  }
-  const STAGE_META: Record<OrderStage, { rank: number; label: string; hint: string; card: string; badge: string }> = {
-    STORE: { rank: 0, label: 'STORE', hint: 'Waiting for store dispatch', card: 'border-warning/60', badge: 'border-warning/70 bg-warning/10 text-warning' },
-    COUNTER: { rank: 1, label: 'COUNTER', hint: 'Waiting for counter handover', card: 'border-sky-500/50', badge: 'border-sky-500/70 bg-sky-50 text-sky-700' },
-    KITCHEN: { rank: 1, label: 'KITCHEN', hint: 'Waiting for kitchen', card: 'border-blue-500/50', badge: 'border-blue-500/70 bg-blue-50 text-blue-700' },
-    PREPARING: { rank: 2, label: 'PREPARING', hint: 'Being prepared', card: 'border-success/50', badge: 'border-success/70 bg-success/10 text-success' },
-    READY: { rank: 3, label: 'READY', hint: 'Ready to serve', card: 'border-destructive/50', badge: 'border-destructive/70 bg-destructive/10 text-destructive' },
-    SERVED: { rank: 4, label: 'SERVED', hint: 'Awaiting payment', card: 'border-border', badge: 'border-muted-foreground/40 bg-muted text-muted-foreground' },
-  }
-  const stageLabel = (order: ActiveOrder) => STAGE_META[stageFor(order)]
-  const orderedActiveOrders = [...activeOrders].sort((a, b) => {
-    const stageDiff = STAGE_META[stageFor(a)].rank - STAGE_META[stageFor(b)].rank
-    if (stageDiff !== 0) return stageDiff
-    const updateDiff = Number(updatedLines(b).length > 0) - Number(updatedLines(a).length > 0)
-    if (updateDiff !== 0) return updateDiff
-    return b.orderNumber - a.orderNumber
-  })
-  const readyCount = activeOrders.filter((o) => stageFor(o) === 'READY').length
   // Mirrors the server: only an order nobody has started (OPEN) can be reverted. A counter
   // order is born READY, so it never shows Revert - after posting it's a return or Super Admin.
   const canRevertActiveOrder = (order: ActiveOrder) => order.status === 'OPEN' && !order.location?.requireStoreDispatch
-  const readyActiveOrders: ActiveOrder[] = []
-  const STAGE_BADGE: Record<'OPEN' | 'PREPARING' | 'SERVED', string> = { OPEN: 'KITCHEN', PREPARING: 'PREPARING', SERVED: 'SERVED' }
-  const otherByStage: { status: 'OPEN' | 'PREPARING' | 'SERVED'; orders: ActiveOrder[] }[] = []
+  const STAGE_BADGE: Record<'OPEN' | 'PREPARING' | 'SERVED', string> = { OPEN: 'Queued', PREPARING: 'Cooking', SERVED: 'Served' }
+  const otherByStage = (['OPEN', 'PREPARING', 'SERVED'] as const)
+    .map((status) => ({ status, orders: otherActiveOrders.filter((o) => o.status === status) }))
+    .filter((group) => group.orders.length > 0)
+  // A counter order waiting for the barman is Pending; a kitchen order the chef finished is Ready.
+  const isCounterOrder = (order: ActiveOrder) => (order.location?.serveMode ?? serveMode) === 'COUNTER'
+  // Mirrors PATCH /pos/orders/:id/serve: counter orders - the barman (POS_APPROVE_COUNTER) or
+  // Super Admin; kitchen orders - the waiter who owns the order or Super Admin.
+  const canServeOrder = (order: ActiveOrder) =>
+    user?.role?.name === 'Super Admin' ||
+    (isCounterOrder(order) ? Boolean(user?.role?.permissions.includes('POS_APPROVE_COUNTER')) : !order.createdBy || order.createdBy === user?.id)
   // Mirrors the server's rule (counter locations need POS_APPROVE_COUNTER to
   // confirm hand-over) purely to decide which button to show.
   const canConfirmUpdates = user?.role?.name === 'Super Admin' || Boolean(user?.role?.permissions.includes('POS_APPROVE_COUNTER')) || serveMode !== 'COUNTER'
@@ -863,51 +847,6 @@ export default function PointOfSale() {
             <div className="rounded-sm border border-dashed p-10 text-center text-sm text-muted-foreground">No orders in progress right now.</div>
           ) : (
             <>
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                {orderedActiveOrders.map((order) => {
-                  const stage = stageLabel(order)
-                  const compBadge = complementaryBadge(order)
-                  const pendingReturns = pendingReturnQuantity(order)
-                  const waiter = order.createdBy ? staffNames[order.createdBy] : undefined
-                  const count = order.items.reduce((s, i) => s + i.quantity, 0)
-                  const changed = updatedLines(order)
-                  const canServe = stageFor(order) === 'READY'
-                  return (
-                    <article key={order.id} className={cn('rounded-sm border bg-card p-5 shadow-sm', stage.card, compBadge && 'border-secondary/30', changed.length > 0 && 'ring-2 ring-amber-400')}>
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <h3 className="font-semibold">Order #{order.orderNumber}</h3>
-                          <p className="mt-0.5 text-[11px] font-medium text-muted-foreground">{stage.hint}</p>
-                        </div>
-                        <div className="flex flex-wrap justify-end gap-1.5">
-                          {pendingReturns > 0 && <span className="keep-round border border-dashed border-warning/70 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-warning">Return pending</span>}
-                          <span className={cn('keep-round border border-dashed px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide', stage.badge)}>{stage.label}</span>
-                        </div>
-                      </div>
-                      {waiter && <p className="mt-1.5 flex items-center gap-1.5 text-xs font-bold text-amber-600"><LuUserRound className="size-3.5" /> Waiter: {waiter}</p>}
-                      <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground"><LuUserRound className="size-3.5" /> {order.customer ? `${order.customer.firstName} ${order.customer.lastName ?? ''}` : 'Walk-in'} · {order.table?.label ?? 'Takeaway'}</p>
-                      {compBadge && <p className={cn('mt-2 inline-flex keep-round border border-dashed px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', compBadge.cls)}>{compBadge.label}{order.complimentarySession ? ` - ${order.complimentarySession.title}` : ''}</p>}
-                      <p className="mt-2 text-xs text-muted-foreground">{count} item{count === 1 ? '' : 's'}{order.location?.name ? ` · ${order.location.name}` : ''}</p>
-                      <p className="mt-3 text-lg font-bold">{formatKes(order.total)}</p>
-                      {pendingReturns > 0 && <p className="mt-1 text-xs font-semibold text-warning">{pendingReturns} item{pendingReturns === 1 ? '' : 's'} waiting return approval</p>}
-                      <UpdatedItemsStrip lines={changed} canConfirm={canConfirmUpdates && !canServe} confirming={ackingId === order.id} onConfirm={() => void confirmUpdates(order.id)} note={canServe ? 'Serving hands these over too.' : undefined} />
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        <button onClick={() => setReceiptOrderId(order.id)} title="Receipt" className="inline-flex items-center justify-center rounded-sm border p-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"><LuPrinter className="size-3.5" /></button>
-                        <button onClick={() => setAddItemsOrder(order)} className="inline-flex items-center gap-1.5 rounded-sm border px-3 py-1.5 text-xs font-semibold hover:bg-muted"><LuPencil className="size-3.5" /> Manage</button>
-                        {canRevertActiveOrder(order) && <button onClick={() => setRevertOrder(order)} className="inline-flex items-center gap-1.5 rounded-sm border border-destructive/30 px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/10"><LuTrash2 className="size-3.5" /> Revert</button>}
-                        {canServe && (
-                          <button type="button" disabled={servingId === order.id} onClick={() => void serveOrder(order.id)} className="inline-flex items-center gap-1.5 rounded-sm bg-accent px-3 py-1.5 text-xs font-bold text-accent-foreground disabled:opacity-50">
-                            {servingId === order.id ? <LuLoaderCircle className="size-3.5 animate-spin" /> : 'Serve Now'}
-                          </button>
-                        )}
-                        {order.status === 'SERVED' && (
-                          <button onClick={() => setSettlementOrderId(order.id)} className="inline-flex items-center gap-1.5 rounded-sm bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"><LuReceiptText className="size-3.5" /> Complete & Pay</button>
-                        )}
-                      </div>
-                    </article>
-                  )
-                })}
-              </div>
               {readyActiveOrders.length > 0 && (
                 <div className="mb-5 rounded-lg border-2 border-destructive/40 bg-destructive/5 p-2.5">
                   <p className="mb-2 flex items-center gap-1.5 px-0.5 text-[11px] font-bold uppercase tracking-wider text-destructive">
@@ -932,16 +871,18 @@ export default function PointOfSale() {
                           {pendingReturns > 0 && <span className="shrink-0 keep-round border border-dashed border-warning/70 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-warning">Return pending</span>}
                           <button type="button" onClick={() => setReceiptOrderId(order.id)} title="Preview receipt" className="shrink-0 rounded-sm p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"><LuPrinter className="size-4" /></button>
                           {canRevertActiveOrder(order) && <button type="button" onClick={() => setRevertOrder(order)} title="Revert undeducted order" className="shrink-0 rounded-sm p-1.5 text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive"><LuTrash2 className="size-4" /></button>}
-                          <span className="shrink-0 keep-round border border-dashed border-destructive/70 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-destructive">Pending</span>
+                          <span className="shrink-0 keep-round border border-dashed border-destructive/70 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-destructive">{isCounterOrder(order) ? 'Pending' : 'Ready'}</span>
                           <span className="shrink-0 text-sm font-bold tabular-nums text-foreground">{formatKes(order.total)}</span>
-                          <button
-                            type="button"
-                            disabled={servingId === order.id}
-                            onClick={() => void serveOrder(order.id)}
-                            className="shrink-0 rounded-sm bg-accent px-3 py-1.5 text-xs font-bold text-accent-foreground disabled:opacity-50"
-                          >
-                            {servingId === order.id ? <LuLoaderCircle className="size-3.5 animate-spin" /> : 'Serve Now'}
-                          </button>
+                          {canServeOrder(order) && (
+                            <button
+                              type="button"
+                              disabled={servingId === order.id}
+                              onClick={() => void serveOrder(order.id)}
+                              className="shrink-0 rounded-sm bg-accent px-3 py-1.5 text-xs font-bold text-accent-foreground disabled:opacity-50"
+                            >
+                              {servingId === order.id ? <LuLoaderCircle className="size-3.5 animate-spin" /> : 'Serve Now'}
+                            </button>
+                          )}
                          </div>
                          <UpdatedItemsStrip lines={updatedLines(order)} canConfirm={false} confirming={false} onConfirm={() => {}} note="Serving hands these over too." />
                         </div>
@@ -998,15 +939,15 @@ export default function PointOfSale() {
           <section className="min-w-0">
             <div className="flex flex-col gap-2.5 sm:flex-row">
               <div className="relative flex-1">
-                <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-primary" />
-                <TouchInput value={search} onValueChange={setSearch} touchKeyboardEnabled={touchKeyboardEnabled} placeholder="Search menu…" className="w-full rounded-sm border border-primary bg-card py-2.5 pl-9 pr-3 text-sm shadow-sm outline-none focus:ring-2 focus:ring-ring" />
+                <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-primary/60" />
+                <TouchInput value={search} onValueChange={setSearch} touchKeyboardEnabled={touchKeyboardEnabled} placeholder="Search menu…" className="w-full rounded-sm border border-primary/30 bg-card py-2.5 pl-9 pr-3 text-sm shadow-sm outline-none focus:ring-2 focus:ring-ring" />
               </div>
               <PosTouchToggle enabled={touchKeyboardEnabled} onToggle={toggleTouchKeyboard} />
               <div ref={categoryRef} className="relative sm:w-64">
                 <button
                   type="button"
                   onClick={() => { setCategoryOpen((v) => !v); setCategoryQuery('') }}
-                  className="flex w-full items-center justify-between gap-2 rounded-sm border border-primary bg-card px-3 py-2.5 text-sm font-medium shadow-sm outline-none focus:ring-2 focus:ring-ring"
+                  className="flex w-full items-center justify-between gap-2 rounded-sm border border-primary/30 bg-card px-3 py-2.5 text-sm font-medium shadow-sm outline-none focus:ring-2 focus:ring-ring"
                 >
                   <span className="truncate">{activeCategory}</span>
                   <LuChevronDown className={cn('size-4 shrink-0 text-muted-foreground transition-transform', categoryOpen && 'rotate-180')} />

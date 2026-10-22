@@ -235,12 +235,12 @@ export default function ServicesPointOfSale() {
 
         <div className={cn('mt-6 flex flex-col gap-2.5 sm:flex-row', tab === 'ACTIVE' && 'hidden')}>
           <label className="relative flex-1">
-            <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-primary" />
-            <TouchInput value={search} onValueChange={setSearch} touchKeyboardEnabled={touchKeyboardEnabled} placeholder="Search services…" className="w-full rounded-sm border border-primary bg-card py-2.5 pl-9 pr-3 text-sm shadow-sm outline-none focus:ring-2 focus:ring-ring" />
+            <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-primary/60" />
+            <TouchInput value={search} onValueChange={setSearch} touchKeyboardEnabled={touchKeyboardEnabled} placeholder="Search services…" className="w-full rounded-sm border border-primary/30 bg-card py-2.5 pl-9 pr-3 text-sm shadow-sm outline-none focus:ring-2 focus:ring-ring" />
           </label>
           <PosTouchToggle enabled={touchKeyboardEnabled} onToggle={toggleTouchKeyboard} />
           <div ref={categoryRef} className="relative sm:w-64">
-            <button type="button" onClick={() => { setCategoryOpen((v) => !v); setCategoryQuery('') }} className="flex w-full items-center justify-between gap-2 rounded-sm border border-primary bg-card px-3 py-2.5 text-sm font-medium shadow-sm outline-none focus:ring-2 focus:ring-ring">
+            <button type="button" onClick={() => { setCategoryOpen((v) => !v); setCategoryQuery('') }} className="flex w-full items-center justify-between gap-2 rounded-sm border border-primary/30 bg-card px-3 py-2.5 text-sm font-medium shadow-sm outline-none focus:ring-2 focus:ring-ring">
               <span className="truncate">{activeCategory}</span>
               <LuChevronDown className={cn('size-4 shrink-0 text-muted-foreground transition-transform', categoryOpen && 'rotate-180')} />
             </button>
