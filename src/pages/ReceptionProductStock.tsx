@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { LuBoxes, LuCircleAlert, LuLoaderCircle, LuMapPin, LuPackage, LuSearch, LuShoppingCart, LuTriangleAlert } from 'react-icons/lu'
+import { LuBoxes, LuCircleAlert, LuCircleX, LuLoaderCircle, LuMapPin, LuPackage, LuSearch, LuShoppingCart, LuTriangleAlert } from 'react-icons/lu'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/Toast'
@@ -12,7 +12,7 @@ import { useAppSelector } from '@/store/hooks'
 
 type LocationOption = { id: string; name: string; isActive?: boolean }
 type CategoryOption = { id: string; name: string }
-type StockFilter = 'ALL' | 'LOW'
+type StockFilter = 'ALL' | 'IN' | 'LOW' | 'OUT'
 type ProductStockRow = {
   id: string
   name: string
@@ -69,7 +69,7 @@ export default function ReceptionProductStock() {
     setLoading(true)
     setError('')
     try {
-      const query = new URLSearchParams({ stock, inStockOnly: 'true' })
+      const query = new URLSearchParams({ stock })
       if (effectiveId) query.set('locationId', effectiveId)
       if (search.trim()) query.set('search', search.trim())
       if (categoryId) query.set('categoryId', categoryId)
@@ -92,6 +92,10 @@ export default function ReceptionProductStock() {
 
   const products = data?.products ?? []
   const categories = useMemo(() => data?.categories ?? [], [data])
+  // Categories are per location, so drop a choice the new location doesn't have.
+  useEffect(() => {
+    if (data && categoryId && !categories.some((category) => category.id === categoryId)) setCategoryId('')
+  }, [categories, categoryId, data])
 
   return (
     <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
@@ -115,14 +119,14 @@ export default function ReceptionProductStock() {
         <StatCard index={0} icon={<LuPackage />} label="Products" value={(data?.summary.totalProducts ?? 0).toLocaleString()} />
         <StatCard index={1} icon={<LuBoxes />} label="Units on hand" value={(data?.summary.totalUnits ?? 0).toLocaleString('en-KE')} />
         <StatCard tone={(data?.summary.lowStock ?? 0) > 0 ? 'warn' : 'success'} icon={<LuTriangleAlert />} label="Low stock" value={(data?.summary.lowStock ?? 0).toLocaleString()} />
-        <StatCard tone="success" icon={<LuPackage />} label="Visible stock" value="In stock only" />
+        <StatCard tone={(data?.summary.outOfStock ?? 0) > 0 ? 'danger' : 'success'} icon={<LuCircleX />} label="Out of stock" value={(data?.summary.outOfStock ?? 0).toLocaleString()} />
       </section>
 
       <section className="mt-6 overflow-hidden border bg-card shadow-sm">
         <div className="border-b p-4">
           <div className="border-l-4 border-accent pl-3">
             <h2 className="font-display text-xl font-semibold leading-tight">Location product list</h2>
-            <p className="text-xs text-muted-foreground">In-stock products for the working location. This is view-only for {sectionName.toLowerCase()} users.</p>
+            <p className="text-xs text-muted-foreground">All products for the working location; out-of-stock items are highlighted in red. This is view-only for {sectionName.toLowerCase()} users.</p>
           </div>
           <div className="mt-4 flex flex-wrap items-end gap-3">
             <label className="flex min-w-[240px] flex-1 flex-col gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
@@ -142,8 +146,10 @@ export default function ReceptionProductStock() {
             <label className="flex flex-col gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
               Stock
               <select value={stock} onChange={(e) => setStock(e.target.value as StockFilter)} className="input font-normal normal-case tracking-normal">
-                <option value="ALL">In-stock products</option>
+                <option value="ALL">All products</option>
+                <option value="IN">In stock</option>
                 <option value="LOW">Low stock</option>
+                <option value="OUT">Out of stock</option>
               </select>
             </label>
           </div>
@@ -169,9 +175,9 @@ export default function ReceptionProductStock() {
               </thead>
               <tbody className="divide-y">
                 {products.map((product) => (
-                  <tr key={product.id} className="align-middle even:bg-muted/30">
+                  <tr key={product.id} className={cn('align-middle', product.out ? 'bg-destructive/[0.07] shadow-[inset_4px_0_0_var(--color-destructive)]' : 'even:bg-muted/30')}>
                     <td className="px-5 py-3.5">
-                      <p className="font-semibold">{product.name}</p>
+                      <p className={cn('font-semibold', product.out && 'text-destructive')}>{product.name}</p>
                       {product.brand && <p className="text-xs text-muted-foreground">{product.brand}</p>}
                     </td>
                     <td className="px-5 py-3.5 text-muted-foreground">{product.category?.name ?? '-'}</td>
@@ -185,8 +191,8 @@ export default function ReceptionProductStock() {
                       {product.sellsDirectly ? <span className="inline-flex items-center justify-end gap-1"><LuShoppingCart className="size-3.5 text-muted-foreground" /> {formatKes(product.sellingPrice)}</span> : '-'}
                     </td>
                     <td className="px-5 py-3.5">
-                      <span className={cn('inline-flex border border-dashed px-2 py-1 text-[11px] font-bold uppercase tracking-wide', product.out ? 'border-destructive/70 text-destructive' : product.low ? 'border-warning/70 text-warning' : 'border-success/70 text-success')}>
-                        {product.out ? 'Out' : product.low ? 'Low' : 'In stock'}
+                      <span className={cn('inline-flex border border-dashed px-2 py-1 text-[11px] font-bold uppercase tracking-wide', product.out ? 'border-solid border-destructive bg-destructive text-destructive-foreground' : product.low ? 'border-warning/70 text-warning' : 'border-success/70 text-success')}>
+                        {product.out ? 'Out of stock' : product.low ? 'Low' : 'In stock'}
                       </span>
                     </td>
                   </tr>
