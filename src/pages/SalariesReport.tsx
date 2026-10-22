@@ -145,7 +145,7 @@ export default function SalariesReport({ tabs }: { tabs?: ReactNode } = {}) {
 
   const totals = report?.totals
   return (
-    <div className="mx-auto max-w-7xl px-6 py-8">
+    <div className="dashboard-square mx-auto max-w-7xl px-6 py-8">
       {tabs}
       <PageBanner kicker="Reports" title="Salaries Report" />
 

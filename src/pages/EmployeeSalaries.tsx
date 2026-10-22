@@ -538,7 +538,7 @@ export default function EmployeeSalaries({ tabs }: { tabs?: ReactNode } = {}) {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-6 py-8 sm:px-8 lg:px-10">
+    <div className="dashboard-square mx-auto max-w-7xl px-6 py-8 sm:px-8 lg:px-10">
       {tabs}
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
@@ -776,7 +776,7 @@ export default function EmployeeSalaries({ tabs }: { tabs?: ReactNode } = {}) {
                     <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">No allowances or deductions added.</td></tr>
                   ) : detail.items.map((item) => (
                     <tr key={item.id} className="border-t">
-                      <td className="px-4 py-3"><span className={cn('rounded-full border px-2 py-1 text-[10px] font-bold', item.type === 'ALLOWANCE' ? 'border-success/30 text-success' : 'border-destructive/30 text-destructive')}>{titleCase(item.type)}</span></td>
+                      <td className="px-4 py-3"><span className={cn('keep-round rounded-full border px-2 py-1 text-[10px] font-bold', item.type === 'ALLOWANCE' ? 'border-success/30 text-success' : 'border-destructive/30 text-destructive')}>{titleCase(item.type)}</span></td>
                       <td className="px-4 py-3 font-medium">{item.label}</td>
                       <td className="px-4 py-3 text-right">{money(item.amount)}</td>
                       <td className="px-4 py-3 text-right">{detail.status === 'DRAFT' && <button onClick={() => void removeItem(item.id)} className="rounded-sm p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><LuTrash2 /></button>}</td>
@@ -871,7 +871,7 @@ function PeriodMover({ salary, onMoved }: { salary: Salary; onMoved: (salary: Sa
 }
 
 function StatusBadge({ status }: { status: SalaryStatus }) {
-  return <span className={cn('inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase', statusStyles[status])}>{titleCase(status)}</span>
+  return <span className={cn('keep-round inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase', statusStyles[status])}>{titleCase(status)}</span>
 }
 
 function Alert({ children, tone }: { children: ReactNode; tone: 'error' | 'success' }) {
