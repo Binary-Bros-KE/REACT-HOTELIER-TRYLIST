@@ -425,6 +425,10 @@ export default function PointOfSale() {
   const updatedFirst = (a: ActiveOrder, b: ActiveOrder) => Number(updatedLines(b).length > 0) - Number(updatedLines(a).length > 0)
   // A counter order waiting for the barman is Pending; a kitchen order the chef finished is Ready.
   const isCounterOrder = (order: ActiveOrder) => (order.location?.serveMode ?? serveMode) === 'COUNTER'
+  // Mirrors the server's hasPendingAdditions: a served bill can't be paid while items added to it
+  // still wait for the barman (counter) or the store-dispatch kitchen to hand them over.
+  const awaitingHandover = (order: ActiveOrder) => updatedLines(order).length > 0
+    && (isCounterOrder(order) || (order.location?.serveMode === 'KITCHEN' && Boolean(order.location?.requireStoreDispatch)))
   // The Awaiting service list is the barman's: only counter orders. Kitchen / store orders
   // stay cards through their whole life (STORE > KITCHEN > PREPARING > READY > SERVED).
   const readyActiveOrders = activeOrders.filter((o) => o.status === 'READY' && isCounterOrder(o)).sort(updatedFirst)
@@ -954,8 +958,9 @@ export default function PointOfSale() {
                             {servingId === order.id ? <LuLoaderCircle className="size-3.5 animate-spin" /> : 'Serve Now'}
                           </button>
                         )}
-                        {order.status === 'SERVED' && (
-                          <button onClick={() => setSettlementOrderId(order.id)} className="inline-flex items-center gap-1.5 rounded-sm bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"><LuReceiptText className="size-3.5" /> Complete & Pay</button>
+                        {order.status === 'SERVED' && (awaitingHandover(order)
+                          ? <span className="inline-flex items-center px-1 text-xs font-semibold text-warning">Pay once the added items are served</span>
+                          : <button onClick={() => setSettlementOrderId(order.id)} className="inline-flex items-center gap-1.5 rounded-sm bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"><LuReceiptText className="size-3.5" /> Complete & Pay</button>
                         )}
                       </div>
                     </article>
@@ -1727,11 +1732,15 @@ function AddItemsModal({ order, menuItems, allAddons, onClose, onRefresh, onAdde
     if (!cart.length || submitting) return
     setSubmitting(true); setError('')
     try {
-      await api(`/pos/orders/${order.id}/items`, {
+      const response = await api<{ linkedOrders?: { orderNumber: number; location?: { name: string } | null }[] }>(`/pos/orders/${order.id}/items`, {
         method: 'POST',
         body: JSON.stringify({ items: cart.map((line) => ({ menuItemId: line.item.id, variantId: line.variant?.id, quantity: line.quantity, addons: line.addons.map((addon) => ({ addonId: addon.id, quantity: 1 })) })) }),
       })
-      toast.success('Items added to order.')
+      // Items another location makes went onto that location's linked order on the same bill.
+      const routed = response.linkedOrders ?? []
+      toast.success(routed.length
+        ? `Items added. Sent to ${routed.map((linked) => `${linked.location?.name ?? 'another location'} (#${linked.orderNumber})`).join(', ')} on the same bill.`
+        : 'Items added to order.')
       onAdded()
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Could not add these items'
