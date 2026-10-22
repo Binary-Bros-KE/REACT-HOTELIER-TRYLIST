@@ -459,7 +459,9 @@ export default function PointOfSale() {
     return b.orderNumber - a.orderNumber
   })
   const readyCount = activeOrders.filter((o) => stageFor(o) === 'READY').length
-  const canRevertActiveOrder = (order: ActiveOrder) => order.status !== 'SERVED' && !order.location?.requireStoreDispatch
+  // Mirrors the server: only an order nobody has started (OPEN) can be reverted. A counter
+  // order is born READY, so it never shows Revert - after posting it's a return or Super Admin.
+  const canRevertActiveOrder = (order: ActiveOrder) => order.status === 'OPEN' && !order.location?.requireStoreDispatch
   const readyActiveOrders: ActiveOrder[] = []
   const STAGE_BADGE: Record<'OPEN' | 'PREPARING' | 'SERVED', string> = { OPEN: 'KITCHEN', PREPARING: 'PREPARING', SERVED: 'SERVED' }
   const otherByStage: { status: 'OPEN' | 'PREPARING' | 'SERVED'; orders: ActiveOrder[] }[] = []
@@ -977,7 +979,7 @@ export default function PointOfSale() {
                         <div className="mt-4 flex flex-wrap gap-2">
                           <button onClick={() => setReceiptOrderId(order.id)} title="Receipt" className="inline-flex items-center justify-center rounded-sm border p-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"><LuPrinter className="size-3.5" /></button>
                           <button onClick={() => setAddItemsOrder(order)} className="inline-flex items-center gap-1.5 rounded-sm border px-3 py-1.5 text-xs font-semibold hover:bg-muted"><LuPencil className="size-3.5" /> Manage</button>
-                          {order.status !== 'SERVED' && <button onClick={() => setRevertOrder(order)} className="inline-flex items-center gap-1.5 rounded-sm border border-destructive/30 px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/10"><LuTrash2 className="size-3.5" /> Revert</button>}
+                          {canRevertActiveOrder(order) && <button onClick={() => setRevertOrder(order)} className="inline-flex items-center gap-1.5 rounded-sm border border-destructive/30 px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/10"><LuTrash2 className="size-3.5" /> Revert</button>}
                           {order.status === 'SERVED' && (
                             <button onClick={() => setSettlementOrderId(order.id)} className="inline-flex items-center gap-1.5 rounded-sm bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"><LuReceiptText className="size-3.5" /> Complete & Pay</button>
                           )}
