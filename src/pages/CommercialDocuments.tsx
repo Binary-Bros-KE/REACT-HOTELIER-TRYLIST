@@ -14,6 +14,7 @@ import QuickCustomerModal from '@/components/customers/QuickCustomerModal'
 import DocumentViewer from '@/components/documents/DocumentViewer'
 import type { DocProfile } from '@/components/documents/pdf'
 import { useWorkingLocation } from '@/lib/useWorkingLocation'
+import { useAppSelector } from '@/store/hooks'
 
 type DocType = 'QUOTATION' | 'INVOICE'
 type Status = 'DRAFT' | 'SENT' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED' | 'CANCELLED' | 'CONVERTED' | 'ISSUED' | 'PARTIALLY_PAID' | 'PAID' | 'OVERDUE' | 'VOID'
@@ -35,7 +36,7 @@ type DocumentRow = {
   locationId: string | null; location: Location | null; issuedAt: string | null; expiresAt: string | null; dueAt: string | null; depositRequired: string | number
   subtotal: string | number; net: string | number; taxAmount: string | number; total: string | number; paidAmount: string | number; balance: string | number
   lines: (Omit<Line, 'details' | 'quantity' | 'unitPrice' | 'discount' | 'taxRate'> & { source: LineSource; sourceRefId: string | null; details: string | null; quantity: string | number; unitPrice: string | number; discount: string | number; taxRate: string | number; lineSubtotal: string | number; netAmount: string | number; taxAmount: string | number; lineTotal: string | number })[]
-  payments: { id: string; kind: 'DEPOSIT' | 'PAYMENT'; amount: string | number; reference: string | null; paidAt: string; paymentMethod: PaymentMethod }[]
+  payments: { id: string; kind: 'DEPOSIT' | 'PAYMENT'; amount: string | number; reference: string | null; paidAt: string; transactionId: string | null; paymentMethod: PaymentMethod }[]
   convertedDocuments: { id: string; documentNo: string; type: DocType; status: Status }[]
   sourceDocument: { id: string; documentNo: string; type: DocType; status: Status } | null
 }
@@ -64,6 +65,9 @@ export default function CommercialDocuments({ type }: { type: DocType }) {
   const [paying, setPaying] = useState<DocumentRow | null>(null)
   const [printing, setPrinting] = useState<DocumentRow | null>(null)
   const [sourcePicker, setSourcePicker] = useState<'folio' | 'order' | null>(null)
+  const [deleting, setDeleting] = useState<DocumentRow | null>(null)
+  // Deleting is Super Admin only - the server enforces it too.
+  const canDelete = useAppSelector((s) => s.auth.user?.role?.name) === 'Super Admin'
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -164,6 +168,7 @@ export default function CommercialDocuments({ type }: { type: DocType }) {
                       {doc.type === 'QUOTATION' && doc.status === 'ACCEPTED' && <ActionButton tone="primary" icon={<LuRefreshCw />} title="Convert to invoice" onClick={() => (doc.customerId ? void convert(doc) : setConvertTarget(doc))} />}
                       {doc.type === 'INVOICE' && doc.status === 'DRAFT' && <ActionButton tone="neutral" icon={<LuSend />} title="Issue" onClick={() => void setDocStatus(doc, 'ISSUED')} />}
                       {((doc.type === 'INVOICE' && !['DRAFT', 'PAID', 'CANCELLED', 'VOID'].includes(doc.status)) || (doc.type === 'QUOTATION' && ['DRAFT', 'SENT', 'ACCEPTED'].includes(doc.status))) && <ActionButton tone="primary" icon={<LuCreditCard />} title={doc.type === 'INVOICE' ? 'Record payment' : 'Record deposit'} onClick={() => setPaying(doc)} />}
+                      {canDelete && <ActionButton tone="neutral" icon={<LuTrash2 />} title={`Delete ${doc.type === 'INVOICE' ? 'invoice' : 'quotation'}`} onClick={() => setDeleting(doc)} />}
                     </div></td>
                   </tr>
                 ))}
@@ -174,6 +179,7 @@ export default function CommercialDocuments({ type }: { type: DocType }) {
         )}
       </section>
       {editor && <DocumentEditor type={type} document={editor === 'new' ? null : editor} options={options} sources={sources} fixedLocation={fixedLocation} locations={pickableLocations} selectedLocationId={effectiveId} setLocation={setLocation} onClose={() => setEditor(null)} onSaved={(doc) => { setEditor(null); setDocuments((cur) => editor === 'new' ? [doc, ...cur] : cur.map((d) => d.id === doc.id ? doc : d)); void load() }} />}
+      {deleting && <DeleteDocumentModal doc={deleting} onClose={() => setDeleting(null)} onDeleted={() => { setDocuments((cur) => cur.filter((d) => d.id !== deleting.id)); setDeleting(null); void load() }} />}
       {sourcePicker && <SourceInvoiceModal kind={sourcePicker} sources={sources} onClose={() => setSourcePicker(null)} onCreated={(doc) => { setSourcePicker(null); setDocuments((cur) => [doc, ...cur]); setPrinting(doc); void load() }} />}
       {convertTarget && (
         <ConvertQuotationModal
@@ -208,6 +214,67 @@ function customerOption(customer: Customer) {
     label: customer.businessName || `${customer.firstName} ${customer.lastName ?? ''}`.trim(),
     keywords: [customer.phone, customer.billingPhone, customer.email, customer.billingEmail].filter(Boolean).join(' ') || undefined,
   }
+}
+
+/** Confirms a delete and says exactly what happens to the money, which depends on where the document came from. */
+function DeleteDocumentModal({ doc, onClose, onDeleted }: { doc: DocumentRow; onClose: () => void; onDeleted: () => void }) {
+  const toast = useToast()
+  const [busy, setBusy] = useState(false)
+  const label = doc.type === 'INVOICE' ? 'invoice' : 'quotation'
+  // Only payments recorded on this document carry their own transaction; stay, order and carried-deposit payments don't.
+  const ownPayments = doc.payments.filter((p) => p.transactionId)
+  const ownTotal = ownPayments.reduce((sum, p) => sum + Number(p.amount), 0)
+  const convertedTo = doc.convertedDocuments.find((d) => d.type === 'INVOICE')
+
+  const notes: string[] = []
+  if (doc.source === 'HOTEL_STAY') notes.push(`The stay${doc.linkedStay ? ` ${doc.linkedStay.reservationNo}` : ''} keeps its charges and payments on its folio. Only this invoice goes, and the stay can be invoiced again.`)
+  if (doc.source === 'RESTAURANT_ORDER' || doc.source === 'SERVICE_SALE') notes.push('The order keeps its sale and payments. Only this invoice goes, and the order can be invoiced again.')
+  if (doc.source === 'QUOTATION' && doc.sourceDocument) notes.push(`Quotation ${doc.sourceDocument.documentNo} goes back to Accepted, keeping its deposits, so it can be converted again.`)
+  if (ownPayments.length > 0) notes.push(`${ownPayments.length} payment${ownPayments.length === 1 ? '' : 's'} recorded on this ${label} (${money(ownTotal)}) will be voided: removed from reports and cash-ups, and shown as voided in Transactions.`)
+
+  async function remove() {
+    setBusy(true)
+    try {
+      await api(`/commercial-documents/${doc.id}`, { method: 'DELETE' })
+      toast.success(`${doc.documentNo} deleted.`)
+      onDeleted()
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : `Could not delete the ${label}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <ModalShell
+      size="sm"
+      kicker={`Delete ${label}`}
+      title={doc.documentNo}
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" onClick={onClose} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted">Cancel</button>
+          {!convertedTo && (
+            <button type="button" onClick={() => void remove()} disabled={busy} className="inline-flex items-center gap-2 bg-destructive px-5 py-2 text-xs font-bold uppercase tracking-wider text-white disabled:opacity-60">
+              {busy && <LuLoaderCircle className="animate-spin" />}
+              Delete permanently
+            </button>
+          )}
+        </>
+      }
+    >
+      <div className="space-y-3 p-5 text-sm">
+        {convertedTo ? (
+          <p className="flex gap-2 border border-warning/40 bg-warning/10 p-3 font-medium"><LuCircleAlert className="mt-0.5 shrink-0" /> This quotation was converted to invoice {convertedTo.documentNo}, which shows its deposits. Delete that invoice first.</p>
+        ) : (
+          <>
+            <p>{doc.documentNo} ({clientName(doc)}, {money(Number(doc.total))}) and its lines will be deleted. This can't be undone.</p>
+            {notes.length > 0 && <ul className="list-disc space-y-1.5 pl-5 text-muted-foreground">{notes.map((n) => <li key={n}>{n}</li>)}</ul>}
+          </>
+        )}
+      </div>
+    </ModalShell>
+  )
 }
 
 function ConvertQuotationModal({ doc, customers, onClose, onCustomerCreated, onConvert }: { doc: DocumentRow; customers: Customer[]; onClose: () => void; onCustomerCreated: (customer: Customer) => void; onConvert: (options: { customerId?: string; createCustomerFromProspect?: boolean }) => void }) {
