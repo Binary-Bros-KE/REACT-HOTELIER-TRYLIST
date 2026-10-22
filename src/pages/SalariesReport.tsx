@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { LuBanknote, LuDownload, LuLayers, LuUsers, LuWallet } from 'react-icons/lu'
 import { api, hasApiTenant } from '@/lib/api'
 import ActionButton from '@/components/ui/ActionButton'
@@ -35,7 +35,8 @@ const SECTIONS: { key: 'byEmployee' | 'byLocation' | 'byDepartment' | 'byMonth';
 const HEADINGS = ['Payslips', 'Basic', 'Allowances', 'Deductions', 'Gross', 'Net']
 const groupCells = (g: Totals) => [g.count, formatKes(g.basic), formatKes(g.allowances), formatKes(g.deductions), formatKes(g.gross), formatKes(g.net)]
 
-export default function SalariesReport() {
+/** `tabs`: the Payroll / Report switch when shown inside the merged Salaries page. */
+export default function SalariesReport({ tabs }: { tabs?: ReactNode } = {}) {
   const today = new Date()
   // A pay period is a whole month, so the report is picked by month.
   const [month, setMonth] = useState(isoDay(monthStart(today)).slice(0, 7))
@@ -107,6 +108,7 @@ export default function SalariesReport() {
   const totals = report?.totals
   return (
     <div className="mx-auto max-w-7xl px-6 py-8">
+      {tabs}
       <PageBanner kicker="Reports" title="Salaries Report" />
 
       <div className="mt-6 space-y-3 rounded-sm border bg-card p-4 shadow-sm">

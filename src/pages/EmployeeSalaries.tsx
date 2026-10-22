@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import {
   LuBanknote,
@@ -13,6 +13,8 @@ import {
   LuUndo2,
   LuWalletCards,
   LuX,
+  LuChevronDown,
+  LuChevronRight,
 } from 'react-icons/lu'
 
 import Button from '@/components/ui/Button'
@@ -148,7 +150,8 @@ const emptyProcess = (): ProcessForm => ({
   notes: '',
 })
 
-export default function EmployeeSalaries() {
+/** `tabs`: the Payroll / Report switch when shown inside the merged Salaries page. */
+export default function EmployeeSalaries({ tabs }: { tabs?: ReactNode } = {}) {
   const toast = useToast()
   const [salaries, setSalaries] = useState<Salary[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
@@ -171,6 +174,14 @@ export default function EmployeeSalaries() {
   const [defaultsForm, setDefaultsForm] = useState<{ allowances: LineDraft[]; deductions: LineDraft[] }>({ allowances: [], deductions: [] })
   const [defaultsSaving, setDefaultsSaving] = useState(false)
   const [detail, setDetail] = useState<Salary | null>(null)
+  // Payslip rows opened to show their allowances and deductions.
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
+  const toggleExpanded = (id: string) => setExpanded((cur) => {
+    const next = new Set(cur)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    return next
+  })
   const [printing, setPrinting] = useState<Salary | null>(null)
   const [profile, setProfile] = useState<DocProfile>(null)
   const [advanceForm, setAdvanceForm] = useState({ employeeId: '', payPeriod: monthValue(), allowances: [] as LineDraft[], deductions: [{ label: `Advance - ${todayLabel()}`, amount: '' }], notes: '' })
@@ -459,6 +470,7 @@ export default function EmployeeSalaries() {
 
   return (
     <div className="mx-auto max-w-7xl px-6 py-8 sm:px-8 lg:px-10">
+      {tabs}
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-sm font-semibold text-secondary">Team</p>
@@ -530,8 +542,14 @@ export default function EmployeeSalaries() {
               </thead>
               <tbody>
                 {salaries.map((salary) => (
-                  <tr key={salary.id} className="border-t transition hover:bg-muted/30">
-                    <td className="px-5 py-4 font-semibold">{salary.payslipNo}</td>
+                  <Fragment key={salary.id}>
+                  <tr className="border-t transition hover:bg-muted/30">
+                    <td className="px-5 py-4 font-semibold">
+                      <button type="button" onClick={() => toggleExpanded(salary.id)} title={expanded.has(salary.id) ? 'Hide breakdown' : 'Show allowances and deductions'} className="inline-flex items-center gap-1.5 hover:text-secondary">
+                        {expanded.has(salary.id) ? <LuChevronDown className="size-4 shrink-0" /> : <LuChevronRight className="size-4 shrink-0" />}
+                        {salary.payslipNo}
+                      </button>
+                    </td>
                     <td className="px-5 py-4">
                       <p className="font-semibold">{salary.employee.firstName} {salary.employee.lastName}</p>
                       <p className="text-xs text-muted-foreground">{salary.employee.employeeCode}{salary.employee.defaultLocation ? ` · ${salary.employee.defaultLocation.name}` : ''}</p>
@@ -549,6 +567,14 @@ export default function EmployeeSalaries() {
                       </div>
                     </td>
                   </tr>
+                  {expanded.has(salary.id) && (
+                    <tr className="bg-muted/20">
+                      <td colSpan={7} className="px-5 pb-4 pt-1">
+                        <SalaryBreakdown salary={salary} />
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -828,6 +854,43 @@ function LineEditor({ title, lines, addLabel, onChange }: { title: string; lines
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+/** A payslip's allowances and deductions, line by line, shown under its row in the list. */
+function SalaryBreakdown({ salary }: { salary: Salary }) {
+  const allowances = salary.items.filter((item) => item.type === 'ALLOWANCE')
+  const deductions = salary.items.filter((item) => item.type === 'DEDUCTION')
+  const carried = Number(salary.carriedOverAmount ?? 0)
+  const list = (items: SalaryItem[], empty: string, sign: string) => (
+    items.length === 0
+      ? <p className="py-1.5 text-muted-foreground">{empty}</p>
+      : items.map((item) => (
+        <div key={item.id} className="flex justify-between gap-4 py-1.5">
+          <span>{item.label}</span>
+          <span className="tabular-nums">{sign}{money(item.amount)}</span>
+        </div>
+      ))
+  )
+  return (
+    <div className="grid gap-3 text-sm md:grid-cols-[1fr_1fr_14rem]">
+      <div className="rounded-sm border bg-card p-3">
+        <p className="mb-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Allowances</p>
+        <div className="divide-y">{list(allowances, 'No allowances', '+')}</div>
+        <div className="mt-1 flex justify-between border-t pt-1.5 font-semibold"><span>Total allowances</span><span className="tabular-nums">{money(salary.totalAllowances)}</span></div>
+      </div>
+      <div className="rounded-sm border bg-card p-3">
+        <p className="mb-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Deductions</p>
+        <div className="divide-y">{list(deductions, 'No deductions', '-')}</div>
+        <div className="mt-1 flex justify-between border-t pt-1.5 font-semibold"><span>Total deductions</span><span className="tabular-nums">-{money(salary.totalDeductions)}</span></div>
+        {carried > 0 && <p className="mt-1.5 text-xs text-muted-foreground">{money(carried)} of deductions carried to next month.</p>}
+      </div>
+      <div className="rounded-sm border bg-card p-3">
+        <div className="flex justify-between gap-4 py-1.5"><span>Basic salary</span><span className="tabular-nums">{money(salary.basicSalary)}</span></div>
+        <div className="flex justify-between gap-4 py-1.5"><span>Gross pay</span><span className="tabular-nums">{money(salary.grossPay)}</span></div>
+        <div className="flex justify-between gap-4 border-t pt-1.5 font-semibold"><span>Net pay</span><span className="tabular-nums">{money(salary.netPay)}</span></div>
+      </div>
     </div>
   )
 }
