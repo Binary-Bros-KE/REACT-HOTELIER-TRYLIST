@@ -58,8 +58,7 @@ const rs = StyleSheet.create({
   tdLast: { flex: 1, fontSize: 8, paddingVertical: 4.5, paddingHorizontal: 6 },
   tdCompact: { fontSize: 5.7, paddingVertical: 0.8, paddingHorizontal: 2.5 },
   groupRow: { backgroundColor: '#f2f2f2', borderTopWidth: 1, borderTopColor: palette.ink, borderBottomWidth: 1, borderBottomColor: palette.hairline },
-  breakdownHead: { fontFamily: 'Helvetica-Bold' },
-  breakdownText: { lineHeight: 1.25 },
+  breakdownHead: { fontFamily: 'Helvetica-Bold', marginBottom: 1.5 },
   groupText: { fontSize: 6.2, fontFamily: 'Helvetica-Bold', color: palette.ink, letterSpacing: 0.2, paddingVertical: 1.8, paddingHorizontal: 3 },
 })
 
@@ -121,13 +120,19 @@ function SectionTable({ section }: { section: ReportSection }) {
           }
           return (
             <View key={ri} style={[rs.tr, ri % 2 === 1 ? rs.trAlt : undefined]} wrap={false}>
-              {row.map((cell, ci) => (
-                <Text key={ci} style={[ci === row.length - 1 ? rs.tdLast : rs.td, compact ? rs.tdCompact : undefined, section.columns[ci]?.align === 'right' ? { textAlign: 'right' } : undefined, section.columns[ci]?.flex ? { flex: section.columns[ci].flex } : undefined]}>
-                  {typeof cell === 'object'
-                    ? <Text style={rs.breakdownText}><Text style={rs.breakdownHead}>{cell.head}</Text>{cell.lines.map((line) => `\n${line}`).join('')}</Text>
-                    : String(cell)}
-                </Text>
-              ))}
+              {row.map((cell, ci) => {
+                const cellStyle = [ci === row.length - 1 ? rs.tdLast : rs.td, compact ? rs.tdCompact : undefined, section.columns[ci]?.align === 'right' ? { textAlign: 'right' as const } : undefined, section.columns[ci]?.flex ? { flex: section.columns[ci].flex } : undefined]
+                if (typeof cell !== 'object') return <Text key={ci} style={cellStyle}>{String(cell)}</Text>
+                // One Text per line (not "\n" in one Text): lines stay as tight as a single
+                // row, with a small gap only under the bold total.
+                const lineStyle = { fontSize: compact ? 5.7 : 8, lineHeight: 1.15, textAlign: section.columns[ci]?.align === 'right' ? 'right' as const : 'left' as const }
+                return (
+                  <View key={ci} style={cellStyle}>
+                    <Text style={[lineStyle, rs.breakdownHead]}>{cell.head}</Text>
+                    {cell.lines.map((line, li) => <Text key={li} style={lineStyle}>{line}</Text>)}
+                  </View>
+                )
+              })}
             </View>
           )
         })}
