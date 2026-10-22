@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
+  LuBanknote,
   LuBriefcaseBusiness,
   LuCircleAlert,
   LuLoaderCircle,
@@ -135,6 +137,7 @@ const salarySuffix: Record<SalaryType, string> = { MONTHLY: '/mo', DAILY: '/day'
 
 export default function Employees() {
   const toast = useToast()
+  const navigate = useNavigate()
   const [employees, setEmployees] = useState<Employee[]>([])
   const [roles, setRoles] = useState<{ id: string; name: string }[]>([])
   const [locations, setLocations] = useState<{ id: string; name: string }[]>([])
@@ -322,6 +325,7 @@ export default function Employees() {
             <option value="">All statuses</option>
             {statuses.map((s) => <option key={s} value={s}>{titleCase(s)}</option>)}
           </select>
+          <ActionButton tone="neutral" icon={<LuBanknote />} onClick={() => navigate('/finance/salaries')}>Salaries</ActionButton>
           <ActionButton tone="primary" icon={<LuPlus />} onClick={openCreate}>Add employee</ActionButton>
         </div>
 
