@@ -14,7 +14,9 @@ import { Footer } from './parts'
 export type ReportCard = { label: string; value: string; hint?: string }
 /** `flex`: the column's share of the table width (default 1) - e.g. 2 for a name column. */
 export type ReportColumn = { label: string; align?: 'left' | 'right'; flex?: number }
-export type ReportRow = (string | number)[] | { kind: 'group'; label: string }
+/** A cell with a bold first line (e.g. a total) and plain lines under it (its breakdown). */
+export type ReportBreakdownCell = { head: string; lines: string[] }
+export type ReportRow = (string | number | ReportBreakdownCell)[] | { kind: 'group'; label: string }
 export type ReportSection = { title: string; note?: string; compact?: boolean; columns: ReportColumn[]; rows: ReportRow[] }
 export type ReportDocData = {
   reportTitle: string
@@ -56,6 +58,8 @@ const rs = StyleSheet.create({
   tdLast: { flex: 1, fontSize: 8, paddingVertical: 4.5, paddingHorizontal: 6 },
   tdCompact: { fontSize: 5.7, paddingVertical: 0.8, paddingHorizontal: 2.5 },
   groupRow: { backgroundColor: '#f2f2f2', borderTopWidth: 1, borderTopColor: palette.ink, borderBottomWidth: 1, borderBottomColor: palette.hairline },
+  breakdownHead: { fontFamily: 'Helvetica-Bold' },
+  breakdownText: { lineHeight: 1.25 },
   groupText: { fontSize: 6.2, fontFamily: 'Helvetica-Bold', color: palette.ink, letterSpacing: 0.2, paddingVertical: 1.8, paddingHorizontal: 3 },
 })
 
@@ -119,7 +123,9 @@ function SectionTable({ section }: { section: ReportSection }) {
             <View key={ri} style={[rs.tr, ri % 2 === 1 ? rs.trAlt : undefined]} wrap={false}>
               {row.map((cell, ci) => (
                 <Text key={ci} style={[ci === row.length - 1 ? rs.tdLast : rs.td, compact ? rs.tdCompact : undefined, section.columns[ci]?.align === 'right' ? { textAlign: 'right' } : undefined, section.columns[ci]?.flex ? { flex: section.columns[ci].flex } : undefined]}>
-                  {String(cell)}
+                  {typeof cell === 'object'
+                    ? <Text style={rs.breakdownText}><Text style={rs.breakdownHead}>{cell.head}</Text>{cell.lines.map((line) => `\n${line}`).join('')}</Text>
+                    : String(cell)}
                 </Text>
               ))}
             </View>

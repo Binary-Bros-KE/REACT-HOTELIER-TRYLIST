@@ -5,7 +5,7 @@ import ActionButton from '@/components/ui/ActionButton'
 import PageBanner from '@/components/ui/PageBanner'
 import StatCard from '@/components/ui/StatCard'
 import PrintReportButton from '@/components/documents/PrintReportButton'
-import type { ReportDocData, ReportSection } from '@/components/documents/pdf'
+import type { ReportBreakdownCell, ReportDocData, ReportSection } from '@/components/documents/pdf'
 import { downloadCsvRows } from '@/lib/csv'
 
 type Totals = { count: number; basic: number; allowances: number; deductions: number; gross: number; net: number }
@@ -43,8 +43,9 @@ function itemLines(items: ItemLine[] | undefined, extra?: ItemLine) {
   return [...(items ?? []), ...(extra && extra.amount > 0 ? [extra] : [])].map((item) => `${item.label}: ${plainKes(item.amount)}`)
 }
 const carriedLine = (g: Group) => ({ label: 'Carried to next month', amount: -(g.carriedOver ?? 0) })
-function breakdownCell(total: number, lines: string[]) {
-  return lines.length ? [formatKes(total), ...lines].join('\n') : formatKes(total)
+// With lines, the total leads in bold as "TOTAL: KSh ..." so it stands out from them.
+function breakdownCell(total: number, lines: string[]): string | ReportBreakdownCell {
+  return lines.length ? { head: `TOTAL: ${formatKes(total)}`, lines } : formatKes(total)
 }
 // Wider name column so two names stay on one line; Payslips is just a small count.
 const printColumns = (label: string) => [
