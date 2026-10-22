@@ -9,7 +9,9 @@ import type { ReportDocData, ReportSection } from '@/components/documents/pdf'
 import { downloadCsvRows } from '@/lib/csv'
 
 type Totals = { count: number; basic: number; allowances: number; deductions: number; gross: number; net: number }
-type Group = Totals & { key: string; name: string }
+type ItemLine = { label: string; amount: number }
+// allowanceItems / deductionItems / carriedOver come only on byEmployee groups.
+type Group = Totals & { key: string; name: string; allowanceItems?: ItemLine[]; deductionItems?: ItemLine[]; carriedOver?: number }
 type SalaryReport = {
   range: { from: string | null; to: string | null }
   totals: Totals
@@ -34,6 +36,26 @@ const SECTIONS: { key: 'byEmployee' | 'byLocation' | 'byDepartment' | 'byMonth';
 
 const HEADINGS = ['Payslips', 'Basic', 'Allowances', 'Deductions', 'Gross', 'Net']
 const groupCells = (g: Totals) => [g.count, formatKes(g.basic), formatKes(g.allowances), formatKes(g.deductions), formatKes(g.gross), formatKes(g.net)]
+
+// An employee's allowance / deduction lines under the column total, one per line, for the printed report.
+const plainKes = (value: number) => value.toLocaleString('en-KE', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+function itemLines(items: ItemLine[] | undefined, extra?: ItemLine) {
+  return [...(items ?? []), ...(extra && extra.amount > 0 ? [extra] : [])].map((item) => `${item.label}: ${plainKes(item.amount)}`)
+}
+const carriedLine = (g: Group) => ({ label: 'Carried to next month', amount: -(g.carriedOver ?? 0) })
+function breakdownCell(total: number, lines: string[]) {
+  return lines.length ? [formatKes(total), ...lines].join('\n') : formatKes(total)
+}
+// Wider name column so two names stay on one line; Payslips is just a small count.
+const printColumns = (label: string) => [
+  { label, flex: 2 },
+  { label: 'Payslips', align: 'right' as const, flex: 0.7 },
+  { label: 'Basic', align: 'right' as const },
+  { label: 'Allowances', align: 'right' as const, flex: 1.4 },
+  { label: 'Deductions', align: 'right' as const, flex: 1.4 },
+  { label: 'Gross', align: 'right' as const },
+  { label: 'Net', align: 'right' as const },
+]
 
 /** `tabs`: the Payroll / Report switch when shown inside the merged Salaries page. */
 export default function SalariesReport({ tabs }: { tabs?: ReactNode } = {}) {
@@ -72,10 +94,14 @@ export default function SalariesReport({ tabs }: { tabs?: ReactNode } = {}) {
   useEffect(() => { if (hasApiTenant()) void load() }, [load])
 
   function exportCsv(data: SalaryReport) {
-    const rows: (string | number)[][] = [['Section', 'Name', ...HEADINGS]]
+    const rows: (string | number)[][] = [['Section', 'Name', ...HEADINGS, 'Allowance breakdown', 'Deduction breakdown']]
     rows.push(['Total', 'All', ...groupCells(data.totals)])
     for (const section of SECTIONS) {
-      for (const group of data[section.key]) rows.push([section.title, group.name, ...groupCells(group)])
+      for (const group of data[section.key]) {
+        rows.push(section.key === 'byEmployee'
+          ? [section.title, group.name, ...groupCells(group), itemLines(group.allowanceItems).join('; '), itemLines(group.deductionItems, carriedLine(group)).join('; ')]
+          : [section.title, group.name, ...groupCells(group)])
+      }
     }
     downloadCsvRows('salaries-report', rows)
   }
@@ -84,19 +110,30 @@ export default function SalariesReport({ tabs }: { tabs?: ReactNode } = {}) {
     const monthName = new Date(`${month}-01T00:00:00`).toLocaleDateString('en-KE', { month: 'long', year: 'numeric' })
     const sections: ReportSection[] = SECTIONS.map((section) => ({
       title: section.title,
-      columns: [{ label: section.label }, ...HEADINGS.map((label) => ({ label, align: 'right' as const }))],
-      rows: data[section.key].map((group) => [group.name, ...groupCells(group)]),
+      compact: true,
+      columns: printColumns(section.label),
+      rows: data[section.key].map((group) => {
+        if (section.key !== 'byEmployee') return [group.name, ...groupCells(group)]
+        const [count, basic, , , gross, net] = groupCells(group)
+        return [
+          group.name, count, basic,
+          breakdownCell(group.allowances, itemLines(group.allowanceItems)),
+          breakdownCell(group.deductions, itemLines(group.deductionItems, carriedLine(group))),
+          gross, net,
+        ]
+      }),
     }))
     return {
       reportTitle: 'Salaries Report',
       kicker: 'Reports',
       rangeLabel: monthName,
       generatedAt: new Date().toISOString(),
+      // Gross first, then what comes off and goes on, then net.
       cards: [
-        { label: 'Net pay', value: formatKes(data.totals.net) },
-        { label: 'Gross pay', value: formatKes(data.totals.gross) },
-        { label: 'Allowances', value: formatKes(data.totals.allowances) },
+        { label: 'Gross salaries', value: formatKes(data.totals.gross) },
         { label: 'Deductions', value: formatKes(data.totals.deductions) },
+        { label: 'Allowances', value: formatKes(data.totals.allowances) },
+        { label: 'Net pay', value: formatKes(data.totals.net) },
         { label: 'Payslips', value: String(data.totals.count) },
       ],
       sections,

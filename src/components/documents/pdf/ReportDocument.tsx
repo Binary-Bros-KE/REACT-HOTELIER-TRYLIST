@@ -12,7 +12,8 @@ import { Footer } from './parts'
 // tables (by product, by employee, tax breakdown) run 5+ columns wide.
 
 export type ReportCard = { label: string; value: string; hint?: string }
-export type ReportColumn = { label: string; align?: 'left' | 'right' }
+/** `flex`: the column's share of the table width (default 1) - e.g. 2 for a name column. */
+export type ReportColumn = { label: string; align?: 'left' | 'right'; flex?: number }
 export type ReportRow = (string | number)[] | { kind: 'group'; label: string }
 export type ReportSection = { title: string; note?: string; compact?: boolean; columns: ReportColumn[]; rows: ReportRow[] }
 export type ReportDocData = {
@@ -105,7 +106,7 @@ function SectionTable({ section }: { section: ReportSection }) {
       <View style={[rs.table, compact ? rs.tableCompact : undefined]}>
         <View style={rs.th} fixed>
           {section.columns.map((col, i) => (
-            <Text key={i} style={[i === section.columns.length - 1 ? rs.thTextLast : rs.thText, compact ? rs.thTextCompact : undefined, col.align === 'right' ? { textAlign: 'right' } : undefined]}>
+            <Text key={i} style={[i === section.columns.length - 1 ? rs.thTextLast : rs.thText, compact ? rs.thTextCompact : undefined, col.align === 'right' ? { textAlign: 'right' } : undefined, col.flex ? { flex: col.flex } : undefined]}>
               {col.label.toUpperCase()}
             </Text>
           ))}
@@ -117,7 +118,7 @@ function SectionTable({ section }: { section: ReportSection }) {
           return (
             <View key={ri} style={[rs.tr, ri % 2 === 1 ? rs.trAlt : undefined]} wrap={false}>
               {row.map((cell, ci) => (
-                <Text key={ci} style={[ci === row.length - 1 ? rs.tdLast : rs.td, compact ? rs.tdCompact : undefined, section.columns[ci]?.align === 'right' ? { textAlign: 'right' } : undefined]}>
+                <Text key={ci} style={[ci === row.length - 1 ? rs.tdLast : rs.td, compact ? rs.tdCompact : undefined, section.columns[ci]?.align === 'right' ? { textAlign: 'right' } : undefined, section.columns[ci]?.flex ? { flex: section.columns[ci].flex } : undefined]}>
                   {String(cell)}
                 </Text>
               ))}
