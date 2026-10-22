@@ -15,15 +15,17 @@ type Loc = { id: string; name: string; isActive?: boolean }
  *
  * Pass `{ persist: false }` on view-only screens (Receipts, Tables) so
  * changing the filter there doesn't move the employee's working location.
+ * Add `startOnAll: true` for report-style screens that should open on "All
+ * locations" (every location the employee may see) instead of the default.
  */
-export function useWorkingLocation(allLocations: Loc[], { persist = true }: { persist?: boolean } = {}) {
+export function useWorkingLocation(allLocations: Loc[], { persist = true, startOnAll = false }: { persist?: boolean; startOnAll?: boolean } = {}) {
   const dispatch = useAppDispatch()
   const user = useAppSelector((s) => s.auth.user)
   const mine = user?.locations ?? []
   const fixed = mine.length === 1 ? mine[0] : null
   const options: Loc[] = mine.length > 1 ? mine : allLocations.filter((l) => l.isActive !== false)
 
-  const defaultId = user?.defaultLocation?.id ?? ''
+  const defaultId = startOnAll ? '' : user?.defaultLocation?.id ?? ''
   const [selectedId, setSelectedId] = useState(defaultId)
 
   // Adopt the saved default if it arrives/changes after mount (e.g. session

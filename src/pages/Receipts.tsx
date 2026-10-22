@@ -86,12 +86,7 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
   const [voidingId, setVoidingId] = useState<string | null>(null)
   const [voidTarget, setVoidTarget] = useState<ReceiptRow | null>(null)
 
-  const { fixed: fixedLocation, options: pickableLocations, selectedId: selectedLocationId, setLocation, effectiveId: effectiveLocationId } = useWorkingLocation(locations, { persist: false })
-  const assignedLocationCount = user?.locations.length ?? 0
-
-  useEffect(() => {
-    if (!fixedLocation && assignedLocationCount > 0 && !selectedLocationId && pickableLocations[0]) setLocation(pickableLocations[0].id)
-  }, [assignedLocationCount, fixedLocation, pickableLocations, selectedLocationId, setLocation])
+  const { fixed: fixedLocation, options: pickableLocations, selectedId: selectedLocationId, setLocation, effectiveId: effectiveLocationId } = useWorkingLocation(locations, { persist: false, startOnAll: true })
 
   useEffect(() => {
     api<{ profile: { businessDayStartHour?: number } | null }>('/business-profile')
@@ -253,7 +248,8 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
               <label className="flex flex-col gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
                 Location
                 <select aria-label="Filter by location" value={selectedLocationId} onChange={(e) => setLocation(e.target.value)} className="input font-normal normal-case tracking-normal">
-                  {assignedLocationCount === 0 && <option value="">All locations</option>}
+                  {/* "All" means every location this employee may see; the server scopes it. */}
+                  <option value="">All locations</option>
                   {pickableLocations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
                 </select>
               </label>
@@ -276,7 +272,7 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
                 </div>
                 {periodMode === 'shift' && (
                   <>
-                    <input type="date" value={shiftDate} onChange={(e) => setShiftDate(e.target.value)} className="input font-normal normal-case tracking-normal" />
+                    <input type="date" value={shiftDate} onChange={(e) => setShiftDate(e.target.value)} className="input w-44 font-normal normal-case tracking-normal" />
                     <span className="text-xs font-normal normal-case tracking-normal text-muted-foreground">{shiftDate ? `${shiftDate} ${String(startHour).padStart(2, '0')}:00 to the next day ${String(startHour).padStart(2, '0')}:00` : ''}</span>
                   </>
                 )}
