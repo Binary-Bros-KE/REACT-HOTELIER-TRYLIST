@@ -933,13 +933,15 @@ function NewGuestModal({ customers, rooms, at, onClose, onDone, onCustomerCreate
 
 function CancelModal({ reservation, at, onClose, onCancelled }: { reservation: Reservation; at: ApiAt; onClose: () => void; onCancelled: () => void }) {
   const toast = useToast();
-  const [reason, setReason] = useState<(typeof CANCELLATION_REASONS)[number]>("CHANGED_MIND");
+  // Starts empty on purpose: a preselected reason got submitted by mistake, so staff must pick one.
+  const [reason, setReason] = useState<(typeof CANCELLATION_REASONS)[number] | "">("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
   const activeStay = reservation.status === "CHECKED_IN" || reservation.status === "CHECKED_OUT";
 
   async function submit(e: FormEvent) {
     e.preventDefault();
+    if (!reason) { toast.error("Select a reason for cancelling."); return; }
     setSaving(true);
     try {
       await at(`/reception/reservations/${reservation.id}/cancel`, { method: "PATCH", body: JSON.stringify({ cancellationReason: reason, cancellationNotes: notes || undefined }) });
@@ -961,7 +963,7 @@ function CancelModal({ reservation, at, onClose, onCancelled }: { reservation: R
       footer={
         <>
           <button type="button" onClick={onClose} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted">Back</button>
-          <button form="cancel-reservation-form" disabled={saving} className="inline-flex items-center gap-2 bg-destructive px-4 py-2 text-xs font-bold uppercase tracking-wider text-white transition hover:brightness-110 disabled:opacity-60">
+          <button form="cancel-reservation-form" disabled={saving || !reason} title={reason ? undefined : "Select a reason first"} className="inline-flex items-center gap-2 bg-destructive px-4 py-2 text-xs font-bold uppercase tracking-wider text-white transition hover:brightness-110 disabled:opacity-60">
             {saving && <LuLoaderCircle className="animate-spin" />} {activeStay ? "Cancel stay" : "Cancel reservation"}
           </button>
         </>
@@ -969,8 +971,9 @@ function CancelModal({ reservation, at, onClose, onCancelled }: { reservation: R
     >
       <form id="cancel-reservation-form" onSubmit={submit} className="space-y-3 p-5">
         <label className="block text-sm font-medium">
-          Reason
-          <select className="input mt-1.5" value={reason} onChange={(e) => setReason(e.target.value as (typeof CANCELLATION_REASONS)[number])}>
+          Reason <span className="text-destructive">*</span>
+          <select required className="input mt-1.5" value={reason} onChange={(e) => setReason(e.target.value as (typeof CANCELLATION_REASONS)[number])}>
+            <option value="" disabled>Please select reason</option>
             {CANCELLATION_REASONS.map((r) => <option key={r} value={r}>{titleCase(r)}</option>)}
           </select>
         </label>
