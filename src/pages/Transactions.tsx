@@ -71,7 +71,7 @@ export default function Transactions() {
   }, [load])
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-8 sm:px-8 lg:px-10">
+    <div className="dashboard-square mx-auto max-w-6xl px-6 py-8 sm:px-8 lg:px-10">
       <header>
         <p className="text-sm font-semibold text-secondary">Finance</p>
         <h1 className="mt-1 font-display text-3xl font-semibold">Transactions</h1>
@@ -130,7 +130,7 @@ export default function Transactions() {
                 {transactions.map((t) => (
                   <tr key={t.id} className="border-t">
                     <td className="px-5 py-4">
-                      <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-bold', t.direction === 'IN' ? 'border-success/30 text-success' : 'border-destructive/30 text-destructive')}>
+                      <span className={cn('keep-round inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[10px] font-bold', t.direction === 'IN' ? 'border-success/30 text-success' : 'border-destructive/30 text-destructive')}>
                         {t.direction === 'IN' ? <LuArrowDownLeft className="size-3" /> : <LuArrowUpRight className="size-3" />}
                         {t.direction}
                       </span>
@@ -148,7 +148,7 @@ export default function Transactions() {
                     </td>
                     <td className="px-5 py-4 text-right font-semibold">{formatKes(Number(t.amount))}</td>
                     <td className="px-5 py-4">
-                      <span className={cn('rounded-full border px-2 py-1 text-[10px] font-bold', t.status === 'COMPLETE' ? 'border-success/30 text-success' : 'border-destructive/30 text-destructive')}>
+                      <span className={cn('keep-round rounded-full border px-2 py-1 text-[10px] font-bold', t.status === 'COMPLETE' ? 'border-success/30 text-success' : 'border-destructive/30 text-destructive')}>
                         {t.status}
                       </span>
                     </td>

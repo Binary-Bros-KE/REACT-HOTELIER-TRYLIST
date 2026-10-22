@@ -277,7 +277,7 @@ export default function DispatchRequests() {
   const pendingCount = tab === 'pending' ? requests.length : null
 
   return (
-    <div className="mx-auto max-w-7xl px-6 py-8 sm:px-8 lg:px-10">
+    <div className="dashboard-square mx-auto max-w-7xl px-6 py-8 sm:px-8 lg:px-10">
       <PageBanner kicker="Inventory" title="Dispatch Requests">
         <StatusPill tone="success">Live sync</StatusPill>
         <ActionButton tone="neutral" icon={<LuRefreshCw className={refreshing ? 'animate-spin' : ''} />} title="Refresh" onClick={() => void load(true)} />
