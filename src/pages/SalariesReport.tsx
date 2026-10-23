@@ -11,7 +11,9 @@ import { downloadCsvRows } from '@/lib/csv'
 type Totals = { count: number; basic: number; allowances: number; deductions: number; gross: number; net: number }
 type ItemLine = { label: string; amount: number }
 // allowanceItems / deductionItems / carriedOver come only on byEmployee groups.
-type Group = Totals & { key: string; name: string; allowanceItems?: ItemLine[]; deductionItems?: ItemLine[]; carriedOver?: number }
+// casual comes only on byEmployee groups: an employee whose employment type is Casual.
+type Group = Totals & { key: string; name: string; casual?: boolean; allowanceItems?: ItemLine[]; deductionItems?: ItemLine[]; carriedOver?: number }
+type Workers = '' | 'OFFICIAL' | 'CASUAL'
 type SalaryReport = {
   range: { from: string | null; to: string | null }
   totals: Totals
@@ -33,6 +35,26 @@ const SECTIONS: { key: 'byEmployee' | 'byLocation' | 'byDepartment' | 'byMonth';
   { key: 'byDepartment', title: 'By department', label: 'Department' },
   { key: 'byMonth', title: 'By month', label: 'Month' },
 ]
+
+// What the report shows, in order. With all workers, By employee is split into official
+// employees and casual workers (employment type Casual), each with its own subtotal.
+type ViewSection = { id: string; title: string; label: string; groups: Group[]; total: Totals; employees: boolean; subtotal: boolean }
+const sumGroups = (groups: Group[]): Totals => groups.reduce(
+  (t, g) => ({ count: t.count + g.count, basic: t.basic + g.basic, allowances: t.allowances + g.allowances, deductions: t.deductions + g.deductions, gross: t.gross + g.gross, net: t.net + g.net }),
+  { count: 0, basic: 0, allowances: 0, deductions: 0, gross: 0, net: 0 },
+)
+function viewSections(data: SalaryReport, workers: Workers): ViewSection[] {
+  return SECTIONS.flatMap((section): ViewSection[] => {
+    if (section.key !== 'byEmployee') return [{ id: section.key, title: section.title, label: section.label, groups: data[section.key], total: data.totals, employees: false, subtotal: false }]
+    const official = data.byEmployee.filter((g) => !g.casual)
+    const casual = data.byEmployee.filter((g) => g.casual)
+    const part = (id: string, title: string, groups: Group[], subtotal: boolean): ViewSection => ({ id, title, label: 'Employee', groups, total: sumGroups(groups), employees: true, subtotal })
+    if (workers === 'OFFICIAL') return [part('official', 'Official employees', official, false)]
+    if (workers === 'CASUAL') return [part('casual', 'Casual workers', casual, false)]
+    return [part('official', 'Official employees', official, true), ...(casual.length ? [part('casual', 'Casual workers', casual, true)] : [])]
+  })
+}
+const WORKERS_LABEL: Record<Workers, string> = { '': '', OFFICIAL: 'Official employees only', CASUAL: 'Casual workers only' }
 
 const HEADINGS = ['Payslips', 'Basic', 'Allowances', 'Deductions', 'Gross', 'Net']
 const groupCells = (g: Totals) => [g.count, formatKes(g.basic), formatKes(g.allowances), formatKes(g.deductions), formatKes(g.gross), formatKes(g.net)]
@@ -65,6 +87,7 @@ export default function SalariesReport({ tabs }: { tabs?: ReactNode } = {}) {
   const [month, setMonth] = useState(isoDay(monthStart(today)).slice(0, 7))
   const [locationId, setLocationId] = useState('')
   const [departmentId, setDepartmentId] = useState('')
+  const [workers, setWorkers] = useState<Workers>('')
   const [locations, setLocations] = useState<Option[]>([])
   const [departments, setDepartments] = useState<Option[]>([])
   const [report, setReport] = useState<SalaryReport | null>(null)
@@ -83,6 +106,7 @@ export default function SalariesReport({ tabs }: { tabs?: ReactNode } = {}) {
       const query = new URLSearchParams({ month })
       if (locationId) query.set('locationId', locationId)
       if (departmentId) query.set('departmentId', departmentId)
+      if (workers) query.set('workers', workers)
       setReport(await api<SalaryReport>(`/employee-salaries/report?${query}`))
     } catch (e) {
       setReport(null)
@@ -90,31 +114,32 @@ export default function SalariesReport({ tabs }: { tabs?: ReactNode } = {}) {
     } finally {
       setLoading(false)
     }
-  }, [month, locationId, departmentId])
+  }, [month, locationId, departmentId, workers])
 
   useEffect(() => { if (hasApiTenant()) void load() }, [load])
 
   function exportCsv(data: SalaryReport) {
     const rows: (string | number)[][] = [['Section', 'Name', ...HEADINGS, 'Allowance breakdown', 'Deduction breakdown']]
-    rows.push(['Total', 'All', ...groupCells(data.totals)])
-    for (const section of SECTIONS) {
-      for (const group of data[section.key]) {
-        rows.push(section.key === 'byEmployee'
+    rows.push(['Total', WORKERS_LABEL[workers] || 'All', ...groupCells(data.totals)])
+    for (const section of viewSections(data, workers)) {
+      for (const group of section.groups) {
+        rows.push(section.employees
           ? [section.title, group.name, ...groupCells(group), itemLines(group.allowanceItems).join('; '), itemLines(group.deductionItems, carriedLine(group)).join('; ')]
           : [section.title, group.name, ...groupCells(group)])
       }
+      if (section.subtotal && section.groups.length) rows.push([section.title, 'Subtotal', ...groupCells(section.total)])
     }
     downloadCsvRows('salaries-report', rows)
   }
 
   function buildReportDoc(data: SalaryReport): ReportDocData {
     const monthName = new Date(`${month}-01T00:00:00`).toLocaleDateString('en-KE', { month: 'long', year: 'numeric' })
-    const sections: ReportSection[] = SECTIONS.map((section) => ({
+    const sections: ReportSection[] = viewSections(data, workers).map((section) => ({
       title: section.title,
       compact: true,
       columns: printColumns(section.label),
-      rows: data[section.key].map((group) => {
-        if (section.key !== 'byEmployee') return [group.name, ...groupCells(group)]
+      rows: [...section.groups.map((group) => {
+        if (!section.employees) return [group.name, ...groupCells(group)]
         const [count, basic, , , gross, net] = groupCells(group)
         return [
           group.name, count, basic,
@@ -122,12 +147,12 @@ export default function SalariesReport({ tabs }: { tabs?: ReactNode } = {}) {
           breakdownCell(group.deductions, itemLines(group.deductionItems, carriedLine(group))),
           gross, net,
         ]
-      }),
+      }), ...(section.subtotal && section.groups.length ? [['Subtotal', ...groupCells(section.total)]] : [])],
     }))
     return {
       reportTitle: 'Salaries Report',
       kicker: 'Reports',
-      rangeLabel: monthName,
+      rangeLabel: WORKERS_LABEL[workers] ? `${monthName} · ${WORKERS_LABEL[workers]}` : monthName,
       generatedAt: new Date().toISOString(),
       // Gross first, then what comes off and goes on, then net.
       cards: [
@@ -166,6 +191,13 @@ export default function SalariesReport({ tabs }: { tabs?: ReactNode } = {}) {
               {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
             </select>
           </label>
+          <label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Workers
+            <select className="input mt-1 block" value={workers} onChange={(e) => setWorkers(e.target.value as Workers)}>
+              <option value="">All workers</option>
+              <option value="OFFICIAL">Official employees only</option>
+              <option value="CASUAL">Casual workers only</option>
+            </select>
+          </label>
           <div className="ml-auto flex gap-2">
             <ActionButton tone="primary" icon={<LuDownload />} disabled={!report || loading} onClick={() => report && exportCsv(report)}>Export Excel</ActionButton>
             <PrintReportButton data={report ? buildReportDoc(report) : null} disabled={loading} />
@@ -186,8 +218,8 @@ export default function SalariesReport({ tabs }: { tabs?: ReactNode } = {}) {
             <StatCard index={4} label="Payslips" value={String(totals.count)} icon={<LuUsers className="size-4" />} />
           </section>
 
-          {SECTIONS.map((section) => (
-            <section key={section.key} className="mt-6 overflow-hidden rounded-sm border bg-card shadow-sm">
+          {viewSections(report!, workers).map((section) => (
+            <section key={section.id} className="mt-6 overflow-hidden rounded-sm border bg-card shadow-sm">
               <header className="border-b border-l-4 border-l-accent p-4"><h2 className="font-display text-lg font-semibold leading-tight">{section.title}</h2></header>
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
@@ -198,17 +230,17 @@ export default function SalariesReport({ tabs }: { tabs?: ReactNode } = {}) {
                     </tr>
                   </thead>
                   <tbody>
-                    {report![section.key].length === 0 && <tr><td colSpan={HEADINGS.length + 1} className="px-4 py-6 text-center text-muted-foreground">No completed salaries in this range.</td></tr>}
-                    {report![section.key].map((group) => (
+                    {section.groups.length === 0 && <tr><td colSpan={HEADINGS.length + 1} className="px-4 py-6 text-center text-muted-foreground">No completed salaries in this range.</td></tr>}
+                    {section.groups.map((group) => (
                       <tr key={group.key} className="border-t">
                         <td className="px-4 py-2.5 font-medium">{group.name}</td>
                         {groupCells(group).map((cell, i) => <td key={i} className="px-4 py-2.5 text-right tabular-nums">{cell}</td>)}
                       </tr>
                     ))}
-                    {report![section.key].length > 0 && (
+                    {section.groups.length > 0 && (
                       <tr className="border-t bg-muted/30 font-semibold">
-                        <td className="px-4 py-2.5">Total</td>
-                        {groupCells(totals).map((cell, i) => <td key={i} className="px-4 py-2.5 text-right tabular-nums">{cell}</td>)}
+                        <td className="px-4 py-2.5">{section.subtotal ? 'Subtotal' : 'Total'}</td>
+                        {groupCells(section.total).map((cell, i) => <td key={i} className="px-4 py-2.5 text-right tabular-nums">{cell}</td>)}
                       </tr>
                     )}
                   </tbody>

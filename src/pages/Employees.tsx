@@ -358,7 +358,7 @@ export default function Employees() {
                           {initials(employee)}
                         </span>
                         <div>
-                          <p className="font-semibold">{employee.firstName} {employee.lastName}</p>
+                          <p className="font-semibold">{employee.firstName} {employee.lastName}{employee.employmentType === 'CASUAL' && <span className="ml-2 border border-dashed border-secondary/60 px-1.5 py-0.5 align-middle text-[10px] font-bold uppercase tracking-wide text-secondary">Casual</span>}</p>
                           <p className="text-xs text-muted-foreground">{employee.employeeCode}{!employee.hasSystemAccess && <span className="ml-2 font-bold uppercase text-muted-foreground">· No system access</span>}</p>
                         </div>
                       </div>

@@ -24,7 +24,6 @@ import { useToast } from '@/components/ui/Toast'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import type { DocProfile, PayslipDocData } from '@/components/documents/pdf'
-import CasualLabourModal, { type CasualPayment } from '@/components/salaries/CasualLabourModal'
 
 const DocumentViewer = lazy(() => import('@/components/documents/DocumentViewer'))
 
@@ -42,6 +41,8 @@ type Employee = {
   lastName: string
   employeeCode: string
   jobTitle?: string | null
+  // CASUAL = paid in full, off the statutory payroll; anything else is an official employee.
+  employmentType?: string | null
   phone?: string | null
   status: string
   salaryAmount: string | number
@@ -103,7 +104,6 @@ type ProcessForm = {
 const money = (value: string | number) => `KSh ${Number(value).toLocaleString('en-KE', { maximumFractionDigits: 2 })}`
 const titleCase = (value: string) => value.toLowerCase().split('_').map((part) => part[0].toUpperCase() + part.slice(1)).join(' ')
 const monthLabel = (value: string) => new Date(value).toLocaleDateString('en-KE', { month: 'long', year: 'numeric' })
-const dayLabel = (value: string) => new Date(value).toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric' })
 
 function payslipData(salary: Salary): PayslipDocData {
   return {
@@ -166,6 +166,7 @@ export default function EmployeeSalaries({ tabs }: { tabs?: ReactNode } = {}) {
   const [employeeFilter, setEmployeeFilter] = useState('')
   const [locationFilter, setLocationFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [workersFilter, setWorkersFilter] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -185,9 +186,6 @@ export default function EmployeeSalaries({ tabs }: { tabs?: ReactNode } = {}) {
     return next
   })
   const [printing, setPrinting] = useState<Salary | null>(null)
-  // Casual labourers paid on the spot - listed with the payslips, marked CASUAL.
-  const [casual, setCasual] = useState<CasualPayment[]>([])
-  const [casualOpen, setCasualOpen] = useState(false)
   const [profile, setProfile] = useState<DocProfile>(null)
   const [advanceForm, setAdvanceForm] = useState({ employeeId: '', payPeriod: monthValue(), allowances: [] as LineDraft[], deductions: [{ label: `Advance - ${todayLabel()}`, amount: '' }], notes: '' })
   const [processForm, setProcessForm] = useState<ProcessForm>(emptyProcess())
@@ -196,59 +194,6 @@ export default function EmployeeSalaries({ tabs }: { tabs?: ReactNode } = {}) {
   const [carryPrompt, setCarryPrompt] = useState<{ excess: number; gross: number; deductions: number; monthName: string; retry: () => Promise<void> } | null>(null)
   const [newItem, setNewItem] = useState<{ type: ItemType; label: string; amount: string }>({ type: 'DEDUCTION', label: '', amount: '' })
   const [completeForm, setCompleteForm] = useState<{ paymentMethod: PaymentMethod | ''; reference: string; notes: string }>({ paymentMethod: '', reference: '', notes: '' })
-
-  // Payslips and casual payments in one list, newest first (pay period / date worked).
-  const rows = useMemo(() => [
-    ...salaries.map((salary) => ({ kind: 'salary' as const, id: salary.id, date: salary.payPeriod, salary })),
-    ...casual.map((payment) => ({ kind: 'casual' as const, id: payment.id, date: payment.workDate, payment })),
-  ].sort((a, b) => b.date.localeCompare(a.date)), [salaries, casual])
-  const liveCasual = casual.filter((payment) => payment.status !== 'VOIDED')
-  const shownCount = summary.count + liveCasual.length
-  const shownNetPay = summary.netPay + liveCasual.reduce((sum, payment) => sum + Number(payment.amount), 0)
-
-  async function voidCasual(payment: CasualPayment) {
-    const reason = window.prompt(`Void ${payment.paymentNo} (${payment.workerName})? Enter the reason.`)
-    if (!reason?.trim()) return
-    try {
-      await api(`/employee-salaries/casual/${payment.id}/void`, { method: 'POST', body: JSON.stringify({ reason }) })
-      toast.success(`${payment.paymentNo} voided.`)
-      await loadSalaries()
-    } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : 'Could not void the payment')
-    }
-  }
-
-  const renderCasual = (payment: CasualPayment) => (
-    <Fragment key={payment.id}>
-      <tr className="border-t transition hover:bg-muted/30">
-        <td className="px-5 py-4 font-semibold">
-          <button type="button" onClick={() => toggleExpanded(payment.id)} title={expanded.has(payment.id) ? 'Hide details' : 'Show details'} className="inline-flex items-center gap-1.5 hover:text-secondary">
-            {expanded.has(payment.id) ? <LuChevronDown className="size-4 shrink-0" /> : <LuChevronRight className="size-4 shrink-0" />}
-            {payment.paymentNo}
-          </button>
-          <span className="ml-2 border border-dashed border-secondary/60 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-secondary">Casual</span>
-        </td>
-        <td className="px-5 py-4">
-          <p className="font-semibold">{payment.workerName}</p>
-          <p className="text-xs text-muted-foreground">{payment.job}{payment.location ? ` · ${payment.location.name}` : ''}</p>
-        </td>
-        <td className="px-5 py-4 text-muted-foreground">{dayLabel(payment.workDate)}</td>
-        <td className="px-5 py-4 text-right font-semibold">{money(payment.amount)}</td>
-        <td className="px-5 py-4 text-muted-foreground">{titleCase(payment.paymentMethod)}</td>
-        <td className="px-5 py-4"><StatusBadge status={payment.status} /></td>
-        <td className="px-5 py-4">
-          <div className="flex justify-end gap-1">
-            {payment.status === 'COMPLETE' && <button onClick={() => void voidCasual(payment)} title="Void payment" className="rounded-sm p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><LuTrash2 /></button>}
-          </div>
-        </td>
-      </tr>
-      {expanded.has(payment.id) && (
-        <tr className="bg-muted/20">
-          <td colSpan={7} className="px-5 pb-4 pt-1"><CasualDetails payment={payment} /></td>
-        </tr>
-      )}
-    </Fragment>
-  )
 
   const activeEmployees = useMemo(() => employees.filter((employee) => employee.status === 'ACTIVE'), [employees])
 
@@ -264,20 +209,10 @@ export default function EmployeeSalaries({ tabs }: { tabs?: ReactNode } = {}) {
       if (employeeFilter) query.set('employeeId', employeeFilter)
       if (locationFilter) query.set('locationId', locationFilter)
       if (statusFilter) query.set('status', statusFilter)
-      // Casual labourers aren't employees and are never drafts, so an employee or Draft filter hides them.
-      const casualQuery = new URLSearchParams(query)
-      casualQuery.delete('employeeId')
-      const showCasual = !employeeFilter && statusFilter !== 'DRAFT'
-      const [response, casualResponse] = await Promise.all([
-        api<{ salaries: Salary[]; summary: Summary }>(`/employee-salaries${query.size ? `?${query}` : ''}`),
-        // A failed casual list must not hide the payslips.
-        showCasual
-          ? api<{ payments: CasualPayment[] }>(`/employee-salaries/casual${casualQuery.size ? `?${casualQuery}` : ''}`).catch(() => ({ payments: [] as CasualPayment[] }))
-          : Promise.resolve({ payments: [] as CasualPayment[] }),
-      ])
+      if (workersFilter) query.set('workers', workersFilter)
+      const response = await api<{ salaries: Salary[]; summary: Summary }>(`/employee-salaries${query.size ? `?${query}` : ''}`)
       setSalaries(response.salaries)
       setSummary(response.summary)
-      setCasual(casualResponse.payments)
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Could not load salaries'
       setError(message)
@@ -285,7 +220,7 @@ export default function EmployeeSalaries({ tabs }: { tabs?: ReactNode } = {}) {
     } finally {
       setLoading(false)
     }
-  }, [employeeFilter, from, locationFilter, search, statusFilter, to, toast, year])
+  }, [employeeFilter, from, locationFilter, search, statusFilter, to, toast, workersFilter, year])
 
   useEffect(() => {
     const timer = window.setTimeout(() => void loadSalaries(), 250)
@@ -550,9 +485,6 @@ export default function EmployeeSalaries({ tabs }: { tabs?: ReactNode } = {}) {
           <Button variant="secondary" onClick={() => openAdvance()}>
             <LuWalletCards /> Record advance
           </Button>
-          <Button variant="secondary" onClick={() => setCasualOpen(true)}>
-            <LuPlus /> Record casual labour
-          </Button>
           <Button onClick={() => openProcess()}>
             <LuPlus /> Process salary
           </Button>
@@ -560,8 +492,8 @@ export default function EmployeeSalaries({ tabs }: { tabs?: ReactNode } = {}) {
       </header>
 
       <section className="mt-7 grid gap-3 md:grid-cols-4">
-        <StatCard icon={<LuBanknote />} label="Payroll records" value={shownCount} />
-        <StatCard tone="success" icon={<LuCircleCheck />} label="Net pay" value={money(shownNetPay)} />
+        <StatCard icon={<LuBanknote />} label="Payroll records" value={summary.count} />
+        <StatCard tone="success" icon={<LuCircleCheck />} label="Net pay" value={money(summary.netPay)} />
         <StatCard index={2} icon={<LuPlus />} label="Allowances" value={money(summary.allowances)} />
         <StatCard tone="danger" icon={<LuWalletCards />} label="Deductions" value={money(summary.deductions)} />
       </section>
@@ -586,6 +518,11 @@ export default function EmployeeSalaries({ tabs }: { tabs?: ReactNode } = {}) {
             <option value="">All storefronts</option>
             {locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
           </select>
+          <select value={workersFilter} onChange={(e) => setWorkersFilter(e.target.value)} className="input lg:col-start-5">
+            <option value="">All workers</option>
+            <option value="OFFICIAL">Official employees</option>
+            <option value="CASUAL">Casual workers</option>
+          </select>
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="input lg:col-start-6">
             <option value="">All statuses</option>
             {statuses.map((status) => <option key={status} value={status}>{titleCase(status)}</option>)}
@@ -596,7 +533,7 @@ export default function EmployeeSalaries({ tabs }: { tabs?: ReactNode } = {}) {
           <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground">
             <LuLoaderCircle className="animate-spin" /> Loading salaries...
           </div>
-        ) : rows.length === 0 ? (
+        ) : salaries.length === 0 ? (
           <div className="min-h-64 p-16 text-center text-sm text-muted-foreground">No salary records match your filters.</div>
         ) : (
           <div className="overflow-x-auto">
@@ -613,10 +550,7 @@ export default function EmployeeSalaries({ tabs }: { tabs?: ReactNode } = {}) {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => {
-                  if (row.kind === 'casual') return renderCasual(row.payment)
-                  const salary = row.salary
-                  return (
+                {salaries.map((salary) => (
                   <Fragment key={salary.id}>
                   <tr className="border-t transition hover:bg-muted/30">
                     <td className="px-5 py-4 font-semibold">
@@ -626,7 +560,7 @@ export default function EmployeeSalaries({ tabs }: { tabs?: ReactNode } = {}) {
                       </button>
                     </td>
                     <td className="px-5 py-4">
-                      <p className="font-semibold">{salary.employee.firstName} {salary.employee.lastName}</p>
+                      <p className="font-semibold">{salary.employee.firstName} {salary.employee.lastName}{salary.employee.employmentType === 'CASUAL' && <span className="ml-2 border border-dashed border-secondary/60 px-1.5 py-0.5 align-middle text-[10px] font-bold uppercase tracking-wide text-secondary">Casual</span>}</p>
                       <p className="text-xs text-muted-foreground">{salary.employee.employeeCode}{salary.employee.defaultLocation ? ` · ${salary.employee.defaultLocation.name}` : ''}</p>
                     </td>
                     <td className="px-5 py-4 text-muted-foreground">{monthLabel(salary.payPeriod)}</td>
@@ -650,15 +584,12 @@ export default function EmployeeSalaries({ tabs }: { tabs?: ReactNode } = {}) {
                     </tr>
                   )}
                   </Fragment>
-                  )
-                })}
+                ))}
               </tbody>
             </table>
           </div>
         )}
       </section>
-
-      {casualOpen && <CasualLabourModal locations={locations} onClose={() => setCasualOpen(false)} onSaved={() => { setCasualOpen(false); void loadSalaries() }} />}
 
       <ConfirmModal
         open={carryPrompt !== null}
@@ -932,30 +863,6 @@ function LineEditor({ title, lines, addLabel, onChange }: { title: string; lines
           ))}
         </div>
       )}
-    </div>
-  )
-}
-
-/** A casual payment's details, shown under its row in the list. */
-function CasualDetails({ payment }: { payment: CasualPayment }) {
-  const worked = payment.quantity && payment.rate
-    ? `${Number(payment.quantity)} ${payment.unitLabel ?? 'days'} x ${money(payment.rate)}`
-    : 'Flat amount'
-  const rows: [string, string | null][] = [
-    ['Job', payment.job],
-    ['Pay', `${worked} = ${money(payment.amount)}`],
-    ['Location', payment.location?.name ?? null],
-    ['Phone', payment.workerPhone],
-    ['ID number', payment.workerIdNo],
-    ['Reference', payment.reference],
-    ['Notes', payment.notes],
-    ['Void reason', payment.voidReason],
-  ]
-  return (
-    <div className="grid gap-x-6 gap-y-1.5 rounded-sm border bg-card p-3 text-sm sm:grid-cols-2">
-      {rows.filter(([, value]) => value).map(([label, value]) => (
-        <div key={label} className="flex justify-between gap-4"><span className="text-muted-foreground">{label}</span><span className="text-right">{value}</span></div>
-      ))}
     </div>
   )
 }
