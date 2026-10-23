@@ -1,5 +1,5 @@
 import { computeFinancialsFromRows } from '@/lib/orderTotals'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
   LuBan, LuBedDouble, LuBellRing, LuBuilding2, LuCheck, LuChevronDown, LuCircleAlert, LuCircleCheck, LuClipboardList, LuCoffee, LuGift, LuLoaderCircle, LuMapPin, LuMinus,
   LuPause, LuPencil, LuPlus, LuPrinter, LuReceiptText, LuSearch, LuSlidersHorizontal, LuTrash2, LuUserRound, LuX,
@@ -278,6 +278,7 @@ export default function PointOfSale() {
   const [servingId, setServingId] = useState<string | null>(null)
   const [ackingId, setAckingId] = useState<string | null>(null)
   const [revertOrder, setRevertOrder] = useState<ActiveOrder | null>(null)
+  const [compOrder, setCompOrder] = useState<ActiveOrder | null>(null)
   const [revertingId, setRevertingId] = useState<string | null>(null)
   const [voidingId, setVoidingId] = useState<string | null>(null)
   const [voidTarget, setVoidTarget] = useState<CompletedOrder | null>(null)
@@ -469,6 +470,7 @@ export default function PointOfSale() {
   })
   // Mirrors the server: only an order nobody has started (OPEN) can be reverted. A counter
   // order is born READY, so it never shows Revert - after posting it's a return or Super Admin.
+  const canMakeComplimentary = (order: ActiveOrder) => isSuperAdmin && order.saleType !== 'COMPLIMENTARY' && (order.paymentStatus ?? 'UNPAID') === 'UNPAID'
   const canRevertActiveOrder = (order: ActiveOrder) => order.status === 'OPEN' && !order.location?.requireStoreDispatch
   // Mirrors PATCH /pos/orders/:id/serve: counter orders - the barman (POS_APPROVE_COUNTER) or
   // Super Admin; kitchen orders - the waiter who owns the order or Super Admin.
@@ -900,6 +902,7 @@ export default function PointOfSale() {
                           {compBadge && <span className={cn('shrink-0 keep-round border border-dashed px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', compBadge.cls)}>{compBadge.label}</span>}
                           {pendingReturns > 0 && <span className="shrink-0 keep-round border border-dashed border-warning/70 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-warning">Return pending</span>}
                           <button type="button" onClick={() => setReceiptOrderId(order.id)} title="Preview receipt" className="shrink-0 rounded-sm p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"><LuPrinter className="size-4" /></button>
+                          {canMakeComplimentary(order) && <button type="button" onClick={() => setCompOrder(order)} title="Make complimentary" className="shrink-0 rounded-sm p-1.5 text-muted-foreground transition hover:bg-warning/10 hover:text-warning"><LuGift className="size-4" /></button>}
                           {canRevertActiveOrder(order) && <button type="button" onClick={() => setRevertOrder(order)} title="Revert undeducted order" className="shrink-0 rounded-sm p-1.5 text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive"><LuTrash2 className="size-4" /></button>}
                           <span className="shrink-0 keep-round border border-dashed border-destructive/70 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-destructive">{isCounterOrder(order) ? 'Pending' : 'Ready'}</span>
                           <span className="shrink-0 text-sm font-bold tabular-nums text-foreground">{formatKes(order.total)}</span>
@@ -952,6 +955,7 @@ export default function PointOfSale() {
                       <div className="mt-4 flex flex-wrap gap-2">
                         <button onClick={() => setReceiptOrderId(order.id)} title="Receipt" className="inline-flex items-center justify-center rounded-sm border p-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"><LuPrinter className="size-3.5" /></button>
                         <button onClick={() => setAddItemsOrder(order)} className="inline-flex items-center gap-1.5 rounded-sm border px-3 py-1.5 text-xs font-semibold hover:bg-muted"><LuPencil className="size-3.5" /> Manage</button>
+                        {canMakeComplimentary(order) && <button onClick={() => setCompOrder(order)} className="inline-flex items-center gap-1.5 rounded-sm border border-warning/40 px-3 py-1.5 text-xs font-semibold text-warning hover:bg-warning/10"><LuGift className="size-3.5" /> Make complimentary</button>}
                         {canRevertActiveOrder(order) && <button onClick={() => setRevertOrder(order)} className="inline-flex items-center gap-1.5 rounded-sm border border-destructive/30 px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/10"><LuTrash2 className="size-3.5" /> Revert</button>}
                         {canServe && canServeOrder(order) && (
                           <button type="button" disabled={servingId === order.id} onClick={() => void serveOrder(order.id)} className="inline-flex items-center gap-1.5 rounded-sm bg-accent px-3 py-1.5 text-xs font-bold text-accent-foreground disabled:opacity-50">
@@ -1332,6 +1336,14 @@ export default function PointOfSale() {
           orderId={receiptOrderId}
           profile={profile as ReceiptProfile}
           onClose={() => setReceiptOrderId(null)}
+        />
+      )}
+
+      {compOrder && (
+        <MakeComplimentaryModal
+          order={compOrder}
+          onClose={() => setCompOrder(null)}
+          onDone={() => { setCompOrder(null); void loadActiveOrders(true) }}
         />
       )}
 
@@ -1923,6 +1935,61 @@ function UpdatedItemsStrip({ lines, canConfirm, confirming, onConfirm, note }: {
           {confirming && <LuLoaderCircle className="size-3.5 animate-spin" />} Served the added items
         </button>
       ) : <p className="mt-1.5 text-[11px]">Waiting for the counter to serve these.</p>}
+    </div>
+  )
+}
+
+/** Super Admin: an unpaid sale that was really given away becomes complimentary. */
+function MakeComplimentaryModal({ order, onClose, onDone }: { order: ActiveOrder; onClose: () => void; onDone: () => void }) {
+  const toast = useToast()
+  const [reason, setReason] = useState('')
+  const [recipientName, setRecipientName] = useState(order.customer ? `${order.customer.firstName} ${order.customer.lastName ?? ''}`.trim() : '')
+  const [saving, setSaving] = useState(false)
+  const ready = reason.trim().length >= 3 && recipientName.trim().length >= 2
+
+  async function submit(event: FormEvent) {
+    event.preventDefault()
+    if (!ready || saving) return
+    setSaving(true)
+    try {
+      await api(`/pos/orders/${order.id}/make-complimentary`, { method: 'POST', body: JSON.stringify({ reason: reason.trim(), recipientName: recipientName.trim() }) })
+      toast.success(`Order #${order.orderNumber} is now complimentary.`)
+      onDone()
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : 'Could not make this order complimentary')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
+      <form onSubmit={submit} className="w-full max-w-md border-2 border-foreground/25 bg-card p-6 shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
+        <div className="-mx-6 -mt-6 flex items-start justify-between gap-3 border-b-4 border-accent bg-muted/60 px-6 py-4">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-warning">Make complimentary</p>
+            <h2 className="mt-1 font-display text-xl font-semibold">Order #{order.orderNumber} · {formatKes(order.total)}</h2>
+          </div>
+          <button type="button" onClick={onClose} title="Close" className="bg-black p-2 text-white transition hover:bg-black/80"><LuX className="size-4" /></button>
+        </div>
+        <p className="mt-4 text-sm text-muted-foreground">
+          This order stops being a sale: nothing is to be paid, and reports count it as given away. Stock is not changed.
+        </p>
+        <label className="mt-4 block text-sm font-medium">
+          Given to <span className="text-destructive">*</span>
+          <input autoFocus required minLength={2} value={recipientName} onChange={(e) => setRecipientName(e.target.value)} placeholder="e.g. DJ Lexx, the owner's guest" className="input mt-1.5" />
+        </label>
+        <label className="mt-3 block text-sm font-medium">
+          Reason <span className="text-destructive">*</span>
+          <input required minLength={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. host bottle, rung up as a sale by mistake" className="input mt-1.5" />
+        </label>
+        <div className="mt-6 flex justify-end gap-2 border-t pt-5">
+          <button type="button" onClick={onClose} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Keep as sale</button>
+          <button type="submit" disabled={!ready || saving} className="inline-flex items-center gap-2 rounded-sm bg-warning px-4 py-2.5 text-sm font-semibold text-warning-foreground disabled:opacity-60">
+            {saving ? <LuLoaderCircle className="animate-spin" /> : <LuGift className="size-4" />} Make complimentary
+          </button>
+        </div>
+      </form>
     </div>
   )
 }
