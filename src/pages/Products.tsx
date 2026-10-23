@@ -26,7 +26,7 @@ import StatCard from '@/components/ui/StatCard'
 import UnitsOfMeasureModal from '@/components/UnitsOfMeasureModal'
 import PackQtyInput, { packAndUnit } from '@/components/ui/PackQtyInput'
 import SearchableSelect from '@/components/ui/SearchableSelect'
-import { PRODUCT_TAG_OPTIONS, productTagLabel } from '@/lib/productTags'
+import { operationOptionsFromLocations, productTagLabel } from '@/lib/productTags'
 import ProductHistoryModal, { MOVEMENT_LABELS } from '@/components/ProductHistoryModal'
 
 type Category = { id: string; name: string; level: number; parentId: string | null }
@@ -73,7 +73,6 @@ type Summary = { total: number; active: number; inactive: number; lowStock: numb
 // convention is enforced both here (min="0") and again server-side.
 type ManualMovementType = 'PURCHASE' | 'RETURN' | 'DAMAGE_LOSS' | 'ADJUSTMENT' | 'OPENING_STOCK'
 const MANUAL_MOVEMENT_TYPES: ManualMovementType[] = ['PURCHASE', 'RETURN', 'DAMAGE_LOSS', 'ADJUSTMENT', 'OPENING_STOCK']
-const PRODUCT_TAG_VALUES = new Set<string>(PRODUCT_TAG_OPTIONS.map((option) => option.value))
 const MANUAL_MOVEMENT_HINTS: Record<ManualMovementType, string> = {
   PURCHASE: 'Stock bought in outside the normal Purchases/Goods-Receipt flow — adds to stock.',
   RETURN: 'Stock physically handed back in (e.g. a customer return) — adds to stock.',
@@ -221,19 +220,7 @@ export default function Products() {
     { value: '', label: 'All categories' },
     ...categories.map((category) => ({ value: category.id, label: categoryLabel(category) })),
   ], [categories, categoryLabel])
-  const operationOptions = useMemo(() => {
-    const seen = new Set<string>()
-    return locations
-      .filter((location) => location.isActive !== false && location.type)
-      .map((location) => ({ location, tag: location.type!.toUpperCase() }))
-      .filter(({ tag }) => PRODUCT_TAG_VALUES.has(tag))
-      .filter(({ tag }) => {
-        if (seen.has(tag)) return false
-        seen.add(tag)
-        return true
-      })
-      .map(({ location, tag }) => ({ value: tag, label: location.name, hint: productTagLabel(tag) }))
-  }, [locations])
+  const operationOptions = useMemo(() => operationOptionsFromLocations(locations), [locations])
   const operationFilterOptions = useMemo(() => [{ value: '', label: 'All operations' }, ...operationOptions], [operationOptions])
   const formOperationOptions = useMemo(() => {
     const known = new Set(operationOptions.map((option) => option.value))

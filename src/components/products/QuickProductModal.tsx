@@ -3,7 +3,7 @@ import { LuLoaderCircle } from 'react-icons/lu'
 import { api } from '@/lib/api'
 import { useToast } from '@/components/ui/Toast'
 import ModalShell from '@/components/ui/ModalShell'
-import { PRODUCT_TAG_OPTIONS } from '@/lib/productTags'
+import { operationOptionsFromLocations } from '@/lib/productTags'
 import { cn } from '@/lib/utils'
 import PackQtyInput from '@/components/ui/PackQtyInput'
 import { QuickNewButton } from '@/components/QuickAddModal'
@@ -19,7 +19,7 @@ export type QuickProduct = {
 
 type Unit = { id: string; name: string }
 type Category = { id: string; name: string }
-type Location = { id: string; name: string; isActive?: boolean }
+type Location = { id: string; name: string; type?: string; isActive?: boolean }
 
 /**
  * Create a stock product without leaving the form that needs one (a menu item,
@@ -180,7 +180,7 @@ export default function QuickProductModal({ initialName = '', onClose, onCreated
         <div className="sm:col-span-2">
           <span className="mb-1.5 block text-sm font-medium">Used at</span>
           <div className="flex flex-wrap gap-1.5">
-            {PRODUCT_TAG_OPTIONS.map((option) => {
+            {operationOptionsFromLocations(locations).map((option) => {
               const on = tags.includes(option.value)
               return (
                 <button
