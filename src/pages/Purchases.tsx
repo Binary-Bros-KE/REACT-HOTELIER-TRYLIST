@@ -9,6 +9,7 @@ import {
   LuPrinter,
   LuSearch,
   LuShoppingBag,
+  LuChevronRight,
   LuTrash2,
   LuTruck,
   LuWallet,
@@ -676,8 +677,13 @@ export default function Purchases() {
                         <button type="button" onClick={() => removeRow(index)} title="Remove" className="rounded-sm p-1.5 pt-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><LuX className="size-4" /></button>
                         </div>
                         {menuRefs.length > 0 && (
-                          <div className="mt-2 rounded-sm bg-muted/35 p-2">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Menu items using this product</p>
+                          // Collapsed by default: a staple like onions is in almost every recipe, so the list can run very long.
+                          <details className="group mt-2 rounded-sm bg-muted/35 p-2">
+                            <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
+                              <LuChevronRight className="size-3.5 transition-transform group-open:rotate-90" />
+                              Menu items using this product ({menuRefs.length})
+                              <span className="font-normal normal-case tracking-normal">· update their selling prices</span>
+                            </summary>
                             <div className="mt-2 grid gap-2 sm:grid-cols-2">
                               {menuRefs.map((ref) => {
                                 const isSame = (update: MenuPriceUpdate) => update.menuItemId === ref.menuItemId && (update.variantId ?? undefined) === ref.variantId
@@ -702,7 +708,7 @@ export default function Purchases() {
                                 )
                               })}
                             </div>
-                          </div>
+                          </details>
                         )}
                       </div>
                     )
