@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
-import { LuCircleAlert, LuLoaderCircle, LuUserPlus, LuX } from 'react-icons/lu'
+import { LuCircleAlert, LuGift, LuLoaderCircle, LuUserPlus, LuX } from 'react-icons/lu'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/Toast'
@@ -111,6 +111,10 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
   const [custModalOpen, setCustModalOpen] = useState(false)
   const [creditReason, setCreditReason] = useState('')
   const [creditExpectedAt, setCreditExpectedAt] = useState('')
+  const [compOpen, setCompOpen] = useState(false)
+  const [compReason, setCompReason] = useState('')
+  const [compRecipient, setCompRecipient] = useState('')
+  const [switchingComp, setSwitchingComp] = useState(false)
   // M-Pesa STK push, when the selected method is MPESA: an alternative to typing in the code by hand.
   const [payWay, setPayWay] = useState<'MANUAL' | 'STK'>('MANUAL')
   const [stkPhone, setStkPhone] = useState('')
@@ -133,6 +137,8 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
   const pendingReturnTotal = order?.items.reduce((sum, item) => sum + pendingReturnQty(item), 0) ?? 0
   const roomBillSettlement = order ? roomBillSettlementText(order) : null
   const isLinkedBill = linkedOrders.length > 1
+  // Mirrors POST /pos/orders/:id/make-complimentary: Super Admin, a sale with no payment and no room charge.
+  const canSwitchToComp = isSuperAdmin && !!order && !isComplementary && order.paid <= 0.01 && !order.billedToRoomAt
 
   function stopStkPoll() {
     if (stkPollRef.current.timer) window.clearTimeout(stkPollRef.current.timer)
@@ -249,6 +255,30 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
       toast.error(message)
     } finally {
       setSettling(false)
+    }
+  }
+
+  // Super Admin: a sale that was really given away (common at the bar/club). Unpaid orders only.
+  async function switchToComplimentary() {
+    if (!order || switchingComp) return
+    setError('')
+    setSwitchingComp(true)
+    try {
+      const response = await api<{ order: Order }>(`/pos/orders/${order.id}/make-complimentary`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: compReason.trim(), recipientName: compRecipient.trim() }),
+      })
+      setOrder(response.order)
+      setLinkedOrders([])
+      setCompOpen(false)
+      toast.success('Switched to complimentary. Complete the order to close it.')
+      onChanged()
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'Could not switch this order to complimentary'
+      setError(message)
+      toast.error(message)
+    } finally {
+      setSwitchingComp(false)
     }
   }
 
@@ -713,6 +743,38 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
                     {settling && <LuLoaderCircle className="animate-spin" />}
                     {remaining > 0.01 ? `Complete on credit · ${formatKes(remaining)} owing` : 'Complete order'}
                   </button>
+                  {canSwitchToComp && (compOpen ? (
+                    <div className="space-y-2 rounded-sm border border-warning/40 bg-warning/5 p-3">
+                      <p className="text-xs text-muted-foreground">This order stops being a sale: nothing is to be paid, and reports count it as given away. Stock is not changed.</p>
+                      <label className="block text-xs font-semibold text-warning">
+                        Given to
+                        <TouchInput value={compRecipient} onValueChange={setCompRecipient} placeholder="e.g. DJ Lexx, the owner's guest" className="input mt-1.5 text-foreground" />
+                      </label>
+                      <label className="block text-xs font-semibold text-warning">
+                        Reason
+                        <TouchInput value={compReason} onValueChange={setCompReason} placeholder="e.g. host bottle, rung up as a sale by mistake" className="input mt-1.5 text-foreground" />
+                      </label>
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => setCompOpen(false)} className="flex-1 rounded-sm border py-2 text-xs font-semibold hover:bg-muted">Keep as sale</button>
+                        <button
+                          type="button"
+                          disabled={switchingComp || compReason.trim().length < 3 || compRecipient.trim().length < 2}
+                          onClick={() => void switchToComplimentary()}
+                          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-sm bg-warning py-2 text-xs font-semibold text-warning-foreground disabled:opacity-50"
+                        >
+                          {switchingComp ? <LuLoaderCircle className="animate-spin" /> : <LuGift className="size-3.5" />} Switch to complimentary
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => { setCompRecipient(order.customer ? `${order.customer.firstName} ${order.customer.lastName ?? ''}`.trim() : ''); setCompOpen(true) }}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-sm border border-warning/50 py-2 text-xs font-semibold text-warning hover:bg-warning/10"
+                    >
+                      <LuGift className="size-3.5" /> Switch to complimentary
+                    </button>
+                  ))}
                 </div>
               )}
 
