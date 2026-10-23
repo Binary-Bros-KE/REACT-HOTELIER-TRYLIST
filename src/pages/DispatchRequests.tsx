@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { LuBan, LuCircleAlert, LuLoaderCircle, LuPackageCheck, LuPencil, LuPrinter, LuRefreshCw, LuStore } from 'react-icons/lu'
+import { LuBan, LuCircleAlert, LuLoaderCircle, LuPackageCheck, LuPencil, LuPrinter, LuRefreshCw, LuSearch, LuStore, LuX } from 'react-icons/lu'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { printDispatchSlip, type DispatchSlip } from '@/lib/thermalPrinter'
@@ -46,6 +46,8 @@ type Request = {
   order: { status: string; table: { label: string } | null }
 }
 type Tab = 'pending' | 'history'
+type Filters = { search: string; employeeId: string; toLocationId: string; historyStatus: '' | 'DISPATCHED' | 'REJECTED' | 'CANCELLED'; from: string; to: string }
+const NO_FILTERS: Filters = { search: '', employeeId: '', toLocationId: '', historyStatus: '', from: '', to: '' }
 type RecipeEdit = { requestId: string; recipe: RecipeDetail; products: RecipeProduct[] }
 type Variant = {
   id: string
@@ -188,6 +190,26 @@ export default function DispatchRequests() {
   const [recipeEdit, setRecipeEdit] = useState<RecipeEdit | null>(null)
   const [variantEdit, setVariantEdit] = useState<VariantEdit | null>(null)
   const seen = useState(() => ({ ids: null as Set<string> | null }))[0]
+  const [filters, setFilters] = useState<Filters>(NO_FILTERS)
+  // Typing in search waits a moment before asking the server.
+  const [search, setSearch] = useState('')
+  useEffect(() => {
+    const timer = window.setTimeout(() => setFilters((f) => (f.search === search.trim() ? f : { ...f, search: search.trim() })), 300)
+    return () => window.clearTimeout(timer)
+  }, [search])
+  const [employees, setEmployees] = useState<{ id: string; firstName: string; lastName: string | null }[]>([])
+  const [locations, setLocations] = useState<{ id: string; name: string; isActive?: boolean }[]>([])
+  useEffect(() => {
+    api<{ employees: { id: string; firstName: string; lastName: string | null }[] }>('/employees').then((r) => setEmployees(r.employees)).catch(() => {})
+    api<{ locations: { id: string; name: string; isActive?: boolean }[] }>('/locations').then((r) => setLocations(r.locations.filter((l) => l.isActive !== false))).catch(() => {})
+  }, [])
+  // Status only applies to History.
+  const activeFilters = Object.entries(filters).filter(([key, value]) => value && (key !== 'historyStatus' || tab === 'history'))
+  const filtered = activeFilters.length > 0
+  const setFilter = (patch: Partial<Filters>) => setFilters((f) => ({ ...f, ...patch }))
+  const clearFilters = () => { setSearch(''); setFilters(NO_FILTERS) }
+  // A request a filter brings back into view isn't a new arrival.
+  useEffect(() => { seen.ids = null }, [filters, seen])
 
   // Manual print: this device's thermal printer if it has one, else the browser print sheet.
   async function printSlip(request: Request) {
@@ -216,7 +238,9 @@ export default function DispatchRequests() {
   const load = useCallback(async (quiet = false) => {
     if (quiet) setRefreshing(true); else setLoading(true)
     try {
-      const data = await api<{ requests: Request[] }>(`/dispatch-requests${tab === 'history' ? '?status=history' : ''}`)
+      const query = new URLSearchParams(activeFilters)
+      if (tab === 'history') query.set('status', 'history')
+      const data = await api<{ requests: Request[] }>(`/dispatch-requests${query.size ? `?${query}` : ''}`)
       if (tab === 'pending') {
         // Announce requests that arrived since the last poll.
         if (seen.ids) {
@@ -229,7 +253,8 @@ export default function DispatchRequests() {
       setRequests(data.requests); setError('')
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not load dispatch requests') }
     finally { setLoading(false); setRefreshing(false) }
-  }, [tab, toast, seen])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, toast, seen, filters])
 
   useEffect(() => {
     void load()
@@ -291,12 +316,56 @@ export default function DispatchRequests() {
         ))}
       </div>
 
+      <div className="mt-5 flex flex-wrap items-end gap-3 border bg-card p-3">
+        <label className="flex flex-col gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground min-w-[220px] flex-1">
+          Search
+          <span className="relative">
+            <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Request no. or order no." className="input pl-9 font-normal normal-case tracking-normal" />
+          </span>
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+          From
+          <input type="date" value={filters.from} max={filters.to || undefined} onChange={(e) => setFilter({ from: e.target.value })} className="input w-40 font-normal normal-case tracking-normal" />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+          To
+          <input type="date" value={filters.to} min={filters.from || undefined} onChange={(e) => setFilter({ to: e.target.value })} className="input w-40 font-normal normal-case tracking-normal" />
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+          Employee
+          <select value={filters.employeeId} onChange={(e) => setFilter({ employeeId: e.target.value })} title="Who rang the order up, asked for it, or dispatched it" className="input min-w-44 font-normal normal-case tracking-normal">
+            <option value="">All employees</option>
+            {employees.map((e) => <option key={e.id} value={e.id}>{e.firstName} {e.lastName ?? ''}</option>)}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+          For
+          <select value={filters.toLocationId} onChange={(e) => setFilter({ toLocationId: e.target.value })} className="input min-w-40 font-normal normal-case tracking-normal">
+            <option value="">All kitchens</option>
+            {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+          </select>
+        </label>
+        {tab === 'history' && (
+          <label className="flex flex-col gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+            Status
+            <select value={filters.historyStatus} onChange={(e) => setFilter({ historyStatus: e.target.value as Filters['historyStatus'] })} className="input font-normal normal-case tracking-normal">
+              <option value="">All</option>
+              <option value="DISPATCHED">Dispatched</option>
+              <option value="REJECTED">Rejected</option>
+              <option value="CANCELLED">Cancelled</option>
+            </select>
+          </label>
+        )}
+        {filtered && <ActionButton tone="neutral" icon={<LuX />} onClick={clearFilters}>Clear</ActionButton>}
+      </div>
+
       {tab === 'pending' && <section className="mt-5 grid gap-4 sm:grid-cols-2"><StatCard tone={requests.length ? 'warn' : undefined} index={0} label="Waiting for dispatch" value={requests.length} icon={<LuStore />} /></section>}
 
       {error && <div className="mt-4 flex items-center gap-2 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert /> {error}</div>}
 
       {loading ? <div className="p-16 text-center"><LuLoaderCircle className="mx-auto animate-spin" /></div>
-        : requests.length === 0 ? <div className="mt-5 border border-dashed p-16 text-center text-sm text-muted-foreground">{tab === 'pending' ? 'No kitchen requests waiting. New ones appear here automatically.' : 'No dispatch history yet.'}</div>
+        : requests.length === 0 ? <div className="mt-5 border border-dashed p-16 text-center text-sm text-muted-foreground">{filtered ? 'No requests match these filters.' : tab === 'pending' ? 'No kitchen requests waiting. New ones appear here automatically.' : 'No dispatch history yet.'}</div>
         : (
           <div className="mt-5 grid gap-4 lg:grid-cols-2">
             {requests.map((request) => {
