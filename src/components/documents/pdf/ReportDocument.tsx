@@ -17,7 +17,8 @@ export type ReportColumn = { label: string; align?: 'left' | 'right'; flex?: num
 /** A cell with a bold first line (e.g. a total) and plain lines under it (its breakdown). */
 export type ReportBreakdownCell = { head: string; lines: string[] }
 export type ReportRow = (string | number | ReportBreakdownCell)[] | { kind: 'group'; label: string }
-export type ReportSection = { title: string; note?: string; compact?: boolean; columns: ReportColumn[]; rows: ReportRow[] }
+/** `totals`: an optional last row, printed grey with black bold text so it stands out. */
+export type ReportSection = { title: string; note?: string; compact?: boolean; columns: ReportColumn[]; rows: ReportRow[]; totals?: (string | number)[] }
 export type ReportDocData = {
   reportTitle: string
   kicker?: string
@@ -58,6 +59,8 @@ const rs = StyleSheet.create({
   tdLast: { flex: 1, fontSize: 8, paddingVertical: 4.5, paddingHorizontal: 6 },
   tdCompact: { fontSize: 5.7, paddingVertical: 0.8, paddingHorizontal: 2.5 },
   groupRow: { backgroundColor: '#f2f2f2', borderTopWidth: 1, borderTopColor: palette.ink, borderBottomWidth: 1, borderBottomColor: palette.hairline },
+  totalRow: { flexDirection: 'row', backgroundColor: '#d9d9d9', borderTopWidth: 1, borderTopColor: palette.ink },
+  totalText: { fontFamily: 'Helvetica-Bold', color: '#000000' },
   breakdownHead: { fontFamily: 'Helvetica-Bold', marginBottom: 1.5 },
   groupText: { fontSize: 6.2, fontFamily: 'Helvetica-Bold', color: palette.ink, letterSpacing: 0.2, paddingVertical: 1.8, paddingHorizontal: 3 },
 })
@@ -136,6 +139,13 @@ function SectionTable({ section }: { section: ReportSection }) {
             </View>
           )
         })}
+        {section.totals ? (
+          <View style={rs.totalRow} wrap={false}>
+            {section.totals.map((cell, ci) => (
+              <Text key={ci} style={[ci === section.totals!.length - 1 ? rs.tdLast : rs.td, compact ? rs.tdCompact : undefined, rs.totalText, section.columns[ci]?.align === 'right' ? { textAlign: 'right' as const } : undefined, section.columns[ci]?.flex ? { flex: section.columns[ci].flex } : undefined]}>{String(cell)}</Text>
+            ))}
+          </View>
+        ) : null}
       </View>
     </View>
   )

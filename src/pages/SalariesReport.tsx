@@ -147,7 +147,9 @@ export default function SalariesReport({ tabs }: { tabs?: ReactNode } = {}) {
           breakdownCell(group.deductions, itemLines(group.deductionItems, carriedLine(group))),
           gross, net,
         ]
-      }), ...(section.subtotal && section.groups.length ? [['Subtotal', ...groupCells(section.total)]] : [])],
+      })],
+      // Every table ends on its totals, printed grey and bold so they stand out.
+      totals: section.groups.length ? [section.subtotal ? 'Subtotal' : 'Total', ...groupCells(section.total)] : undefined,
     }))
     return {
       reportTitle: 'Salaries Report',
@@ -238,7 +240,7 @@ export default function SalariesReport({ tabs }: { tabs?: ReactNode } = {}) {
                       </tr>
                     ))}
                     {section.groups.length > 0 && (
-                      <tr className="border-t bg-muted/30 font-semibold">
+                      <tr className="border-t-2 border-t-black bg-gray-200 font-bold text-black">
                         <td className="px-4 py-2.5">{section.subtotal ? 'Subtotal' : 'Total'}</td>
                         {groupCells(section.total).map((cell, i) => <td key={i} className="px-4 py-2.5 text-right tabular-nums">{cell}</td>)}
                       </tr>
