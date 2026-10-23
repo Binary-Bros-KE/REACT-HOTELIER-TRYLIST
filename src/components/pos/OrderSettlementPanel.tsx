@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
-import { LuCircleAlert, LuGift, LuLoaderCircle, LuUserPlus, LuX } from 'react-icons/lu'
+import { LuCircleAlert, LuGift, LuLoaderCircle, LuReceiptText, LuUserPlus, LuX } from 'react-icons/lu'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/Toast'
@@ -137,8 +137,10 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
   const pendingReturnTotal = order?.items.reduce((sum, item) => sum + pendingReturnQty(item), 0) ?? 0
   const roomBillSettlement = order ? roomBillSettlementText(order) : null
   const isLinkedBill = linkedOrders.length > 1
-  // Mirrors POST /pos/orders/:id/make-complimentary: Super Admin, a sale with no payment and no room charge.
-  const canSwitchToComp = isSuperAdmin && !!order && !isComplementary && order.paid <= 0.01 && !order.billedToRoomAt
+  // Mirrors POST /pos/orders/:id/make-complimentary and /make-sale: Super Admin, active orders only.
+  const isActiveOrder = !!order && ['OPEN', 'PREPARING', 'READY', 'SERVED'].includes(order.status)
+  const canSwitchToComp = isSuperAdmin && isActiveOrder && !isComplementary && order!.paid <= 0.01 && !order!.billedToRoomAt
+  const canSwitchToSale = isSuperAdmin && isActiveOrder && isComplementary
 
   function stopStkPoll() {
     if (stkPollRef.current.timer) window.clearTimeout(stkPollRef.current.timer)
@@ -275,6 +277,27 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
       onChanged()
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Could not switch this order to complimentary'
+      setError(message)
+      toast.error(message)
+    } finally {
+      setSwitchingComp(false)
+    }
+  }
+
+  // Super Admin: the reverse, for a comp that should have been a sale. Active orders only.
+  async function switchToSale() {
+    if (!order || switchingComp) return
+    if (!window.confirm(`Turn order #${order.orderNumber} back into a sale? The full amount will be due.`)) return
+    setError('')
+    setSwitchingComp(true)
+    try {
+      const response = await api<{ order: Order }>(`/pos/orders/${order.id}/make-sale`, { method: 'POST' })
+      setOrder(response.order)
+      setCompReason('')
+      toast.success('Switched back to a sale.')
+      onChanged()
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'Could not switch this order back to a sale'
       setError(message)
       toast.error(message)
     } finally {
@@ -743,6 +766,22 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
                     {settling && <LuLoaderCircle className="animate-spin" />}
                     {remaining > 0.01 ? `Complete on credit · ${formatKes(remaining)} owing` : 'Complete order'}
                   </button>
+                </div>
+              )}
+
+              {/* Super Admin, active orders only: sale <-> complimentary. A completed order stays as it is. */}
+              {pendingReturnTotal === 0 && (canSwitchToComp || canSwitchToSale) && (
+                <div className="mt-2 space-y-2">
+                  {canSwitchToSale && (
+                    <button
+                      type="button"
+                      disabled={switchingComp}
+                      onClick={() => void switchToSale()}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-sm border py-2 text-xs font-semibold hover:bg-muted disabled:opacity-50"
+                    >
+                      {switchingComp ? <LuLoaderCircle className="size-3.5 animate-spin" /> : <LuReceiptText className="size-3.5" />} Switch back to sale
+                    </button>
+                  )}
                   {canSwitchToComp && (compOpen ? (
                     <div className="space-y-2 rounded-sm border border-warning/40 bg-warning/5 p-3">
                       <p className="text-xs text-muted-foreground">This order stops being a sale: nothing is to be paid, and reports count it as given away. Stock is not changed.</p>
