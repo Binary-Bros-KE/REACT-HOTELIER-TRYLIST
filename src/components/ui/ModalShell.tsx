@@ -9,7 +9,7 @@ export default function ModalShell({ kicker, title, subtitle, onClose, footer, s
   subtitle?: string
   onClose: () => void
   footer?: ReactNode
-  size?: 'sm' | 'md' | 'lg' | 'xl'
+  size?: 'sm' | 'md' | 'lg' | 'xl' | 'xxl'
   /** True when this modal can open on top of another one (e.g. a quick-create popup
    * launched from inside a form modal) - bumps it above the base z-50 so it isn't
    * silently painted underneath, matching the z-[60] convention used elsewhere for
@@ -21,7 +21,7 @@ export default function ModalShell({ kicker, title, subtitle, onClose, footer, s
     <div className={cn('fixed inset-0 flex items-center justify-center bg-black/60 p-4', stacked === 'top' ? 'z-[70]' : stacked ? 'z-[60]' : 'z-50')}>
       <div className={cn(
         'flex max-h-[92vh] w-full flex-col overflow-hidden border-2 border-foreground/25 bg-card shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]',
-        size === 'sm' ? 'max-w-md' : size === 'md' ? 'max-w-xl' : size === 'lg' ? 'max-w-2xl' : 'max-w-4xl',
+        size === 'sm' ? 'max-w-md' : size === 'md' ? 'max-w-xl' : size === 'lg' ? 'max-w-2xl' : size === 'xl' ? 'max-w-4xl' : 'max-w-6xl',
       )}>
         <div className="flex items-start justify-between gap-4 border-b-4 border-accent bg-muted/60 px-5 py-4">
           <div className="min-w-0">

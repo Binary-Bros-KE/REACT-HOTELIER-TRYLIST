@@ -44,6 +44,9 @@ type Report = {
 const money = (v: string | number) => `KSh ${Number(v).toLocaleString('en-KE', { maximumFractionDigits: 2 })}`
 const day = (v: string) => new Date(v).toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric' })
 const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+// "4 (packet)", "2 (packs)": the amount with its unit in brackets, for the staged list.
+const qtyWithUnit = (qty: number, packSize: number, packLabel: string, unit: string) =>
+  packSize > 0 ? `${+(qty / packSize).toFixed(2)} (${packLabel || 'packs'})` : `${+qty.toFixed(3)} (${unit})`
 const itemQty = (item: UsageItem) => packAndUnit(Number(item.quantity), Number(item.product.packSize) || 0, item.product.packLabel ?? '', item.product.packUnit?.name ?? item.product.unit)
 
 /** The Usage view of the Store page: the list of usages, with categories and the report. */
@@ -227,7 +230,7 @@ export function RecordUsageModal({ locations, onClose, onRecorded }: { locations
   }
 
   return (
-    <ModalShell size="xl" kicker="Store" title="Record usage" subtitle="Stock taken out of the store and used up - it isn't added to any other location's stock." onClose={onClose}
+    <ModalShell size="xxl" kicker="Store" title="Record usage" subtitle="Stock taken out of the store and used up - it isn't added to any other location's stock." onClose={onClose}
       footer={
         <>
           <button type="button" onClick={onClose} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted">Cancel</button>
@@ -265,7 +268,7 @@ export function RecordUsageModal({ locations, onClose, onRecorded }: { locations
         </div>
 
         {form.fromLocationId ? (
-          <div className="grid gap-4 lg:grid-cols-[1fr_18rem]">
+          <div className="grid gap-4 lg:grid-cols-[1fr_24rem]">
             <section>
               <label className="relative block">
                 <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -304,8 +307,8 @@ export function RecordUsageModal({ locations, onClose, onRecorded }: { locations
                 {staged.length === 0 ? <p className="text-muted-foreground">Enter a quantity next to a product.</p> : staged.map((p) => (
                   <div key={p.id} className="flex items-center justify-between gap-2 bg-card px-2.5 py-1.5 shadow-sm">
                     <span className="truncate">{p.name}</span>
-                    <span className="flex items-center gap-2 font-semibold">
-                      {packAndUnit(Number(lines[p.id]), Number(p.packSize) || 0, p.packLabel ?? '', p.packUnit?.name ?? p.unit)}
+                    <span className="flex shrink-0 items-center gap-2 whitespace-nowrap font-semibold">
+                      {qtyWithUnit(Number(lines[p.id]), Number(p.packSize) || 0, p.packLabel ?? '', p.packUnit?.name ?? p.unit)}
                       <button type="button" onClick={() => setLines((cur) => ({ ...cur, [p.id]: '' }))} className="text-muted-foreground hover:text-destructive"><LuTrash2 className="size-3.5" /></button>
                     </span>
                   </div>
