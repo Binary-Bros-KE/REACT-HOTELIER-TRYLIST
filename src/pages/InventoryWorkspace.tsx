@@ -131,11 +131,11 @@ export default function InventoryWorkspace() {
             <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search transfer #, destination or source…" className="w-full rounded-sm border bg-background py-2.5 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
           </label>
-          <div className="grid grid-cols-3 overflow-hidden border bg-background text-sm font-bold uppercase tracking-wider">
-            <button onClick={() => setView('transfers')} className={`px-3 py-2 text-xs ${view === 'transfers' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>Transfers</button>
-            <button onClick={() => setView('receipts')} className={`px-3 py-2 text-xs ${view === 'receipts' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>Goods received</button>
-            <button onClick={() => setView('usage')} className={`px-3 py-2 text-xs ${view === 'usage' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>Usage</button>
-          </div>
+          <select value={view} onChange={(e) => setView(e.target.value as typeof view)} className="rounded-sm border bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring">
+            <option value="transfers">Transfers</option>
+            <option value="receipts">Goods received</option>
+            <option value="usage">Usage</option>
+          </select>
           <select value={locationFilter} onChange={(e) => setLocationFilter(e.target.value)} className="rounded-sm border bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring">
             <option value="">All locations</option>
             {locations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
