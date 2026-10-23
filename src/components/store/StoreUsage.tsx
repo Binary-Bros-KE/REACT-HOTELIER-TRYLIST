@@ -18,7 +18,7 @@ type Location = { id: string; name: string; type: string | null }
 type Category = { id: string; name: string; description: string | null; isActive: boolean; _count?: { usages: number } }
 type UsageProduct = { id: string; unit: string; packSize: string | null; packLabel: string | null; packUnit: { name: string } | null }
 type UsageItem = { id: string; productId: string; productName: string; quantity: string | number; unitCost: string | number | null; value: string | number; product: UsageProduct }
-type Usage = {
+export type Usage = {
   id: string
   usageNo: string
   category: { id: string; name: string }
@@ -27,6 +27,7 @@ type Usage = {
   title: string | null
   note: string | null
   usedAt: string
+  createdAt: string
   totalValue: string | number
   status: 'ACTIVE' | 'VOIDED'
   voidReason: string | null
@@ -156,28 +157,33 @@ export function StoreUsagePanel({ refreshKey, search, locationFilter }: { refres
         </div>
       )}
 
-      {detail && (
-        <ModalShell size="md" kicker={detail.category.name} title={detail.usageNo} subtitle={`${day(detail.usedAt)} · ${detail.fromLocation.name}${detail.usedAtLocation ? ` → ${detail.usedAtLocation.name}` : ''}`} onClose={() => setDetail(null)}
-          footer={detail.status === 'ACTIVE' ? <button type="button" onClick={() => void voidUsage(detail)} className="border-2 border-destructive/40 px-4 py-2 text-xs font-bold uppercase tracking-wider text-destructive hover:bg-destructive/10">Void usage</button> : undefined}>
-          <div className="space-y-3 p-5 text-sm">
-            {detail.title && <p className="font-semibold">{detail.title}</p>}
-            {detail.note && <p className="text-muted-foreground">{detail.note}</p>}
-            {detail.status === 'VOIDED' && <p className="border border-destructive/30 bg-destructive/5 p-2 text-destructive">Voided{detail.voidReason ? `: ${detail.voidReason}` : ''}. The stock went back into {detail.fromLocation.name}.</p>}
-            <table className="w-full text-left">
-              <thead className="text-xs uppercase text-muted-foreground"><tr><th className="py-1.5">Product</th><th className="py-1.5 text-right">Quantity</th><th className="py-1.5 text-right">Value</th></tr></thead>
-              <tbody>
-                {detail.items.map((item) => (
-                  <tr key={item.id} className="border-t"><td className="py-1.5">{item.productName}</td><td className="py-1.5 text-right">{itemQty(item)}</td><td className="py-1.5 text-right tabular-nums">{money(item.value)}</td></tr>
-                ))}
-                <tr className="border-t font-semibold"><td className="py-1.5">Total</td><td /><td className="py-1.5 text-right tabular-nums">{money(detail.totalValue)}</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </ModalShell>
-      )}
+      {detail && <UsageDetailModal usage={detail} onClose={() => setDetail(null)} onVoid={() => void voidUsage(detail)} />}
       {showCategories && <UsageCategoriesModal categories={categories} onChanged={() => void loadCategories()} onClose={() => setShowCategories(false)} />}
       {showReport && <UsageReportModal categories={categories} onClose={() => setShowReport(false)} />}
     </>
+  )
+}
+
+/** One usage's items and values. `onVoid` adds the Void button (the Usage view's list). */
+export function UsageDetailModal({ usage, onClose, onVoid }: { usage: Usage; onClose: () => void; onVoid?: () => void }) {
+  return (
+    <ModalShell size="md" kicker={usage.category.name} title={usage.usageNo} subtitle={`${day(usage.usedAt)} · ${usage.fromLocation.name}${usage.usedAtLocation ? ` → ${usage.usedAtLocation.name}` : ''}`} onClose={onClose}
+      footer={usage.status === 'ACTIVE' && onVoid ? <button type="button" onClick={onVoid} className="border-2 border-destructive/40 px-4 py-2 text-xs font-bold uppercase tracking-wider text-destructive hover:bg-destructive/10">Void usage</button> : undefined}>
+      <div className="space-y-3 p-5 text-sm">
+        {usage.title && <p className="font-semibold">{usage.title}</p>}
+        {usage.note && <p className="text-muted-foreground">{usage.note}</p>}
+        {usage.status === 'VOIDED' && <p className="border border-destructive/30 bg-destructive/5 p-2 text-destructive">Voided{usage.voidReason ? `: ${usage.voidReason}` : ''}. The stock went back into {usage.fromLocation.name}.</p>}
+        <table className="w-full text-left">
+          <thead className="text-xs uppercase text-muted-foreground"><tr><th className="py-1.5">Product</th><th className="py-1.5 text-right">Quantity</th><th className="py-1.5 text-right">Value</th></tr></thead>
+          <tbody>
+            {usage.items.map((item) => (
+              <tr key={item.id} className="border-t"><td className="py-1.5">{item.productName}</td><td className="py-1.5 text-right">{itemQty(item)}</td><td className="py-1.5 text-right tabular-nums">{money(item.value)}</td></tr>
+            ))}
+            <tr className="border-t font-semibold"><td className="py-1.5">Total</td><td /><td className="py-1.5 text-right tabular-nums">{money(usage.totalValue)}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </ModalShell>
   )
 }
 
