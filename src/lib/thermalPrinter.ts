@@ -1,6 +1,6 @@
 import ReceiptPrinterEncoder from '@point-of-sale/receipt-printer-encoder'
 import type { ReceiptOrder, ReceiptProfile } from '@/components/pos/OrderReceipt'
-import { resolveLogoUrl } from '@/lib/api'
+import { apiOrigin, resolveLogoUrl } from '@/lib/api'
 import { receiptFooterText, receiptHeaderText, receiptItemName, receiptVariantSuffix, receiptPhone, servedByName, showsTaxAsAddedOn } from '@/lib/receiptFields'
 import { createPrintJob } from '@/lib/printRelay'
 
@@ -234,6 +234,35 @@ export async function pingBridge(url?: string): Promise<{ version: string; host:
   } catch {
     return null
   }
+}
+
+/** Where this server offers the current print bridge installer. */
+export const bridgeDownloadUrl = `${apiOrigin}/download/print-bridge`
+
+/** The bridge version this server currently offers, or null when it can't say
+ * (older servers have the download but no version endpoint). */
+export async function latestBridgeVersion(): Promise<string | null> {
+  try {
+    const r = await fetch(`${bridgeDownloadUrl}/version`)
+    if (!r.ok) return null
+    const body = (await r.json()) as { version?: string | null }
+    return body.version ?? null
+  } catch {
+    return null
+  }
+}
+
+/** True when `installed` is an older x.y.z than `latest`. An unreadable version counts as outdated. */
+export function bridgeIsOutdated(installed: string, latest: string): boolean {
+  const parts = (v: string) => v.replace(/^v/i, '').split('.').map((n) => Number.parseInt(n, 10))
+  const a = parts(installed)
+  const b = parts(latest)
+  if (a.some(Number.isNaN)) return true
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const diff = (a[i] ?? 0) - (b[i] ?? 0)
+    if (diff !== 0) return diff < 0
+  }
+  return false
 }
 
 export async function listBridgePrinters(url?: string): Promise<{ default: string | null; printers: BridgePrinter[] }> {

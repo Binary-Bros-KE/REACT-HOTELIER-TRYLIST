@@ -10,7 +10,7 @@ import { TouchInput } from '@/components/ui/TouchInput'
 import {
   getThermalSettings, saveThermalSettings, pairUsbPrinter, pairBluetoothPrinter,
   webUsbAvailable, webBluetoothAvailable, PRINTER_MODELS, recommendedColumns,
-  pingBridge, listBridgePrinters,
+  pingBridge, listBridgePrinters, latestBridgeVersion, bridgeIsOutdated, bridgeDownloadUrl,
   type ThermalSettings, type ThermalConnection, type BridgePrinter,
 } from '@/lib/thermalPrinter'
 
@@ -66,6 +66,17 @@ export default function PrinterSettings() {
     }
   }, [])
 
+  // The bridge can print in the background for this computer (store dispatch slips,
+  // counter tickets) whatever its own receipt connection is, and an old bridge keeps
+  // printing old layouts silently - so its version is checked on every visit.
+  const [bridgeVersion, setBridgeVersion] = useState<{ installed: string | null; latest: string | null } | null>(null)
+  useEffect(() => {
+    void Promise.all([pingBridge(s.bridgeUrl), latestBridgeVersion()])
+      .then(([up, latest]) => setBridgeVersion({ installed: up?.version ?? null, latest }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [s.bridgeUrl])
+  const bridgeOutdated = Boolean(bridgeVersion?.installed && bridgeVersion.latest && bridgeIsOutdated(bridgeVersion.installed, bridgeVersion.latest))
+
   useEffect(() => {
     if (s.enabled && s.connection === 'bridge') void checkBridge(s.bridgeUrl)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -95,6 +106,19 @@ export default function PrinterSettings() {
     <div className="dashboard-square mx-auto max-w-3xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
       <PageBanner kicker="Sales" title="Printer Settings" />
       <p className="mb-6 mt-5 max-w-2xl text-sm text-muted-foreground">How receipts print from this device. Every device sets its own — if a printer stops working here, this is always the place to check, whoever's on shift.</p>
+
+      {bridgeOutdated && (
+        <div className="mb-6 border-2 border-warning/60 bg-warning/10 p-4">
+          <p className="font-semibold text-foreground">Update the print bridge on this computer</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            This computer runs print bridge <span className="font-semibold text-foreground">v{bridgeVersion?.installed}</span>; the latest is <span className="font-semibold text-foreground">v{bridgeVersion?.latest}</span>. An old bridge keeps printing old layouts (store dispatch slips, counter tickets). Download the latest, run it, then reopen this page.
+          </p>
+          <a href={bridgeDownloadUrl} className="mt-3 inline-flex items-center gap-2 bg-primary px-4 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground hover:brightness-110">Download print bridge v{bridgeVersion?.latest}</a>
+        </div>
+      )}
+      {bridgeVersion?.installed && !bridgeOutdated && (
+        <p className="mb-6 text-xs font-medium text-success">Print bridge on this computer: v{bridgeVersion.installed}{bridgeVersion.latest ? ' (latest)' : ''}</p>
+      )}
 
       <PrinterRouting settings={s} onChange={patch} />
 
