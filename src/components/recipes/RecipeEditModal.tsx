@@ -61,13 +61,24 @@ export default function RecipeEditModal({ recipe, products, onClose, onSaved, on
     event.preventDefault()
     // When stacked over the menu item form, this submit must not reach that form.
     event.stopPropagation()
+    // A row someone started is never dropped silently: a product needs its quantity and a
+    // quantity needs its product. Only a row left completely empty is ignored.
+    const productName = (id: string) => productList.find((p) => p.id === id)?.name ?? 'an ingredient'
+    const noQuantity = form.ingredients.find((i) => i.productId && !(Number(i.quantity) > 0))
+    const noProduct = form.ingredients.find((i) => !i.productId && i.quantity !== '')
+    if (noQuantity || noProduct) {
+      const message = noQuantity ? `Enter a quantity for ${productName(noQuantity.productId)}, or remove it.` : 'Choose a product for every ingredient quantity, or remove that row.'
+      setError(message)
+      toast.error(message)
+      return
+    }
     setSaving(true)
     setError('')
     try {
       const payload = {
         ...form,
         steps: form.steps.map((s) => s.trim()).filter(Boolean),
-        ingredients: form.ingredients.filter((i) => i.productId && i.quantity),
+        ingredients: form.ingredients.filter((i) => i.productId),
       }
       const saved = await api<{ recipe: RecipeDetail }>(recipe ? `/recipes/${recipe.id}` : '/recipes', { method: recipe ? 'PATCH' : 'POST', body: JSON.stringify(payload) })
       toast.success(recipe ? 'Recipe updated.' : 'Recipe created.')
@@ -174,7 +185,7 @@ export default function RecipeEditModal({ recipe, products, onClose, onSaved, on
                   />
                 </div>
                 <div className="w-28 shrink-0">
-                  <input type="number" min="0" step="0.001" placeholder="Qty" value={row.quantity} onChange={(e) => updateIngredient(index, { quantity: e.target.value })} className="input" />
+                  <input type="number" min="0" step="0.001" placeholder="Qty" required={Boolean(row.productId)} aria-invalid={Boolean(error) && Boolean(row.productId) && !(Number(row.quantity) > 0)} value={row.quantity} onChange={(e) => updateIngredient(index, { quantity: e.target.value })} className={cn('input', Boolean(error) && row.productId && !(Number(row.quantity) > 0) && 'border-destructive ring-1 ring-destructive')} />
                 </div>
                 <span className="w-10 shrink-0 text-xs text-muted-foreground">{productList.find((p) => p.id === row.productId)?.unit ?? ''}</span>
                 <ActionButton tone="neutral" icon={<LuTrash2 />} title="Remove ingredient" onClick={() => removeIngredient(index)} />

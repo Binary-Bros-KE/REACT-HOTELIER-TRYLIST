@@ -1,4 +1,4 @@
-import VariantStockEditor, { emptyVariantStock, stockFromVariant, stockPayload, type RecipeInfo, type VariantStock } from '@/components/menu/VariantStockEditor'
+import VariantStockEditor, { emptyVariantStock, stockFromVariant, stockPayload, variantStockProblem, type RecipeInfo, type VariantStock } from '@/components/menu/VariantStockEditor'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import {
@@ -259,6 +259,8 @@ export default function MenuItems() {
 
   function addStagedVariant() {
     if (!variantDraft.name.trim() || variantDraft.price === '') return
+    const problem = variantStockProblem(variantDraft.stock)
+    if (problem) { toast.error(problem); return }
     setNewVariants((v) => [...v, { name: variantDraft.name.trim(), price: variantDraft.price, sku: variantDraft.sku.trim(), stock: variantDraft.stock }])
     setVariantDraft(emptyStaged)
   }
@@ -1059,6 +1061,8 @@ function VariantsModal({ item, recipes, stockProductOptions, onClose, onChanged,
   async function add(event: FormEvent) {
     event.preventDefault()
     if (!draft.name.trim() || draft.price === '') return
+    const problem = variantStockProblem(draft.stock)
+    if (problem) { toast.error(problem); return }
     setBusy(true)
     try {
       await api(`/menu-items/${item.id}/variants`, {
@@ -1082,6 +1086,8 @@ function VariantsModal({ item, recipes, stockProductOptions, onClose, onChanged,
 
   async function saveEdit(id: string) {
     if (!editDraft.name.trim() || editDraft.price === '') return
+    const problem = variantStockProblem(editDraft.stock)
+    if (problem) { toast.error(problem); return }
     setBusy(true)
     try {
       await api(`/menu-items/${item.id}/variants/${id}`, {

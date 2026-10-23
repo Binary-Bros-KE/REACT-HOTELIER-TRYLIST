@@ -17,6 +17,14 @@ export type VariantStock = {
 }
 export const emptyVariantStock: VariantStock = { mode: 'none', stockProductId: '', stockQtyPerUnit: '', recipeId: '', overrides: [] }
 
+/** Why this variant's stock can't be saved yet, or null. A kept or extra ingredient with an
+ * empty or zero quantity would otherwise be saved as 0 - silently using none of it. */
+export function variantStockProblem(stock: VariantStock): string | null {
+  if (stock.mode !== 'recipe' || !stock.recipeId) return null
+  const missing = stock.overrides.find((o) => !o.isRemoved && !(Number(o.quantity) > 0))
+  return missing ? `Enter a quantity for ${missing.name}, or remove it.` : null
+}
+
 /** Exactly what the API stores for a variant's stock. */
 export function stockPayload(stock: VariantStock) {
   if (stock.mode === 'product' && stock.stockProductId) {
