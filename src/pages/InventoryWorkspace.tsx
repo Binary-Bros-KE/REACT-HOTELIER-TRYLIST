@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
-import { LuArrowRight, LuCircleAlert, LuEye, LuLoaderCircle, LuPackage, LuPackagePlus, LuPrinter, LuSearch, LuTrash2, LuTruck, LuWarehouse } from 'react-icons/lu'
+import { LuArrowRight, LuCircleAlert, LuEye, LuLoaderCircle, LuPackage, LuPackageMinus, LuPackagePlus, LuPrinter, LuSearch, LuTrash2, LuTruck, LuWarehouse } from 'react-icons/lu'
 import { api, hasApiTenant } from '@/lib/api'
 import PageBanner from '@/components/ui/PageBanner'
 import ActionButton from '@/components/ui/ActionButton'
@@ -7,6 +7,7 @@ import StatCard from '@/components/ui/StatCard'
 import { useToast } from '@/components/ui/Toast'
 import type { DocProfile } from '@/components/documents/pdf'
 import PackQtyInput, { packAndUnit } from '@/components/ui/PackQtyInput'
+import { RecordUsageModal, StoreUsagePanel } from '@/components/store/StoreUsage'
 
 const DocumentViewer = lazy(() => import('@/components/documents/DocumentViewer'))
 
@@ -66,7 +67,10 @@ export default function InventoryWorkspace() {
   const [locations, setLocations] = useState<Location[]>([])
   const [search, setSearch] = useState('')
   const [locationFilter, setLocationFilter] = useState('')
-  const [view, setView] = useState<'transfers' | 'receipts'>('transfers')
+  // usage: stock used up straight from the store (staff meals, conferences...) - see StoreUsage.
+  const [view, setView] = useState<'transfers' | 'receipts' | 'usage'>('transfers')
+  const [showUsage, setShowUsage] = useState(false)
+  const [usageRefresh, setUsageRefresh] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [showDistribute, setShowDistribute] = useState(false)
@@ -127,9 +131,10 @@ export default function InventoryWorkspace() {
             <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search transfer #, destination or source…" className="w-full rounded-sm border bg-background py-2.5 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
           </label>
-          <div className="grid grid-cols-2 overflow-hidden border bg-background text-sm font-bold uppercase tracking-wider">
+          <div className="grid grid-cols-3 overflow-hidden border bg-background text-sm font-bold uppercase tracking-wider">
             <button onClick={() => setView('transfers')} className={`px-3 py-2 text-xs ${view === 'transfers' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>Transfers</button>
             <button onClick={() => setView('receipts')} className={`px-3 py-2 text-xs ${view === 'receipts' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>Goods received</button>
+            <button onClick={() => setView('usage')} className={`px-3 py-2 text-xs ${view === 'usage' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>Usage</button>
           </div>
           <select value={locationFilter} onChange={(e) => setLocationFilter(e.target.value)} className="rounded-sm border bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring">
             <option value="">All locations</option>
@@ -137,11 +142,14 @@ export default function InventoryWorkspace() {
           </select>
           <div className="flex gap-2">
             <ActionButton tone="neutral" icon={<LuPackagePlus />} onClick={() => setShowReceive(true)}>Receive goods</ActionButton>
+            <ActionButton tone="neutral" icon={<LuPackageMinus />} onClick={() => setShowUsage(true)}>Record usage</ActionButton>
             <ActionButton tone="primary" icon={<LuTruck />} onClick={() => setShowDistribute(true)}>Distribute</ActionButton>
           </div>
         </div>
 
-        {loading ? (
+        {view === 'usage' ? (
+          <StoreUsagePanel refreshKey={usageRefresh} search={search} locationFilter={locationFilter} />
+        ) : loading ? (
           <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><LuLoaderCircle className="animate-spin" /> Loading transfers…</div>
         ) : view === 'receipts' ? (
           receipts.length === 0 ? (
@@ -217,6 +225,19 @@ export default function InventoryWorkspace() {
           </div>
         )}
       </section>
+
+      {showUsage && (
+        <RecordUsageModal
+          locations={locations}
+          onClose={() => setShowUsage(false)}
+          onRecorded={() => {
+            setShowUsage(false)
+            setView('usage')
+            setUsageRefresh((n) => n + 1)
+            void load()
+          }}
+        />
+      )}
 
       {showDistribute && (
         <DistributeModal
