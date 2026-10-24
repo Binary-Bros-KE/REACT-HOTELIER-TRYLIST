@@ -31,7 +31,7 @@ type StatusFilter = 'ALL' | 'COMPLETED' | 'CANCELLED'
 // well under 1MB even on a slow connection; 500 would push multiple MB on
 // every page load for no real benefit — nobody scrolls that far back. A
 // narrower date range (below) is the intended way to reach further back.
-const PAGE_SIZE = 50
+const PAGE_SIZE = 100
 type RegisterSummary = { sales: number; salesCount: number; collected: number; outstanding: number; cancelled: number; cancelledCount: number }
 const EMPTY_SUMMARY: RegisterSummary = { sales: 0, salesCount: 0, collected: 0, outstanding: 0, cancelled: 0, cancelledCount: 0 }
 
