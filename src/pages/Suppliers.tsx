@@ -11,7 +11,9 @@ import {
   LuSearch,
   LuTrash2,
   LuTruck,
+  LuFileText,
 } from 'react-icons/lu'
+import StatementModal from '@/components/statements/StatementModal'
 import { api, hasApiTenant } from '@/lib/api'
 import PageBanner from '@/components/ui/PageBanner'
 import ActionButton from '@/components/ui/ActionButton'
@@ -79,6 +81,7 @@ function SetupMessage() {
 
 export default function Suppliers() {
   const toast = useToast()
+  const [statementOpen, setStatementOpen] = useState(false)
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [summary, setSummary] = useState<Summary>({ total: 0, active: 0, totalBalance: 0 })
   const [search, setSearch] = useState('')
@@ -218,6 +221,7 @@ export default function Suppliers() {
             <option value="true">Active only</option>
             <option value="false">Inactive only</option>
           </select>
+          <ActionButton tone="neutral" icon={<LuFileText />} onClick={() => setStatementOpen(true)}>Statement</ActionButton>
           <ActionButton tone="primary" icon={<LuPlus />} onClick={openCreate}>Add supplier</ActionButton>
         </div>
 
@@ -362,6 +366,8 @@ export default function Suppliers() {
           }}
         />
       )}
+
+      {statementOpen && <StatementModal kind="supplier" onClose={() => setStatementOpen(false)} />}
     </div>
   )
 }

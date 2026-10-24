@@ -9,7 +9,9 @@ import {
   LuSearch,
   LuTrash2,
   LuWallet,
+  LuFileText,
 } from 'react-icons/lu'
+import StatementModal from '@/components/statements/StatementModal'
 import { api } from '@/lib/api'
 import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
@@ -184,6 +186,7 @@ function useSectionKicker() {
 
 export default function Customers() {
   const toast = useToast()
+  const [statementOpen, setStatementOpen] = useState(false)
   const kicker = useSectionKicker()
   const isServiceCenter = kicker === 'Service center'
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -323,6 +326,7 @@ export default function Customers() {
               {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
             </select>
           )}
+          <ActionButton tone="neutral" icon={<LuFileText />} onClick={() => setStatementOpen(true)}>Statement</ActionButton>
           <ActionButton tone="primary" icon={<LuPlus />} onClick={openCreate}>Add customer</ActionButton>
         </div>
 
@@ -528,6 +532,8 @@ export default function Customers() {
       )}
 
       {creditFor && <CreditHistoryModal customer={creditFor} onClose={() => setCreditFor(null)} />}
+
+      {statementOpen && <StatementModal kind="customer" onClose={() => setStatementOpen(false)} />}
     </div>
   )
 }
