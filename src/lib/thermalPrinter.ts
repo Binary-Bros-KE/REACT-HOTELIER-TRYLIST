@@ -468,7 +468,6 @@ export function buildReceiptBytes(order: ReceiptOrder, profile: ReceiptProfile, 
   e.line(`Status: ${statusText}`)
   e.line(order.table ? `Table: ${order.table.label}` : 'Takeaway')
   if (isComplementary) e.line(`Recipient: ${order.complimentaryRecipientName || (order.customer ? `${order.customer.firstName} ${order.customer.lastName ?? ''}`.trim() : 'Walk-in')}`)
-  if (order.complimentarySession) e.line(`Host/Event: ${order.complimentarySession.title}`)
   if (order.creditReason) e.line(`Credit reason: ${order.creditReason}`)
   if (order.creditExpectedAt) e.line(`Expected pay date: ${new Date(order.creditExpectedAt).toLocaleDateString('en-KE')}`)
   e.rule()

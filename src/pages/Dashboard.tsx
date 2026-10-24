@@ -52,12 +52,10 @@ type Debtors = {
 }
 type Creditors = { total: number; top: { id: string; name: string; balance: number }[] }
 type TaxLine = { key: string; label: string; net: number; tax: number; gross: number }
-type ComplimentarySessionRow = { id: string; title: string; hostName: string | null; startsAt: string | null; endsAt: string | null; complimentaryValue: number; complimentaryCogs: number; guestRevenue: number; guestProfit: number; coverPercent: number; netImpact: number; orders: number }
 
 type SalesReport = {
   cards: Cards
   revenueBreakdown: { complimentaryValue: number; complimentaryCogs: number }
-  complimentarySessions: ComplimentarySessionRow[]
   topItems: TopItem[]
   expensesByCategory: CountBucket[]
   salesByLocation: LocationBucket[]
@@ -188,59 +186,6 @@ function RevenueDashboard({ variant, pickerSlot }: { variant: 'operations' | 'fi
         </div>
       </section>
 
-      {report.complimentarySessions.length > 0 && (
-        <section className="mt-6 overflow-hidden rounded-sm border bg-card">
-          <header className="border-b p-4">
-            <h2 className="font-semibold">Complementary Host Impact</h2>
-            <p className="text-xs text-muted-foreground">Guest profit compared with the stock cost given to hosts.</p>
-          </header>
-          <div className="grid gap-3 p-4 md:hidden">
-            {report.complimentarySessions.slice(0, 6).map((session) => {
-              const pct = Math.max(0, Math.min(100, session.coverPercent))
-              return (
-                <article key={session.id} className="border bg-background p-3 text-sm shadow-sm">
-                  <p className="font-semibold">{session.title}</p>
-                  <p className="text-xs text-muted-foreground">{session.hostName ?? 'Host'}{session.startsAt ? ` - ${new Date(session.startsAt).toLocaleString('en-KE')}` : ''}</p>
-                  <div className="mt-2.5 grid grid-cols-2 gap-2">
-                    <div><span className="block text-xs text-muted-foreground">Comp cost</span><span className="font-semibold tabular-nums">{formatKes(session.complimentaryCogs)}</span></div>
-                    <div><span className="block text-xs text-muted-foreground">Guest revenue</span><span className="font-semibold tabular-nums">{formatKes(session.guestRevenue)}</span></div>
-                  </div>
-                  <div className="mt-3">
-                    <div className="h-2 w-full overflow-hidden rounded-full bg-muted"><div className={cn('h-full', session.coverPercent >= 100 ? 'bg-success' : 'bg-warning')} style={{ width: `${pct}%` }} /></div>
-                    <span className="mt-1 block text-[11px] font-semibold text-muted-foreground">{Math.round(session.coverPercent)}% covered</span>
-                  </div>
-                  <div className="mt-3 flex items-center justify-between border-t pt-2">
-                    <span className="text-xs text-muted-foreground">Net</span>
-                    <span className={cn('font-bold tabular-nums', session.netImpact >= 0 ? 'text-success' : 'text-destructive')}>{formatKes(session.netImpact)}</span>
-                  </div>
-                </article>
-              )
-            })}
-          </div>
-          <div className="hidden overflow-x-auto md:block">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-primary text-xs uppercase tracking-wide text-primary-foreground">
-                <tr><th className="px-4 py-2">Event</th><th className="px-4 py-2 text-right">Comp Cost</th><th className="px-4 py-2 text-right">Guest Revenue</th><th className="px-4 py-2">Covered</th><th className="px-4 py-2 text-right">Net</th></tr>
-              </thead>
-              <tbody>{report.complimentarySessions.slice(0, 6).map((session) => {
-                const pct = Math.max(0, Math.min(100, session.coverPercent))
-                return (
-                  <tr key={session.id} className="border-t">
-                    <td className="px-4 py-3"><span className="font-semibold">{session.title}</span><span className="block text-xs text-muted-foreground">{session.hostName ?? 'Host'}{session.startsAt ? ` - ${new Date(session.startsAt).toLocaleString('en-KE')}` : ''}</span></td>
-                    <td className="px-4 py-3 text-right tabular-nums">{formatKes(session.complimentaryCogs)}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{formatKes(session.guestRevenue)}</td>
-                    <td className="px-4 py-3">
-                      <div className="h-2 w-32 overflow-hidden rounded-full bg-muted"><div className={cn('h-full', session.coverPercent >= 100 ? 'bg-success' : 'bg-warning')} style={{ width: `${pct}%` }} /></div>
-                      <span className="mt-1 block text-[11px] font-semibold text-muted-foreground">{Math.round(session.coverPercent)}%</span>
-                    </td>
-                    <td className={cn('px-4 py-3 text-right font-semibold tabular-nums', session.netImpact >= 0 ? 'text-success' : 'text-destructive')}>{formatKes(session.netImpact)}</td>
-                  </tr>
-                )
-              })}</tbody>
-            </table>
-          </div>
-        </section>
-      )}
 
       {variant === 'operations' ? (
         <section className="mt-6">

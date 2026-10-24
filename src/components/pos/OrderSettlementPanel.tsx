@@ -113,7 +113,6 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
   const [creditExpectedAt, setCreditExpectedAt] = useState('')
   const [compOpen, setCompOpen] = useState(false)
   const [compReason, setCompReason] = useState('')
-  const [compRecipient, setCompRecipient] = useState('')
   const [switchingComp, setSwitchingComp] = useState(false)
   // M-Pesa STK push, when the selected method is MPESA: an alternative to typing in the code by hand.
   const [payWay, setPayWay] = useState<'MANUAL' | 'STK'>('MANUAL')
@@ -268,7 +267,7 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
     try {
       const response = await api<{ order: Order }>(`/pos/orders/${order.id}/make-complimentary`, {
         method: 'POST',
-        body: JSON.stringify({ reason: compReason.trim(), recipientName: compRecipient.trim() }),
+        body: JSON.stringify({ reason: compReason.trim() || undefined }),
       })
       setOrder(response.order)
       setLinkedOrders([])
@@ -785,19 +784,23 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
                   {canSwitchToComp && (compOpen ? (
                     <div className="space-y-2 rounded-sm border border-warning/40 bg-warning/5 p-3">
                       <p className="text-xs text-muted-foreground">This order stops being a sale: nothing is to be paid, and reports count it as given away. Stock is not changed.</p>
+                      {/* Given to the order's customer - one must be attached first. */}
+                      {order.customer ? (
+                        <p className="text-xs font-semibold text-warning">Given to {order.customer.firstName} {order.customer.lastName ?? ''}</p>
+                      ) : (
+                        <button type="button" onClick={() => setCustModalOpen(true)} className="w-full border border-warning/60 px-3 py-2 text-left text-xs font-semibold text-warning hover:bg-warning/10">
+                          A complimentary order needs a customer - tap to attach who it's given to.
+                        </button>
+                      )}
                       <label className="block text-xs font-semibold text-warning">
-                        Given to
-                        <TouchInput value={compRecipient} onValueChange={setCompRecipient} placeholder="e.g. DJ Lexx, the owner's guest" className="input mt-1.5 text-foreground" />
-                      </label>
-                      <label className="block text-xs font-semibold text-warning">
-                        Reason
+                        Reason (optional)
                         <TouchInput value={compReason} onValueChange={setCompReason} placeholder="e.g. host bottle, rung up as a sale by mistake" className="input mt-1.5 text-foreground" />
                       </label>
                       <div className="flex gap-2">
                         <button type="button" onClick={() => setCompOpen(false)} className="flex-1 rounded-sm border py-2 text-xs font-semibold hover:bg-muted">Keep as sale</button>
                         <button
                           type="button"
-                          disabled={switchingComp || compReason.trim().length < 3 || compRecipient.trim().length < 2}
+                          disabled={switchingComp || !order.customer}
                           onClick={() => void switchToComplimentary()}
                           className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-sm bg-warning py-2 text-xs font-semibold text-warning-foreground disabled:opacity-50"
                         >
@@ -808,7 +811,7 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
                   ) : (
                     <button
                       type="button"
-                      onClick={() => { setCompRecipient(order.customer ? `${order.customer.firstName} ${order.customer.lastName ?? ''}`.trim() : ''); setCompOpen(true) }}
+                      onClick={() => setCompOpen(true)}
                       className="inline-flex w-full items-center justify-center gap-2 rounded-sm border border-warning/50 py-2 text-xs font-semibold text-warning hover:bg-warning/10"
                     >
                       <LuGift className="size-3.5" /> Switch to complimentary

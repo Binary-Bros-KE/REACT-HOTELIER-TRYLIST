@@ -77,7 +77,6 @@ export type ShiftSummary = {
     status?: string
     paymentStatus?: string
     saleType?: 'SALE' | 'COMPLIMENTARY'
-    complimentaryOrderRole?: string | null
     complimentaryRecipientName?: string | null
     label?: string
     source?: string

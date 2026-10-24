@@ -32,7 +32,6 @@ export function receiptToText(order: ReceiptOrder, profile: ReceiptProfile, shar
   lines.push(`Status: ${statusText}`)
   lines.push(order.table ? `Table: ${order.table.label}` : 'Takeaway')
   if (isComplementary) lines.push(`Recipient: ${order.complimentaryRecipientName || (order.customer ? `${order.customer.firstName} ${order.customer.lastName ?? ''}`.trim() : 'Walk-in')}`)
-  if (order.complimentarySession) lines.push(`Host/Event: ${order.complimentarySession.title}`)
   if (order.creditReason) lines.push(`Credit reason: ${order.creditReason}`)
   if (order.creditExpectedAt) lines.push(`Expected pay date: ${new Date(order.creditExpectedAt).toLocaleDateString('en-KE')}`)
   lines.push(RULE)

@@ -331,7 +331,7 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
                   {order.customer && (
                     <p className="mt-1 text-xs text-muted-foreground">{order.customer.firstName} {order.customer.lastName ?? ''}{order.customer.phone ? ` · ${order.customer.phone}` : ''}</p>
                   )}
-                  <p className="mt-1 text-xs text-muted-foreground">{new Date(order.createdAt).toLocaleString('en-KE')} · {order.saleType === 'COMPLIMENTARY' ? (order.complimentaryRecipientName || order.complimentarySession?.title || 'No payment') : [...new Set(order.payments.map((p) => p.paymentMethod.name))].join(', ') || '—'}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{new Date(order.createdAt).toLocaleString('en-KE')} · {order.saleType === 'COMPLIMENTARY' ? (order.complimentaryRecipientName || (order.customer ? `${order.customer.firstName} ${order.customer.lastName ?? ''}`.trim() : 'Complimentary')) : [...new Set(order.payments.map((p) => p.paymentMethod.name))].join(', ') || '—'}</p>
                   <div className="mt-2.5 flex items-center justify-between border-t pt-2">
                     <div>
                       {order.status !== 'CANCELLED' && (
@@ -399,7 +399,7 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
                       <td className="whitespace-nowrap px-5 py-3.5 text-muted-foreground">{new Date(order.createdAt).toLocaleString('en-KE')}</td>
                       <td className="px-5 py-3.5">
                         <StatusPill tone={badge.tone}>{badge.label}</StatusPill>
-                        <span className="ml-2 text-xs text-muted-foreground">{order.saleType === 'COMPLIMENTARY' ? (order.complimentaryRecipientName || order.complimentarySession?.title || 'No payment') : [...new Set(order.payments.map((p) => p.paymentMethod.name))].join(', ') || '—'}</span>
+                        <span className="ml-2 text-xs text-muted-foreground">{order.saleType === 'COMPLIMENTARY' ? (order.complimentaryRecipientName || (order.customer ? `${order.customer.firstName} ${order.customer.lastName ?? ''}`.trim() : 'Complimentary')) : [...new Set(order.payments.map((p) => p.paymentMethod.name))].join(', ') || '—'}</span>
                       </td>
                       <td className="px-5 py-3.5 text-right tabular-nums text-muted-foreground">{order.status === 'CANCELLED' ? '—' : <>{formatKes(order.paid)}{owed > 0.01 && <span className="block text-[11px] font-semibold text-warning">owing {formatKes(owed)}</span>}</>}</td>
                       <td className="px-5 py-3.5 text-right font-semibold tabular-nums">{formatKes(order.total)}</td>

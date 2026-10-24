@@ -49,8 +49,6 @@ export type ReceiptOrder = {
   location: ReceiptLocation | null
   servedBy: { firstName: string; lastName: string } | null
   customer?: { firstName: string; lastName: string | null } | null
-  complimentarySession?: { title: string; hostName: string; startsAt?: string | null; endsAt?: string | null } | null
-  complimentaryOrderRole?: 'HOST_COMP' | 'GUEST_SPEND' | null
   complimentaryReason?: string | null
   complimentaryRecipientName?: string | null
   creditReason?: string | null
@@ -148,7 +146,6 @@ export default function OrderReceipt({ order, profile }: { order: ReceiptOrder; 
         {served && <div className="flex justify-between"><span>Served by</span><span>{served}</span></div>}
         <div className="flex justify-between text-gray-600"><span>{order.table ? `Table: ${order.table.label}` : 'Takeaway'}</span><span>Status: {statusText}</span></div>
         {isComplementary && <div className="flex justify-between text-gray-600"><span>Recipient</span><span>{order.complimentaryRecipientName || (order.customer ? `${order.customer.firstName} ${order.customer.lastName ?? ''}`.trim() : 'Walk-in')}</span></div>}
-        {order.complimentarySession && <div className="flex justify-between text-gray-600"><span>Host/Event</span><span>{order.complimentarySession.title}</span></div>}
         {roomBilled && <div className="flex justify-between text-gray-600"><span>Room bill</span><span>{order.reservation?.room?.number ? `Room ${order.reservation.room.number}` : 'Billed to room'}</span></div>}
         {order.creditReason && <div className="flex justify-between gap-3 text-gray-600"><span>Credit reason</span><span className="text-right">{order.creditReason}</span></div>}
         {order.creditExpectedAt && <div className="flex justify-between text-gray-600"><span>Expected pay date</span><span>{new Date(order.creditExpectedAt).toLocaleDateString('en-KE')}</span></div>}

@@ -101,14 +101,11 @@ type CartLine = { key: string; item: MenuItem; variant: Variant | null; addons: 
 type CreatedOrder = { id: string; orderNumber: number; location?: { name: string } | null; billGroupId?: string | null }
 type HeldSale = { key: string; heldNo: number; label: string; tableId: string; discount: string; notes: string; party: SaleParty; cart: CartLine[] }
 type PaymentMethod = { id: string; name: string; requiresReference: boolean }
-type ComplimentarySession = { id: string; title: string; hostName: string; hostPhone: string | null; eventDate: string; startsAt?: string | null; endsAt?: string | null; status: 'OPEN' | 'CLOSED'; _count?: { orders: number } }
 type ActiveOrder = {
   id: string; orderNumber: number; status: string; total: number
   location?: { id: string; name: string; serveMode?: 'KITCHEN' | 'COUNTER' | 'DIRECT'; requireStoreDispatch?: boolean } | null
   saleType?: 'SALE' | 'COMPLIMENTARY'
   paymentStatus?: 'UNPAID' | 'PARTIAL' | 'PAID'
-  complimentarySession?: ComplimentarySession | null
-  complimentaryOrderRole?: 'HOST_COMP' | 'GUEST_SPEND' | null
   complimentaryRecipientName?: string | null
   creditExpectedAt?: string | null
   createdBy: string | null
@@ -143,8 +140,7 @@ const FETCH_LIMIT = 100
 const formatKes = (price: number) => `KSh ${price.toLocaleString('en-KE', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
 const toNumber = (value: string | number) => (typeof value === 'number' ? value : Number(value))
 const complementaryBadge = (order: ActiveOrder) => {
-  if (order.saleType === 'COMPLIMENTARY') return { label: 'Host comp', cls: 'border-warning/70 text-warning' }
-  if (order.complimentarySession) return { label: 'Guest spend', cls: 'border-secondary/70 text-secondary' }
+  if (order.saleType === 'COMPLIMENTARY') return { label: 'Complimentary', cls: 'border-warning/70 text-warning' }
   return null
 }
 const pendingReturnQuantity = (order: ActiveOrder) =>
@@ -228,12 +224,9 @@ export default function PointOfSale() {
   const [locations, setLocations] = useState<Location[]>([])
   const [profile, setProfile] = useState<BusinessProfile | null>(null)
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
-  const [complimentarySessions, setComplimentarySessions] = useState<ComplimentarySession[]>([])
   const [saleType, setSaleType] = useState<'SALE' | 'COMPLIMENTARY'>('SALE')
-  const [complimentarySessionId, setComplimentarySessionId] = useState('')
+  // A complimentary order is given to the sale's customer (required); the reason is optional.
   const [complimentaryReason, setComplimentaryReason] = useState('')
-  const [complimentaryRecipientName, setComplimentaryRecipientName] = useState('')
-  const [sessionModalOpen, setSessionModalOpen] = useState(false)
   const [activeCategory, setActiveCategory] = useState('All items')
   const [categoryOpen, setCategoryOpen] = useState(false)
   const [categoryQuery, setCategoryQuery] = useState('')
@@ -358,12 +351,11 @@ export default function PointOfSale() {
     setLoading(true)
     setError('')
     try {
-      const [profileResponse, locationResponse, methodsResponse, addonResponse, compResponse] = await Promise.all([
+      const [profileResponse, locationResponse, methodsResponse, addonResponse] = await Promise.all([
         api<{ profile: BusinessProfile | null }>('/business-profile'),
         api<{ locations: Location[] }>('/locations'),
         api<{ methods: (PaymentMethod & { code: string })[] }>('/payment-methods?activeOnly=true'),
         api<{ addons: ApiCatalogAddon[] }>('/pos/addons'),
-        api<{ sessions: ComplimentarySession[] }>('/pos/complimentary-sessions?activeOnly=true'),
       ])
       setProfile(profileResponse.profile)
       setLocations(locationResponse.locations ?? [])
@@ -374,7 +366,6 @@ export default function PointOfSale() {
         id: a.id, name: a.name, price: toNumber(a.price),
         categoryId: a.menuCategoryId ?? null, categoryName: a.menuCategory?.name ?? null,
       })))
-      setComplimentarySessions(compResponse.sessions ?? [])
       await Promise.all([loadMenuItems(), loadTables(), loadActiveOrders()])
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not load the POS menu')
@@ -523,9 +514,7 @@ export default function PointOfSale() {
     setTableId('')
     setDiscount('0')
     setSaleType('SALE')
-    setComplimentarySessionId('')
     setComplimentaryReason('')
-    setComplimentaryRecipientName('')
     setConfirmation(null)
     setParty({ kind: 'WALK_IN' })
   }
@@ -600,10 +589,7 @@ export default function PointOfSale() {
           reservationId: party.kind === 'ROOM' ? party.reservationId : undefined,
           discount: saleType === 'COMPLIMENTARY' ? 0 : financials.discount,
           saleType,
-          complimentarySessionId: complimentarySessionId || undefined,
-          complimentaryOrderRole: saleType === 'COMPLIMENTARY' ? 'HOST_COMP' : complimentarySessionId ? 'GUEST_SPEND' : undefined,
-          complimentaryReason: complimentaryReason.trim() || undefined,
-          complimentaryRecipientName: complimentaryRecipientName.trim() || undefined,
+          complimentaryReason: saleType === 'COMPLIMENTARY' ? complimentaryReason.trim() || undefined : undefined,
           items: cart.map((line) => ({
             menuItemId: line.item.id,
             variantId: line.variant?.id,
@@ -803,7 +789,7 @@ export default function PointOfSale() {
                       </div>
                       {waiter && <p className="mt-1.5 flex items-center gap-1.5 text-xs font-bold text-amber-600"><LuUserRound className="size-3.5" /> Waiter: {waiter}</p>}
                       <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground"><LuUserRound className="size-3.5" /> {order.customer ? `${order.customer.firstName} ${order.customer.lastName ?? ''}` : 'Walk-in'} · {order.table?.label ?? 'Takeaway'}</p>
-                      {compBadge && <p className={cn('mt-2 inline-flex keep-round border border-dashed px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', compBadge.cls)}>{compBadge.label}{order.complimentarySession ? ` - ${order.complimentarySession.title}` : ''}</p>}
+                      {compBadge && <p className={cn('mt-2 inline-flex keep-round border border-dashed px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', compBadge.cls)}>{compBadge.label}</p>}
                       <p className="mt-1 text-[11px] text-muted-foreground">{new Date(order.updatedAt).toLocaleString('en-KE')}</p>
                       <p className="mt-2 text-lg font-bold">{formatKes(order.total)}</p>
                       {pendingReturns > 0 && <p className="mt-1 text-xs font-semibold text-warning">{pendingReturns} item{pendingReturns === 1 ? '' : 's'} waiting return approval</p>}
@@ -944,7 +930,7 @@ export default function PointOfSale() {
                       </div>
                       {waiter && <p className="mt-1.5 flex items-center gap-1.5 text-xs font-bold text-amber-600"><LuUserRound className="size-3.5" /> Waiter: {waiter}</p>}
                       <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground"><LuUserRound className="size-3.5" /> {order.customer ? `${order.customer.firstName} ${order.customer.lastName ?? ''}` : 'Walk-in'} · {order.table?.label ?? 'Takeaway'}</p>
-                      {compBadge && <p className={cn('mt-2 inline-flex keep-round border border-dashed px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', compBadge.cls)}>{compBadge.label}{order.complimentarySession ? ` - ${order.complimentarySession.title}` : ''}</p>}
+                      {compBadge && <p className={cn('mt-2 inline-flex keep-round border border-dashed px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', compBadge.cls)}>{compBadge.label}</p>}
                       <p className="mt-2 text-xs text-muted-foreground">{count} item{count === 1 ? '' : 's'}{order.location?.name ? ` · ${order.location.name}` : ''}</p>
                       <p className="mt-3 text-lg font-bold">{formatKes(order.total)}</p>
                       {pendingReturns > 0 && <p className="mt-1 text-xs font-semibold text-warning">{pendingReturns} item{pendingReturns === 1 ? '' : 's'} waiting return approval</p>}
@@ -1164,24 +1150,16 @@ export default function PointOfSale() {
                   <button type="button" onClick={() => setSaleType('SALE')} className={cn('rounded-sm border px-3 py-2 text-sm font-semibold', saleType === 'SALE' ? 'border-secondary bg-secondary text-secondary-foreground' : 'hover:bg-muted')}>Sale</button>
                   <button type="button" onClick={() => { setSaleType('COMPLIMENTARY'); setDiscount('0') }} className={cn('inline-flex items-center justify-center gap-1.5 rounded-sm border px-3 py-2 text-sm font-semibold', saleType === 'COMPLIMENTARY' ? 'border-warning bg-warning text-warning-foreground' : 'hover:bg-muted')}><LuGift className="size-4" /> Complimentary</button>
                 </div>
-                <div className="mt-2 grid gap-2">
-                  <div className="flex gap-2">
-                    <select value={complimentarySessionId} onChange={(e) => setComplimentarySessionId(e.target.value)} className="input flex-1">
-                      <option value="">No host/event session</option>
-                      {complimentarySessions.map((session) => <option key={session.id} value={session.id}>{session.title} - {session.hostName}</option>)}
-                    </select>
-                    <button type="button" onClick={() => setSessionModalOpen(true)} className="rounded-sm border px-3 text-xs font-semibold text-secondary hover:bg-secondary/10">New</button>
+                {saleType === 'COMPLIMENTARY' && (
+                  <div className="mt-2 grid gap-2">
+                    {party.kind === 'WALK_IN' && (
+                      <button type="button" onClick={() => setCustomerModalOpen(true)} className="w-full border border-warning/60 bg-warning/5 px-3 py-2 text-left text-xs font-semibold text-warning hover:bg-warning/10">
+                        A complimentary order needs a customer - tap to choose who it's given to.
+                      </button>
+                    )}
+                    <TouchInput value={complimentaryReason} onValueChange={setComplimentaryReason} placeholder="Reason (optional), e.g. owner's guest" className="input" />
                   </div>
-                  {saleType === 'COMPLIMENTARY' && (
-                    <>
-                      <TouchInput value={complimentaryRecipientName} onValueChange={setComplimentaryRecipientName} placeholder="Recipient, e.g. DJ Lexx, boss guest, walk-in" className="input" />
-                      <TouchInput value={complimentaryReason} onValueChange={setComplimentaryReason} placeholder="Reason, e.g. host bottle allocation" className="input" />
-                    </>
-                  )}
-                  {saleType === 'SALE' && complimentarySessionId && (
-                    <p className="text-xs font-medium text-secondary">This paid sale will count as guest spend for the selected host/event.</p>
-                  )}
-                </div>
+                )}
               </div>
 
               <div className="max-h-96 overflow-y-auto p-4">
@@ -1358,16 +1336,6 @@ export default function PointOfSale() {
         </div>
       )}
 
-      {sessionModalOpen && (
-        <ComplimentarySessionModal
-          onClose={() => setSessionModalOpen(false)}
-          onCreated={(session) => {
-            setComplimentarySessions((current) => [session, ...current.filter((row) => row.id !== session.id)])
-            setComplimentarySessionId(session.id)
-            setSessionModalOpen(false)
-          }}
-        />
-      )}
       {voidTarget && (
         <ReasonModal
           title={`Void completed sale #${voidTarget.orderNumber}?`}
@@ -1543,68 +1511,6 @@ function CustomizeModal({ item, allAddons, initial, onClose, onSubmit }: {
   )
 }
 
-function ComplimentarySessionModal({ onClose, onCreated }: { onClose: () => void; onCreated: (session: ComplimentarySession) => void }) {
-  const toast = useToast()
-  const [title, setTitle] = useState('')
-  const [hostName, setHostName] = useState('')
-  const [hostPhone, setHostPhone] = useState('')
-  const [startsAt, setStartsAt] = useState(() => new Date().toISOString().slice(0, 16))
-  const [endsAt, setEndsAt] = useState('')
-  const [notes, setNotes] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
-
-  async function submit() {
-    if (!title.trim() || !hostName.trim()) { setError('Enter a session title and host name'); return }
-    setSaving(true)
-    setError('')
-    try {
-      const { session } = await api<{ session: ComplimentarySession }>('/pos/complimentary-sessions', {
-        method: 'POST',
-        body: JSON.stringify({ title: title.trim(), hostName: hostName.trim(), hostPhone: hostPhone.trim() || undefined, startsAt: startsAt || undefined, endsAt: endsAt || undefined, notes: notes.trim() || undefined }),
-      })
-      onCreated(session)
-      toast.success('Complementary session created.')
-    } catch (cause) {
-      const message = cause instanceof Error ? cause.message : 'Could not create complementary session'
-      setError(message)
-      toast.error(message)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-md border-2 border-foreground/25 bg-card p-6 shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
-        <div className="-mx-6 -mt-6 flex items-start justify-between gap-3 border-b-4 border-accent bg-muted/60 px-6 py-4">
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">Complementary session</p>
-            <h2 className="mt-1 font-display text-xl font-semibold">New host/event</h2>
-          </div>
-          <button type="button" onClick={onClose} title="Close" className="bg-black p-2 text-white transition hover:bg-black/80"><LuX className="size-4" /></button>
-        </div>
-        <div className="mt-5 grid gap-3">
-          <label className="text-sm font-medium">Title <span className="text-destructive">*</span><TouchInput value={title} onValueChange={setTitle} placeholder="e.g. DJ Lexx Saturday" className="input mt-1.5" /></label>
-          <label className="text-sm font-medium">Host name <span className="text-destructive">*</span><TouchInput value={hostName} onValueChange={setHostName} placeholder="e.g. DJ Lexx" className="input mt-1.5" /></label>
-          <label className="text-sm font-medium">Phone<TouchInput value={hostPhone} onValueChange={setHostPhone} keyboardMode="number" className="input mt-1.5" /></label>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="text-sm font-medium">Starts<input type="datetime-local" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} className="input mt-1.5" /></label>
-            <label className="text-sm font-medium">Ends<input type="datetime-local" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} className="input mt-1.5" /></label>
-          </div>
-          <label className="text-sm font-medium">Notes<TouchInput value={notes} onValueChange={setNotes} placeholder="e.g. 2 bottles whiskey allocation" className="input mt-1.5" /></label>
-        </div>
-        {error && <div className="mt-4 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert />{error}</div>}
-        <div className="mt-6 flex justify-end gap-2 border-t pt-5">
-          <button type="button" onClick={onClose} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Cancel</button>
-          <button type="button" disabled={saving} onClick={() => void submit()} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
-            {saving && <LuLoaderCircle className="animate-spin" />} Create
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
 
 
 /** Manage an order already in progress: change or remove lines that are on it
