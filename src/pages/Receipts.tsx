@@ -73,8 +73,6 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
     const timer = window.setTimeout(() => setServerSearch(search.trim()), 350)
     return () => window.clearTimeout(timer)
   }, [search])
-  // True when no period or search narrows the list, so only the latest FETCH_LIMIT came back.
-  const [capped, setCapped] = useState(false)
   const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>('ALL')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL')
   const [employeeFilter, setEmployeeFilter] = useState('')
@@ -141,7 +139,6 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
       )
       setOrders(merged)
-      setCapped(!hasPeriod && !serverSearch && orderResponses.some((r) => r.orders.length >= FETCH_LIMIT))
       setProfile(profileResponse.profile)
       setLocations(locationResponse.locations)
       setEmployees(employeeResponse.employees)
@@ -217,11 +214,6 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
             <h2 className="font-display text-xl font-semibold leading-tight">Sales register</h2>
             <p className="text-xs text-muted-foreground">Every completed sale — plus cancelled orders, kept for the record — with the full breakdown and payment history.</p>
           </div>
-          {capped && (
-            <p className="mt-3 border border-warning/40 bg-warning/10 px-3 py-2 text-xs font-medium text-warning">
-              Showing only the latest {FETCH_LIMIT} sales, and the totals above count only those. Pick a period, or search an order number, to see older ones.
-            </p>
-          )}
           <div className="mt-4 flex flex-wrap items-end gap-3">
             <label className="flex min-w-[200px] flex-1 flex-col gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
               Search
