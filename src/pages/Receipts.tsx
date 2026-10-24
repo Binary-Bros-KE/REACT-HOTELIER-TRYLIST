@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { LuBan, LuCalendarDays, LuCircleAlert, LuLoaderCircle, LuMapPin, LuPrinter, LuReceiptText, LuSearch, LuUserRound, LuWallet } from 'react-icons/lu'
+import { LuBan, LuCalendarDays, LuChevronLeft, LuChevronRight, LuCircleAlert, LuLoaderCircle, LuMapPin, LuPrinter, LuReceiptText, LuSearch, LuUserRound, LuWallet } from 'react-icons/lu'
 import { useLocation } from 'react-router-dom'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -31,7 +31,9 @@ type StatusFilter = 'ALL' | 'COMPLETED' | 'CANCELLED'
 // well under 1MB even on a slow connection; 500 would push multiple MB on
 // every page load for no real benefit — nobody scrolls that far back. A
 // narrower date range (below) is the intended way to reach further back.
-const FETCH_LIMIT = 100
+const PAGE_SIZE = 50
+type RegisterSummary = { sales: number; salesCount: number; collected: number; outstanding: number; cancelled: number; cancelledCount: number }
+const EMPTY_SUMMARY: RegisterSummary = { sales: 0, salesCount: 0, collected: 0, outstanding: 0, cancelled: 0, cancelledCount: 0 }
 
 const formatKes = (value: number | string) => `KSh ${Number(value).toLocaleString()}`
 
@@ -47,12 +49,6 @@ const badgeFor = (row: ReceiptRow): { label: string; tone: PillTone } => {
 
 const TH = 'px-5 py-3 text-xs font-bold uppercase tracking-wider'
 
-const paymentStatusOf = (row: ReceiptRow): PaymentStatus => {
-  if (row.paymentStatus) return row.paymentStatus
-  const owed = Math.max(0, row.total - row.paid)
-  return owed <= 0.01 ? 'PAID' : row.paid > 0.01 ? 'PARTIAL' : 'UNPAID'
-}
-
 /** channel: leave unset for every sale (Sales > Receipts) or pass 'SERVICES' for the Service Center's own receipts. */
 export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 'SERVICES' } = {}) {
   const isServices = channel === 'SERVICES'
@@ -62,6 +58,10 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
   const user = useAppSelector((s) => s.auth.user)
   const isSuperAdmin = user?.role?.name === 'Super Admin'
   const [orders, setOrders] = useState<ReceiptRow[]>([])
+  // Every receipt, newest order number back to the first, one page at a time.
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
+  const [summary, setSummary] = useState<RegisterSummary>(EMPTY_SUMMARY)
   const [locations, setLocations] = useState<LocationOption[]>([])
   const [employees, setEmployees] = useState<EmployeeOption[]>([])
   const [profile, setProfile] = useState<ReceiptProfile>(null)
@@ -119,26 +119,19 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
         if (dateFrom) query += `&from=${dateFrom}`
         if (dateTo) query += `&to=${dateTo}`
       }
-      // Only pull the statuses actually needed — narrowing the Status filter
-      // to Completed or Cancelled halves the payload instead of fetching
-      // both and throwing one half away client-side.
-      const statuses: ('COMPLETED' | 'CANCELLED')[] = statusFilter === 'ALL' ? ['COMPLETED', 'CANCELLED'] : [statusFilter]
+      if (statusFilter !== 'ALL') query += `&status=${statusFilter}`
+      if (paymentFilter !== 'ALL') query += `&paymentStatus=${paymentFilter}`
       if (serverSearch) query += `&search=${encodeURIComponent(serverSearch)}`
-      // A chosen period loads every sale in it, so the totals are complete. Without
-      // a period or search, only the latest FETCH_LIMIT of each status load.
-      const hasPeriod = (periodMode === 'shift' && Boolean(shiftDate)) || (periodMode === 'custom' && Boolean(dateFrom || dateTo))
-      const limit = hasPeriod ? '' : `&limit=${serverSearch ? 200 : FETCH_LIMIT}`
-      const [orderResponses, profileResponse, locationResponse, employeeResponse, methodsResponse] = await Promise.all([
-        Promise.all(statuses.map((s) => api<{ orders: ReceiptRow[] }>(`/pos/orders?status=${s}${limit}${query}`))),
+      const [register, profileResponse, locationResponse, employeeResponse, methodsResponse] = await Promise.all([
+        api<{ orders: ReceiptRow[]; total: number; summary: RegisterSummary }>(`/pos/orders/register?page=${page}&pageSize=${PAGE_SIZE}${query}`),
         api<{ profile: ReceiptProfile }>('/business-profile'),
         api<{ locations: LocationOption[] }>('/locations'),
         api<{ employees: EmployeeOption[] }>('/employees'),
         api<{ methods: (PaymentMethod & { code: string })[] }>('/payment-methods?activeOnly=true'),
       ])
-      const merged = orderResponses.flatMap((r) => r.orders).sort(
-        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-      )
-      setOrders(merged)
+      setOrders(register.orders)
+      setTotal(register.total)
+      setSummary(register.summary)
       setProfile(profileResponse.profile)
       setLocations(locationResponse.locations)
       setEmployees(employeeResponse.employees)
@@ -150,7 +143,11 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
     } finally {
       setLoading(false)
     }
-  }, [effectiveLocationId, channel, overridesOnly, statusFilter, employeeFilter, periodMode, shiftDate, dateFrom, dateTo, serverSearch, toast])
+  }, [effectiveLocationId, channel, overridesOnly, statusFilter, paymentFilter, employeeFilter, periodMode, shiftDate, dateFrom, dateTo, serverSearch, page, toast])
+
+  // A new filter starts again from the newest receipts.
+  useEffect(() => { setPage(1) }, [effectiveLocationId, channel, overridesOnly, statusFilter, paymentFilter, employeeFilter, periodMode, shiftDate, dateFrom, dateTo, serverSearch])
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   useEffect(() => { void load() }, [load])
 
@@ -170,35 +167,17 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
 
   const staffNames = useMemo(() => Object.fromEntries(employees.map((e) => [e.id, `${e.firstName} ${e.lastName ?? ''}`.trim()])), [employees])
 
-  const visible = orders.filter((order) => {
-    if (paymentFilter !== 'ALL') {
-      if (order.status === 'CANCELLED') return false
-      if (paymentStatusOf(order) !== paymentFilter) return false
-    }
-    if (!search.trim()) return true
-    const query = search.trim().toLowerCase()
-    const customerName = order.customer ? `${order.customer.firstName} ${order.customer.lastName ?? ''}`.trim().toLowerCase() : ''
-    return String(order.orderNumber).includes(query)
-      || (order.table?.label ?? 'takeaway').toLowerCase().includes(query)
-      || customerName.includes(query)
-      || (order.customer?.phone ?? '').toLowerCase().includes(query)
-  })
-
-  const completedVisible = visible.filter((o) => o.status !== 'CANCELLED')
-  const cancelledVisible = visible.filter((o) => o.status === 'CANCELLED')
-  const totalSales = completedVisible.reduce((s, o) => s + o.total, 0)
-  const totalCollected = completedVisible.reduce((s, o) => s + o.paid, 0)
-  const totalOutstanding = completedVisible.reduce((s, o) => s + Math.max(0, o.total - o.paid), 0)
+  const visible = orders
 
   return (
     <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
       <PageBanner kicker={isServices ? 'Service center' : isReception ? 'Reception' : 'Sales'} title={isServices ? 'Service Receipts' : 'Receipts'} />
 
       <section className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatCard index={0} icon={<LuReceiptText className="size-4" />} label="Sales" value={formatKes(totalSales)} hint={`${completedVisible.length} order${completedVisible.length === 1 ? '' : 's'}`} />
-        <StatCard tone="success" icon={<LuWallet className="size-4" />} label="Collected" value={formatKes(totalCollected)} />
-        <StatCard tone="warn" icon={<LuWallet className="size-4" />} label="Outstanding" value={formatKes(totalOutstanding)} />
-        <StatCard tone="danger" icon={<LuBan className="size-4" />} label="Cancelled" value={String(cancelledVisible.length)} hint={formatKes(cancelledVisible.reduce((s, o) => s + o.total, 0))} />
+        <StatCard index={0} icon={<LuReceiptText className="size-4" />} label="Sales" value={formatKes(summary.sales)} hint={`${summary.salesCount} order${summary.salesCount === 1 ? '' : 's'}`} />
+        <StatCard tone="success" icon={<LuWallet className="size-4" />} label="Collected" value={formatKes(summary.collected)} />
+        <StatCard tone="warn" icon={<LuWallet className="size-4" />} label="Outstanding" value={formatKes(summary.outstanding)} />
+        <StatCard tone="danger" icon={<LuBan className="size-4" />} label="Cancelled" value={String(summary.cancelledCount)} hint={formatKes(summary.cancelled)} />
       </section>
 
       {error && (
@@ -421,6 +400,18 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
               </tbody>
             </table>
           </div>
+          {pageCount > 1 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t p-4 text-sm">
+              <span className="text-muted-foreground">
+                {((page - 1) * PAGE_SIZE + 1).toLocaleString()}–{Math.min(page * PAGE_SIZE, total).toLocaleString()} of {total.toLocaleString()} receipts
+              </span>
+              <div className="flex items-center gap-2">
+                <button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="inline-flex items-center gap-1 border px-3 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-40"><LuChevronLeft className="size-3.5" /> Newer</button>
+                <span className="text-xs font-semibold tabular-nums">Page {page} of {pageCount}</span>
+                <button type="button" disabled={page >= pageCount} onClick={() => setPage((p) => p + 1)} className="inline-flex items-center gap-1 border px-3 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-40">Older <LuChevronRight className="size-3.5" /></button>
+              </div>
+            </div>
+          )}
           </>
         )}
       </section>
