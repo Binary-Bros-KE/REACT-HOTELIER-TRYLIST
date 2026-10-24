@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { downloadCsvRows } from '@/lib/csv'
 import { LuCalendarDays, LuChevronLeft, LuChevronRight, LuCircleAlert, LuDownload, LuLoaderCircle, LuSearch } from 'react-icons/lu'
@@ -92,7 +93,8 @@ function buildReportDoc(report: StockReport): ReportDocData {
   }
 }
 
-export default function StockMovementReport() {
+/** `tabs`: the Stock / Movements switch when shown inside the Inventory Report. */
+export default function StockMovementReport({ tabs }: { tabs?: ReactNode } = {}) {
   const toast = useToast()
   const [period, setPeriod] = useState<Period>('day')
   const [anchor, setAnchor] = useState(todayIso())
@@ -134,6 +136,7 @@ export default function StockMovementReport() {
 
   return (
     <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
+      {tabs}
       <PageBanner kicker="Reports" title="Stock Movement Summary" />
 
       <div className="mt-6 space-y-3 rounded-sm border bg-card p-4 shadow-sm">

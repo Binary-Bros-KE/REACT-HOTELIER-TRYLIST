@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { LuBox, LuCircleAlert, LuLoaderCircle, LuPackageX, LuTriangleAlert, LuWallet } from 'react-icons/lu'
 import { api, hasApiTenant } from '@/lib/api'
@@ -109,7 +110,8 @@ function SetupMessage() {
   return <div className="mx-auto max-w-7xl px-6 py-16 text-center"><p className="text-sm text-muted-foreground">Workspace not resolved yet.</p></div>
 }
 
-export default function InventoryOverview() {
+/** `tabs`: the Stock / Movements switch when shown inside the Inventory Report. */
+export default function InventoryOverview({ tabs }: { tabs?: ReactNode } = {}) {
   const toast = useToast()
   const [tab, setTab] = useState<'live' | 'asOf'>('live')
   const [asOfDate, setAsOfDate] = useState(toLocalIso(new Date()))
@@ -164,6 +166,7 @@ export default function InventoryOverview() {
 
   return (
     <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
+      {tabs}
       <PageBanner kicker="Reports" title="Inventory Report" />
 
       <div className="mt-6 flex flex-wrap items-center gap-1 border bg-card p-1 shadow-sm">

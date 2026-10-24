@@ -47,11 +47,10 @@ import StockLedger from "@/pages/StockLedger";
 import Suppliers from "@/pages/Suppliers";
 import DispatchRequests from "@/pages/DispatchRequests";
 import StockIssues from "@/pages/StockIssues";
-import InventoryOverview from "@/pages/InventoryOverview";
+import InventoryReport from "@/pages/InventoryReport";
 import ProductsReport from "@/pages/ProductsReport";
 import RoomsReport from "@/pages/RoomsReport";
 import AssetsReport from "@/pages/AssetsReport";
-import StockMovementReport from "@/pages/StockMovementReport";
 import RoomContents from "@/pages/RoomContents";
 import TaxReport from "@/pages/TaxReport";
 import ServiceAppointments from "@/pages/ServiceAppointments";
@@ -239,11 +238,12 @@ function App() {
         <Route path="/housekeeping/product-stock" element={<ReceptionProductStock />} />
         <Route path="/reports" element={<Reports />} />
         <Route path="/reports/credit-debtors" element={<CreditDebtorsReport />} />
-        <Route path="/reports/inventory-report" element={<InventoryOverview />} />
+        <Route path="/reports/inventory-report" element={<InventoryReport />} />
         <Route path="/reports/products-report" element={<ProductsReport />} />
         <Route path="/reports/rooms-report" element={<RoomsReport />} />
         <Route path="/reports/assets-report" element={<AssetsReport />} />
-        <Route path="/reports/stock-movements" element={<StockMovementReport />} />
+        {/* Merged into the Inventory Report's Movements tab. */}
+        <Route path="/reports/stock-movements" element={<Navigate to="/reports/inventory-report?tab=movements" replace />} />
         <Route path="/reports/expenses-report" element={<ExpensesReport />} />
         <Route path="/reports/salaries" element={<Salaries initial="report" />} />
         <Route path="/reports/purchases-report" element={<PurchasesReport />} />
