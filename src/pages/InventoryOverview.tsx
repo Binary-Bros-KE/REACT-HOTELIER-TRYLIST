@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { LuBox, LuCircleAlert, LuLoaderCircle, LuPackageX, LuTriangleAlert, LuWallet } from 'react-icons/lu'
 import { api, hasApiTenant } from '@/lib/api'
@@ -11,6 +10,7 @@ import SearchableSelect from '@/components/ui/SearchableSelect'
 import PrintReportButton from '@/components/documents/PrintReportButton'
 import type { ReportDocData, ReportSection } from '@/components/documents/pdf'
 import { productTagLabel } from '@/lib/productTags'
+import LocationMovements from '@/components/inventory/LocationMovements'
 
 type Location = { id: string; name: string }
 type CategoryBucket = { category: string; units: number; value: number; percent: number }
@@ -110,8 +110,7 @@ function SetupMessage() {
   return <div className="mx-auto max-w-7xl px-6 py-16 text-center"><p className="text-sm text-muted-foreground">Workspace not resolved yet.</p></div>
 }
 
-/** `tabs`: the Stock / Movements switch when shown inside the Inventory Report. */
-export default function InventoryOverview({ tabs }: { tabs?: ReactNode } = {}) {
+export default function InventoryOverview() {
   const toast = useToast()
   const [tab, setTab] = useState<'live' | 'asOf'>('live')
   const [asOfDate, setAsOfDate] = useState(toLocalIso(new Date()))
@@ -121,6 +120,8 @@ export default function InventoryOverview({ tabs }: { tabs?: ReactNode } = {}) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [locationFilter, setLocationFilter] = useState<Record<string, 'ALL' | 'LOW_OUT'>>({})
+  // Each location's card shows its live stock, or switches to its stock movements.
+  const [locationView, setLocationView] = useState<Record<string, 'STOCK' | 'MOVEMENTS'>>({})
   const [categoryFilter, setCategoryFilter] = useState('')
 
   const load = useCallback(async () => {
@@ -166,7 +167,6 @@ export default function InventoryOverview({ tabs }: { tabs?: ReactNode } = {}) {
 
   return (
     <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
-      {tabs}
       <PageBanner kicker="Reports" title="Inventory Report" />
 
       <div className="mt-6 flex flex-wrap items-center gap-1 border bg-card p-1 shadow-sm">
@@ -253,6 +253,7 @@ export default function InventoryOverview({ tabs }: { tabs?: ReactNode } = {}) {
             </div>
             {overview.locations.map((loc) => {
               const filter = locationFilter[loc.locationId] ?? 'ALL'
+              const view = locationView[loc.locationId] ?? 'STOCK'
               const categoryRows = loc.products.filter(categoryMatches)
               const rows = filter === 'ALL' ? categoryRows : categoryRows.filter((p) => p.low || p.out)
               return (
@@ -267,9 +268,17 @@ export default function InventoryOverview({ tabs }: { tabs?: ReactNode } = {}) {
                       <span className={cn(loc.lowStockCount > 0 && 'font-semibold text-warning')}>{loc.lowStockCount} low stock</span>
                       <span className={cn(loc.outOfStockCount > 0 && 'font-semibold text-destructive')}>{loc.outOfStockCount} out of stock</span>
                       <span>Stock value <span className="font-semibold text-foreground">{formatKes(loc.stockValue)}</span></span>
-                      <PrintReportButton data={buildSectionDoc(overview, loc)} disabled={loading} label="Print section" />
+                      <div className="inline-flex border p-0.5">
+                        {(['STOCK', 'MOVEMENTS'] as const).map((v) => (
+                          <button key={v} type="button" onClick={() => setLocationView((s) => ({ ...s, [loc.locationId]: v }))} className={cn('px-3 py-1 text-xs font-bold uppercase tracking-wide', view === v ? 'bg-black text-white' : 'text-muted-foreground hover:bg-muted')}>
+                            {v === 'STOCK' ? 'Stock' : 'Movements'}
+                          </button>
+                        ))}
+                      </div>
+                      {view === 'STOCK' && <PrintReportButton data={buildSectionDoc(overview, loc)} disabled={loading} label="Print section" />}
                     </div>
                   </header>
+                  {view === 'MOVEMENTS' ? <LocationMovements locationId={loc.locationId} locationName={loc.name} /> : (<>
                   <div className="flex gap-1 border-b p-2">
                     {(['ALL', 'LOW_OUT'] as const).map((f) => (
                       <button key={f} onClick={() => setLocationFilter((s) => ({ ...s, [loc.locationId]: f }))} className={cn('rounded-sm px-3 py-1 text-xs font-semibold', filter === f ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}>
@@ -313,6 +322,7 @@ export default function InventoryOverview({ tabs }: { tabs?: ReactNode } = {}) {
                       </table>
                     </div>
                   )}
+                  </>)}
                 </section>
               )
             })}
