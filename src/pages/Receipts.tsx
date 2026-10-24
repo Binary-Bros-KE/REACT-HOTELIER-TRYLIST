@@ -67,6 +67,14 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
   const [profile, setProfile] = useState<ReceiptProfile>(null)
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
   const [search, setSearch] = useState('')
+  // The search runs on the server, across every order - typing waits a moment first.
+  const [serverSearch, setServerSearch] = useState('')
+  useEffect(() => {
+    const timer = window.setTimeout(() => setServerSearch(search.trim()), 350)
+    return () => window.clearTimeout(timer)
+  }, [search])
+  // True when no period or search narrows the list, so only the latest FETCH_LIMIT came back.
+  const [capped, setCapped] = useState(false)
   const [paymentFilter, setPaymentFilter] = useState<PaymentFilter>('ALL')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL')
   const [employeeFilter, setEmployeeFilter] = useState('')
@@ -117,8 +125,13 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
       // to Completed or Cancelled halves the payload instead of fetching
       // both and throwing one half away client-side.
       const statuses: ('COMPLETED' | 'CANCELLED')[] = statusFilter === 'ALL' ? ['COMPLETED', 'CANCELLED'] : [statusFilter]
+      if (serverSearch) query += `&search=${encodeURIComponent(serverSearch)}`
+      // A chosen period loads every sale in it, so the totals are complete. Without
+      // a period or search, only the latest FETCH_LIMIT of each status load.
+      const hasPeriod = (periodMode === 'shift' && Boolean(shiftDate)) || (periodMode === 'custom' && Boolean(dateFrom || dateTo))
+      const limit = hasPeriod ? '' : `&limit=${serverSearch ? 200 : FETCH_LIMIT}`
       const [orderResponses, profileResponse, locationResponse, employeeResponse, methodsResponse] = await Promise.all([
-        Promise.all(statuses.map((s) => api<{ orders: ReceiptRow[] }>(`/pos/orders?status=${s}&limit=${FETCH_LIMIT}${query}`))),
+        Promise.all(statuses.map((s) => api<{ orders: ReceiptRow[] }>(`/pos/orders?status=${s}${limit}${query}`))),
         api<{ profile: ReceiptProfile }>('/business-profile'),
         api<{ locations: LocationOption[] }>('/locations'),
         api<{ employees: EmployeeOption[] }>('/employees'),
@@ -128,6 +141,7 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
       )
       setOrders(merged)
+      setCapped(!hasPeriod && !serverSearch && orderResponses.some((r) => r.orders.length >= FETCH_LIMIT))
       setProfile(profileResponse.profile)
       setLocations(locationResponse.locations)
       setEmployees(employeeResponse.employees)
@@ -139,7 +153,7 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
     } finally {
       setLoading(false)
     }
-  }, [effectiveLocationId, channel, overridesOnly, statusFilter, employeeFilter, periodMode, shiftDate, dateFrom, dateTo, toast])
+  }, [effectiveLocationId, channel, overridesOnly, statusFilter, employeeFilter, periodMode, shiftDate, dateFrom, dateTo, serverSearch, toast])
 
   useEffect(() => { void load() }, [load])
 
@@ -203,6 +217,11 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
             <h2 className="font-display text-xl font-semibold leading-tight">Sales register</h2>
             <p className="text-xs text-muted-foreground">Every completed sale — plus cancelled orders, kept for the record — with the full breakdown and payment history.</p>
           </div>
+          {capped && (
+            <p className="mt-3 border border-warning/40 bg-warning/10 px-3 py-2 text-xs font-medium text-warning">
+              Showing only the latest {FETCH_LIMIT} sales, and the totals above count only those. Pick a period, or search an order number, to see older ones.
+            </p>
+          )}
           <div className="mt-4 flex flex-wrap items-end gap-3">
             <label className="flex min-w-[200px] flex-1 flex-col gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
               Search
