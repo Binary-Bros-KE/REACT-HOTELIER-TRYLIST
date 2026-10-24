@@ -265,6 +265,7 @@ export default function PointOfSale() {
   const [completedOrders, setCompletedOrders] = useState<CompletedOrder[]>([])
   const [completedLoading, setCompletedLoading] = useState(false)
   const [completedFilter, setCompletedFilter] = useState<'ALL' | 'OWING' | 'PAID'>('ALL')
+  const [owingOrders, setOwingOrders] = useState<CompletedOrder[]>([])
   const [settlementOrderId, setSettlementOrderId] = useState<string | null>(null)
   const [addItemsOrder, setAddItemsOrder] = useState<ActiveOrder | null>(null)
   const [receiptOrderId, setReceiptOrderId] = useState<string | null>(null)
@@ -338,8 +339,13 @@ export default function PointOfSale() {
     setCompletedLoading(true)
     try {
       const query = effectiveLocationId ? `&locationId=${effectiveLocationId}` : ''
-      const response = await api<{ orders: CompletedOrder[] }>(`/pos/orders?channel=FOOD&status=COMPLETED&limit=${FETCH_LIMIT}${query}`)
+      // The latest 100 for browsing (older ones live in Receipts), plus every order still owing, however old.
+      const [response, owing] = await Promise.all([
+        api<{ orders: CompletedOrder[] }>(`/pos/orders?channel=FOOD&status=COMPLETED&limit=${FETCH_LIMIT}${query}`),
+        api<{ orders: CompletedOrder[] }>(`/pos/orders?channel=FOOD&owing=true${query}`),
+      ])
       setCompletedOrders(response.orders ?? [])
+      setOwingOrders(owing.orders ?? [])
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not load completed orders')
     } finally {
@@ -749,17 +755,17 @@ export default function PointOfSale() {
               <button
                 key={value}
                 onClick={() => setCompletedFilter(value)}
-                className={cn('keep-round rounded-full border px-3 py-1 text-xs font-semibold', completedFilter === value ? 'border-secondary bg-secondary text-secondary-foreground' : 'text-muted-foreground hover:bg-muted')}
+                className={cn('rounded-none border px-3 py-1 text-xs font-semibold', completedFilter === value ? 'border-secondary bg-secondary text-secondary-foreground' : 'text-muted-foreground hover:bg-muted')}
               >
                 {label}
-                {value === 'OWING' && completedOrders.some((o) => o.paymentStatus !== 'PAID') && ` (${completedOrders.filter((o) => o.paymentStatus !== 'PAID').length})`}
+                {value === 'OWING' && owingOrders.length > 0 && ` (${owingOrders.length})`}
               </button>
             ))}
           </div>
           {completedLoading ? (
             <div className="flex min-h-40 items-center justify-center gap-2 text-sm text-muted-foreground"><LuLoaderCircle className="animate-spin" /> Loading…</div>
           ) : (() => {
-            const rows = completedOrders.filter((o) => completedFilter === 'ALL' || (completedFilter === 'OWING' ? o.paymentStatus !== 'PAID' : o.paymentStatus === 'PAID'))
+            const rows = completedFilter === 'OWING' ? owingOrders : completedOrders.filter((o) => completedFilter === 'ALL' || o.paymentStatus === 'PAID')
             if (rows.length === 0) return <div className="rounded-sm border border-dashed p-10 text-center text-sm text-muted-foreground">No completed orders {completedFilter === 'OWING' ? 'still owing' : completedFilter === 'PAID' ? 'fully paid' : 'yet'}.</div>
             return (
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
