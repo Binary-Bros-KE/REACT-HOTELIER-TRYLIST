@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
-import { LuCheck, LuCircleAlert, LuCreditCard, LuFileText, LuLoaderCircle, LuPencil, LuPlus, LuPrinter, LuRefreshCw, LuSearch, LuSend, LuSignature, LuTrash2, LuUserPlus } from 'react-icons/lu'
+import { LuCheck, LuChevronLeft, LuChevronRight, LuCircleAlert, LuCreditCard, LuFileText, LuLoaderCircle, LuPencil, LuPlus, LuPrinter, LuRefreshCw, LuSearch, LuSend, LuSignature, LuTrash2, LuUserPlus } from 'react-icons/lu'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
 import { useToast } from '@/components/ui/Toast'
@@ -28,7 +28,7 @@ type Line = { id?: string; source?: LineSource; sourceRefId?: string | null; des
 type SourceLine = { id: string; kind: string; label: string; description: string | null; price: number; unitLabel: string | null; source: LineSource; sourceRefId: string; taxRate: string | number; taxMode: TaxMode; taxTreatment: TaxTreatment }
 type SourceFolio = { reservationId: string; folioId: string; reservationNo: string; folioNo: string; customerName: string; locationName: string | null; roomLabel: string; checkIn: string; checkOut: string; total: number; paid: number; balance: number }
 type SourceOrder = { id: string; orderNumber: number; channel: string; customerName: string; locationName: string | null; total: number; paid: number; balance: number; createdAt: string }
-type SourceOptions = { roomRates: SourceLine[]; services: SourceLine[]; folios: SourceFolio[]; orders: SourceOrder[] }
+type SourceOptions = { roomRates: SourceLine[]; services: SourceLine[] }
 type DocumentRow = {
   id: string; documentNo: string; type: DocType; status: Status; title: string | null; intro: string | null; headerText: string | null; footerText: string | null
   source: string; linkedStay?: { reservationId: string; reservationNo: string; roomNumber: string; folioNo: string; checkIn: string; checkOut: string; guestName: string } | null
@@ -55,7 +55,7 @@ export default function CommercialDocuments({ type }: { type: DocType }) {
   const [documents, setDocuments] = useState<DocumentRow[]>([])
   const [summary, setSummary] = useState({ total: 0, value: 0, paid: 0, balance: 0, overdue: 0 })
   const [options, setOptions] = useState<Options>({ customers: [], locations: [], paymentMethods: [], tax: { taxRate: 16, taxMode: 'INCLUSIVE', taxTreatment: 'STANDARD' }, units: [] })
-  const [sources, setSources] = useState<SourceOptions>({ roomRates: [], services: [], folios: [], orders: [] })
+  const [sources, setSources] = useState<SourceOptions>({ roomRates: [], services: [] })
   const { fixed: fixedLocation, options: pickableLocations, setLocation, effectiveId } = useWorkingLocation(options.locations, { persist: false })
   const [profile, setProfile] = useState<DocProfile>(null)
   const [query, setQuery] = useState('')
@@ -180,7 +180,7 @@ export default function CommercialDocuments({ type }: { type: DocType }) {
       </section>
       {editor && <DocumentEditor type={type} document={editor === 'new' ? null : editor} options={options} sources={sources} fixedLocation={fixedLocation} locations={pickableLocations} selectedLocationId={effectiveId} setLocation={setLocation} onClose={() => setEditor(null)} onSaved={(doc) => { setEditor(null); setDocuments((cur) => editor === 'new' ? [doc, ...cur] : cur.map((d) => d.id === doc.id ? doc : d)); void load() }} />}
       {deleting && <DeleteDocumentModal doc={deleting} onClose={() => setDeleting(null)} onDeleted={() => { setDocuments((cur) => cur.filter((d) => d.id !== deleting.id)); setDeleting(null); void load() }} />}
-      {sourcePicker && <SourceInvoiceModal kind={sourcePicker} sources={sources} onClose={() => setSourcePicker(null)} onCreated={(doc) => { setSourcePicker(null); setDocuments((cur) => [doc, ...cur]); setPrinting(doc); void load() }} />}
+      {sourcePicker && <SourceInvoiceModal kind={sourcePicker} onClose={() => setSourcePicker(null)} onCreated={(doc) => { setSourcePicker(null); setDocuments((cur) => [doc, ...cur]); setPrinting(doc); void load() }} />}
       {convertTarget && (
         <ConvertQuotationModal
           doc={convertTarget}
@@ -326,10 +326,34 @@ function ConvertQuotationModal({ doc, customers, onClose, onCustomerCreated, onC
   )
 }
 
-function SourceInvoiceModal({ kind, sources, onClose, onCreated }: { kind: 'folio' | 'order'; sources: SourceOptions; onClose: () => void; onCreated: (doc: DocumentRow) => void }) {
+/** Searches every stay / completed sale on the server (newest first, a page at a time) -
+ * an older sale or stay can be invoiced too, not just the latest 100. */
+function SourceInvoiceModal({ kind, onClose, onCreated }: { kind: 'folio' | 'order'; onClose: () => void; onCreated: (doc: DocumentRow) => void }) {
   const toast = useToast()
   const [savingId, setSavingId] = useState<string | null>(null)
-  const items = kind === 'folio' ? sources.folios : sources.orders
+  const [search, setSearch] = useState('')
+  const [term, setTerm] = useState('')
+  const [page, setPage] = useState(1)
+  const [items, setItems] = useState<(SourceFolio | SourceOrder)[]>([])
+  const [total, setTotal] = useState(0)
+  const [pageSize, setPageSize] = useState(25)
+  const [loading, setLoading] = useState(true)
+  useEffect(() => {
+    const timer = window.setTimeout(() => { setTerm(search.trim()); setPage(1) }, 300)
+    return () => window.clearTimeout(timer)
+  }, [search])
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    const q = new URLSearchParams({ kind, page: String(page) })
+    if (term) q.set('search', term)
+    api<{ items: (SourceFolio | SourceOrder)[]; total: number; pageSize: number }>(`/commercial-documents/source-search?${q}`)
+      .then((r) => { if (!cancelled) { setItems(r.items); setTotal(r.total); setPageSize(r.pageSize) } })
+      .catch((cause) => { if (!cancelled) toast.error(cause instanceof Error ? cause.message : 'Could not search') })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [kind, term, page, toast])
+  const pageCount = Math.max(1, Math.ceil(total / pageSize))
   async function create(item: SourceFolio | SourceOrder) {
     setSavingId(kind === 'folio' ? (item as SourceFolio).folioId : (item as SourceOrder).id)
     try {
@@ -347,8 +371,15 @@ function SourceInvoiceModal({ kind, sources, onClose, onCreated }: { kind: 'foli
   }
   return (
     <ModalShell size="lg" kicker="Generate invoice" title={kind === 'folio' ? 'Invoice a stay folio' : 'Invoice a completed sale'} onClose={onClose}>
-      <div className="max-h-[70vh] space-y-3 overflow-y-auto p-5">
-        {items.map((item) => {
+      <div className="border-b p-5 pb-4">
+        <span className="relative block">
+          <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <input autoFocus value={search} onChange={(e) => setSearch(e.target.value)} placeholder={kind === 'folio' ? 'Reservation no., folio no., guest or room' : 'Order no., customer name or phone'} className="input pl-9" />
+        </span>
+      </div>
+      <div className="max-h-[60vh] space-y-3 overflow-y-auto p-5">
+        {loading && <div className="flex justify-center py-6 text-muted-foreground"><LuLoaderCircle className="animate-spin" /></div>}
+        {!loading && items.map((item) => {
           const id = kind === 'folio' ? (item as SourceFolio).folioId : (item as SourceOrder).id
           const title = kind === 'folio' ? `${(item as SourceFolio).customerName} - ${(item as SourceFolio).reservationNo}` : `${(item as SourceOrder).customerName} - Order #${(item as SourceOrder).orderNumber}`
           const meta = kind === 'folio'
@@ -367,8 +398,18 @@ function SourceInvoiceModal({ kind, sources, onClose, onCreated }: { kind: 'foli
             </div>
           )
         })}
-        {items.length === 0 && <p className="py-10 text-center text-sm text-muted-foreground">{kind === 'folio' ? 'No unpaid stay folios available.' : 'No completed customer sales available.'}</p>}
+        {!loading && items.length === 0 && <p className="py-10 text-center text-sm text-muted-foreground">{term ? 'Nothing matches that search.' : kind === 'folio' ? 'No unpaid stay folios available.' : 'No completed customer sales available.'}</p>}
       </div>
+      {pageCount > 1 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t px-5 py-3 text-sm">
+          <span className="text-muted-foreground">{((page - 1) * pageSize + 1).toLocaleString()}–{Math.min(page * pageSize, total).toLocaleString()} of {total.toLocaleString()}</span>
+          <div className="flex items-center gap-2">
+            <button type="button" disabled={page <= 1} onClick={() => setPage((n) => n - 1)} className="inline-flex items-center gap-1 border px-3 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-40"><LuChevronLeft className="size-3.5" /> Newer</button>
+            <span className="text-xs font-semibold tabular-nums">Page {page} of {pageCount}</span>
+            <button type="button" disabled={page >= pageCount} onClick={() => setPage((n) => n + 1)} className="inline-flex items-center gap-1 border px-3 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-40">Older <LuChevronRight className="size-3.5" /></button>
+          </div>
+        </div>
+      )}
     </ModalShell>
   )
 }

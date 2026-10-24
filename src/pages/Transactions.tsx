@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { LuArrowDownLeft, LuArrowLeftRight, LuArrowUpRight, LuCircleAlert, LuLoaderCircle, LuSearch } from 'react-icons/lu'
+import { LuArrowDownLeft, LuArrowLeftRight, LuArrowUpRight, LuChevronLeft, LuChevronRight, LuCircleAlert, LuLoaderCircle, LuSearch } from 'react-icons/lu'
 import { api } from '@/lib/api'
 import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
@@ -26,6 +26,8 @@ type Transaction = {
   employee: { id: string; firstName: string; lastName: string } | null
 }
 
+const PAGE_SIZE = 100
+
 export default function Transactions() {
   const toast = useToast()
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -38,6 +40,9 @@ export default function Transactions() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [summary, setSummary] = useState({ totalIn: 0, totalOut: 0, count: 0 })
+  // Every transaction, newest first, 100 per page.
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
 
   useEffect(() => {
     api<{ methods: PaymentMethod[] }>('/payment-methods').then((r) => setMethods(r.methods)).catch(() => {})
@@ -53,8 +58,11 @@ export default function Transactions() {
       if (paymentMethodId) query.set('paymentMethodId', paymentMethodId)
       if (from) query.set('from', from)
       if (to) query.set('to', to)
-      const response = await api<{ transactions: Transaction[]; summary: { totalIn: number; totalOut: number; count: number } }>(`/transactions${query.size ? `?${query}` : ''}`)
+      query.set('page', String(page))
+      query.set('pageSize', String(PAGE_SIZE))
+      const response = await api<{ transactions: Transaction[]; total: number; summary: { totalIn: number; totalOut: number; count: number } }>(`/transactions?${query}`)
       setTransactions(response.transactions)
+      setTotal(response.total)
       setSummary(response.summary)
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Could not load transactions'
@@ -63,7 +71,11 @@ export default function Transactions() {
     } finally {
       setLoading(false)
     }
-  }, [search, direction, paymentMethodId, from, to, toast])
+  }, [search, direction, paymentMethodId, from, to, page, toast])
+
+  // A new filter starts again from the newest.
+  useEffect(() => { setPage(1) }, [search, direction, paymentMethodId, from, to])
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   useEffect(() => {
     const timer = window.setTimeout(() => void load(), 250)
@@ -157,6 +169,16 @@ export default function Transactions() {
               </tbody>
             </table>
           </div>
+          {pageCount > 1 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t p-4 text-sm">
+              <span className="text-muted-foreground">{((page - 1) * PAGE_SIZE + 1).toLocaleString()}–{Math.min(page * PAGE_SIZE, total).toLocaleString()} of {total.toLocaleString()} transactions</span>
+              <div className="flex items-center gap-2">
+                <button type="button" disabled={page <= 1} onClick={() => setPage((n) => n - 1)} className="inline-flex items-center gap-1 border px-3 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-40"><LuChevronLeft className="size-3.5" /> Newer</button>
+                <span className="text-xs font-semibold tabular-nums">Page {page} of {pageCount}</span>
+                <button type="button" disabled={page >= pageCount} onClick={() => setPage((n) => n + 1)} className="inline-flex items-center gap-1 border px-3 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-40">Older <LuChevronRight className="size-3.5" /></button>
+              </div>
+            </div>
+          )}
         </section>
       )}
     </div>
