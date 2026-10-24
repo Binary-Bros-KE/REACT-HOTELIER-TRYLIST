@@ -86,10 +86,9 @@ export default function StatementModal({ kind, initialId, onClose }: { kind: Kin
         note: contact || undefined,
         compact: true,
         columns: [{ label: 'Date' }, { label: 'Reference', flex: 1.2 }, { label: 'Details', flex: 2.4 }, { label: 'Billed', align: 'right' }, { label: 'Paid', align: 'right' }, { label: 'Outstanding', align: 'right' }],
-        rows: [
-          ...s.lines.map((l) => [day(l.date), l.reference, l.description, money(l.billed), money(l.paid), money(l.outstanding)]),
-          ['', 'TOTAL', '', money(s.totals.billed), money(s.totals.paid), money(s.totals.outstanding)],
-        ],
+        rows: s.lines.map((l) => [day(l.date), l.reference, l.description, money(l.billed), money(l.paid), money(l.outstanding)]),
+        // The shaded, bold total row, like the salaries report's.
+        totals: ['Total', '', '', money(s.totals.billed), money(s.totals.paid), money(s.totals.outstanding)],
       }],
     }
   }
