@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
-import { LuCircleAlert, LuGift, LuLoaderCircle, LuReceiptText, LuUserPlus, LuX } from 'react-icons/lu'
+import { LuCircleAlert, LuGift, LuLoaderCircle, LuReceiptText, LuScissors, LuUserPlus, LuX } from 'react-icons/lu'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/Toast'
@@ -9,6 +9,7 @@ import CustomerSelectModal, { type SaleParty } from '@/components/pos/CustomerSe
 import type { ReceiptOrder } from './OrderReceipt'
 import { receiptItemName, receiptVariantSuffix } from '@/lib/receiptFields'
 import { TouchInput, TouchTextarea } from '@/components/ui/TouchInput'
+import SplitBillModal from '@/components/pos/SplitBillModal'
 
 type PaymentMethod = { id: string; name: string; requiresReference: boolean; code?: string }
 type CheckedInStay = { id: string; reservationNo: string; customer: { firstName: string; lastName: string | null }; room: { number: string } }
@@ -114,6 +115,7 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
   const [compOpen, setCompOpen] = useState(false)
   const [compReason, setCompReason] = useState('')
   const [switchingComp, setSwitchingComp] = useState(false)
+  const [splitOpen, setSplitOpen] = useState(false)
   // M-Pesa STK push, when the selected method is MPESA: an alternative to typing in the code by hand.
   const [payWay, setPayWay] = useState<'MANUAL' | 'STK'>('MANUAL')
   const [stkPhone, setStkPhone] = useState('')
@@ -140,6 +142,10 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
   const isActiveOrder = !!order && ['OPEN', 'PREPARING', 'READY', 'SERVED'].includes(order.status)
   const canSwitchToComp = isSuperAdmin && isActiveOrder && !isComplementary && order!.paid <= 0.01 && !order!.billedToRoomAt
   const canSwitchToSale = isSuperAdmin && isActiveOrder && isComplementary
+  // Mirrors POST /pos/orders/:id/split: Super Admin, a served bill with no payment, not on a room, more than one item.
+  const canSplit = isSuperAdmin && order?.status === 'SERVED' && order.paid <= 0.01 && !order.billedToRoomAt
+    && !order.items.some((item) => (item as { addedAfterSend?: boolean }).addedAfterSend)
+    && order.items.reduce((sum, item) => sum + item.quantity, 0) > 1
 
   function stopStkPoll() {
     if (stkPollRef.current.timer) window.clearTimeout(stkPollRef.current.timer)
@@ -769,8 +775,17 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
               )}
 
               {/* Super Admin, active orders only: sale <-> complimentary. A completed order stays as it is. */}
-              {pendingReturnTotal === 0 && (canSwitchToComp || canSwitchToSale) && (
+              {pendingReturnTotal === 0 && (canSwitchToComp || canSwitchToSale || canSplit) && (
                 <div className="mt-2 space-y-2">
+                  {canSplit && (
+                    <button
+                      type="button"
+                      onClick={() => setSplitOpen(true)}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-sm border py-2 text-xs font-semibold hover:bg-muted"
+                    >
+                      <LuScissors className="size-3.5" /> Split bill
+                    </button>
+                  )}
                   {canSwitchToSale && (
                     <button
                       type="button"
@@ -834,6 +849,14 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
           )}
         </div>
       </div>
+
+      {splitOpen && order && (
+        <SplitBillModal<Order>
+          order={order}
+          onClose={() => setSplitOpen(false)}
+          onSplit={(result) => { setSplitOpen(false); setOrder(result.order); onChanged() }}
+        />
+      )}
 
       {custModalOpen && (
         <CustomerSelectModal
