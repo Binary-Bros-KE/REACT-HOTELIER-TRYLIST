@@ -271,7 +271,7 @@ export default function InventoryOverview() {
                       <div className="inline-flex border p-0.5">
                         {(['STOCK', 'MOVEMENTS'] as const).map((v) => (
                           <button key={v} type="button" onClick={() => setLocationView((s) => ({ ...s, [loc.locationId]: v }))} className={cn('px-3 py-1 text-xs font-bold uppercase tracking-wide', view === v ? 'bg-black text-white' : 'text-muted-foreground hover:bg-muted')}>
-                            {v === 'STOCK' ? 'Stock' : 'Movements'}
+                            {v === 'STOCK' ? 'Stock' : 'Stock take'}
                           </button>
                         ))}
                       </div>

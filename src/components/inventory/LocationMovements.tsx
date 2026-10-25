@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { LuCalendarDays, LuChevronLeft, LuChevronRight, LuCircleAlert, LuDownload, LuLoaderCircle, LuSearch } from 'react-icons/lu'
 import { api } from '@/lib/api'
 import { downloadCsvRows } from '@/lib/csv'
@@ -9,14 +9,17 @@ import { cn } from '@/lib/utils'
 import PrintReportButton from '@/components/documents/PrintReportButton'
 import type { ReportDocData } from '@/components/documents/pdf'
 
-// One location's stock movements for a period (opening, received, issued,
-// adjustments, closing per product, and every movement), shown inside that
-// location's card on the Inventory Report. Server: GET /reports/stock-movements.
+// Stock take for one location over a period: every product carried there, by
+// category, with opening, added (anything that increased stock), sold (anything
+// that decreased it), net change and closing - plus every movement. Shown inside
+// that location's card on the Inventory Report. Server: GET /reports/stock-movements
+// with allProducts=true.
 
 type Period = 'day' | 'week' | 'month' | 'custom'
 type SummaryRow = {
-  productId: string; name: string; sku: string | null; unit: string; packSize: number | null; packLabel: string | null
-  locationId: string; locationName: string; opening: number; received: number; issued: number; adjustments: number; net: number; closing: number; reconciles: boolean; movements: number
+  productId: string; name: string; sku: string | null; category: string | null; unit: string; packSize: number | null; packLabel: string | null
+  locationId: string; locationName: string; opening: number; received: number; issued: number; adjustments: number
+  added: number; removed: number; net: number; closing: number; reconciles: boolean; movements: number
 }
 type MovementRow = {
   id: string; occurredAt: string; productName: string; sku: string | null; unit: string; packSize: number | null; packLabel: string | null
@@ -24,7 +27,7 @@ type MovementRow = {
 }
 type StockReport = {
   range: { period: Period; start: string; end: string }
-  cards: { products: number; locations: number; movements: number; unreconciled: number }
+  cards: { products: number; listed?: number; locations: number; movements: number; unreconciled: number }
   rows: SummaryRow[]
   movements: MovementRow[]
 }
@@ -43,6 +46,22 @@ const signed = (qty: number, p: { packSize: number | null; packLabel: string | n
   return qty > 0 ? `+${text}` : qty < 0 ? `−${text}` : text
 }
 const plain = (qty: number, p: { packSize: number | null; packLabel: string | null; unit: string }) => packAndUnit(qty, p.packSize ?? 0, p.packLabel ?? '', p.unit)
+
+// Stock take figures: a number in the product's own unit (packs when it's tracked in packs),
+// with the unit in its own UOM column; "-" for nothing.
+const inUnit = (qty: number, p: { packSize: number | null }) => +((p.packSize && p.packSize > 0 ? qty / p.packSize : qty).toFixed(3))
+const uom = (p: { packSize: number | null; packLabel: string | null; unit: string }) => (p.packSize && p.packSize > 0 ? p.packLabel || 'pack' : p.unit)
+const num = (qty: number, p: { packSize: number | null }) => inUnit(qty, p).toLocaleString('en-KE', { maximumFractionDigits: 3 })
+const dash = (qty: number, p: { packSize: number | null }, sign = '') => (Math.abs(qty) < 0.0005 ? '-' : `${sign}${num(qty, p)}`)
+const netCell = (qty: number, p: { packSize: number | null }) => (Math.abs(qty) < 0.0005 ? '-' : qty > 0 ? `+${num(qty, p)}` : `−${num(-qty, p)}`)
+function byCategory(rows: SummaryRow[]) {
+  const map = new Map<string, SummaryRow[]>()
+  for (const r of rows) {
+    const key = r.category ?? 'Uncategorised'
+    map.set(key, [...(map.get(key) ?? []), r])
+  }
+  return [...map.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([category, list]) => ({ category, rows: list.sort((a, b) => a.name.localeCompare(b.name)) }))
+}
 
 function stepAnchor(period: Exclude<Period, 'custom'>, iso: string, dir: 1 | -1) {
   const d = new Date(`${iso}T00:00:00`)
@@ -75,7 +94,7 @@ export default function LocationMovements({ locationId, locationName }: { locati
     setLoading(true)
     setError('')
     try {
-      const query = new URLSearchParams({ period, locationId })
+      const query = new URLSearchParams({ period, locationId, allProducts: 'true' })
       if (period === 'custom') { query.set('from', customFrom); query.set('to', customTo) } else { query.set('date', anchor) }
       setReport(await api<StockReport>(`/reports/stock-movements?${query}`))
     } catch (cause) {
@@ -90,36 +109,38 @@ export default function LocationMovements({ locationId, locationName }: { locati
 
   const needle = search.trim().toLowerCase()
   const rows = useMemo(() => (report?.rows ?? []).filter((r) => !needle || r.name.toLowerCase().includes(needle) || (r.sku ?? '').toLowerCase().includes(needle)), [report, needle])
+  const groups = useMemo(() => byCategory(rows), [rows])
   const movements = useMemo(() => (report?.movements ?? []).filter((m) => !needle || m.productName.toLowerCase().includes(needle)), [report, needle])
 
   function exportCsv(r: StockReport) {
-    downloadCsvRows(`stock-movements-${locationName.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}`, [
-      ['Product', 'SKU', 'Opening', 'Received', 'Issued', 'Adjustments', 'Net change', 'Closing', 'Reconciles'],
-      ...r.rows.map((x) => [x.name, x.sku ?? '', plain(x.opening, x), plain(x.received, x), plain(x.issued, x), plain(x.adjustments, x), plain(x.net, x), plain(x.closing, x), x.reconciles ? 'yes' : 'NO']),
+    downloadCsvRows(`stock-take-${locationName.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}`, [
+      ['Category', 'Product', 'UOM', 'Opening', 'Added', 'Sold', 'Net change', 'Closing'],
+      ...byCategory(r.rows).flatMap((g) => g.rows.map((x) => [g.category, x.name, uom(x), inUnit(x.opening, x), inUnit(x.added, x), inUnit(x.removed, x), inUnit(x.net, x), inUnit(x.closing, x)])),
     ])
   }
 
   function doc(r: StockReport): ReportDocData {
     return {
-      reportTitle: `${locationName} Stock Movements`,
+      reportTitle: `${locationName} Stock Take`,
       kicker: 'Inventory Report',
       rangeLabel: rangeLabel(r.range.period, r.range.start, r.range.end),
       generatedAt: new Date().toISOString(),
       cards: [
+        { label: 'Products', value: String(r.cards.listed ?? r.rows.length) },
         { label: 'Products moved', value: String(r.cards.products) },
         { label: 'Movements', value: String(r.cards.movements) },
         ...(r.cards.unreconciled > 0 ? [{ label: 'Needs checking', value: String(r.cards.unreconciled), hint: 'Rows whose opening + net change does not equal closing' }] : []),
       ],
-      sections: [{
-        title: 'Stock by product',
-        note: 'Opening + received − issued + adjustments = closing.',
+      // One table per category, like the live stock print. Opening + added - sold = closing.
+      sections: byCategory(r.rows).map((g) => ({
+        title: g.category,
         compact: true,
         columns: [
-          { label: 'Product', flex: 2 }, { label: 'Opening', align: 'right' }, { label: 'Received', align: 'right' },
-          { label: 'Issued', align: 'right' }, { label: 'Adjust.', align: 'right' }, { label: 'Net change', align: 'right' }, { label: 'Closing', align: 'right' },
+          { label: 'Product', flex: 2.2 }, { label: 'UOM' }, { label: 'Opening', align: 'right' }, { label: 'Added', align: 'right' },
+          { label: 'Sold', align: 'right' }, { label: 'Net change', align: 'right' }, { label: 'Closing', align: 'right' },
         ],
-        rows: r.rows.map((x) => [x.name, plain(x.opening, x), plain(x.received, x), plain(x.issued, x), plain(x.adjustments, x), signed(x.net, x), plain(x.closing, x)]),
-      }],
+        rows: g.rows.map((x) => [x.name, uom(x), num(x.opening, x), dash(x.added, x, '+'), dash(x.removed, x, '−'), netCell(x.net, x), num(x.closing, x)]),
+      })),
     }
   }
 
@@ -172,31 +193,36 @@ export default function LocationMovements({ locationId, locationName }: { locati
         <>
           <p className="border-b px-4 py-2 text-xs text-muted-foreground">
             <span className="font-semibold text-foreground">{rangeLabel(report.range.period, report.range.start, report.range.end)}</span>
-            {' · '}{report.cards.products} product{report.cards.products === 1 ? '' : 's'} moved · {report.cards.movements} movement{report.cards.movements === 1 ? '' : 's'}
+            {' · '}{report.cards.listed ?? report.rows.length} products · {report.cards.products} moved · {report.cards.movements} movement{report.cards.movements === 1 ? '' : 's'}
             {report.cards.unreconciled > 0 && <span className="font-semibold text-warning"> · {report.cards.unreconciled} need checking</span>}
           </p>
           {view === 'summary' ? (
-            rows.length === 0 ? <p className="p-6 text-center text-sm text-muted-foreground">No stock movements here in this period.</p> : (
-              <div className="max-h-96 overflow-auto">
+            rows.length === 0 ? <p className="p-6 text-center text-sm text-muted-foreground">{needle ? 'No products match.' : 'No products carried here.'}</p> : (
+              <div className="max-h-[32rem] overflow-auto">
                 <table className="w-full text-left text-sm">
-                  <thead className="sticky top-0 bg-primary text-xs uppercase tracking-wider text-primary-foreground">
+                  <thead className="sticky top-0 z-10 bg-primary text-xs uppercase tracking-wider text-primary-foreground">
                     <tr>
-                      <th className="px-4 py-2.5">Product</th>
-                      <th className="px-4 py-2.5 text-right">Opening</th><th className="px-4 py-2.5 text-right">Received</th><th className="px-4 py-2.5 text-right">Issued</th>
-                      <th className="px-4 py-2.5 text-right">Adjust.</th><th className="px-4 py-2.5 text-right">Net change</th><th className="px-4 py-2.5 text-right">Closing</th>
+                      <th className="px-4 py-2.5">Product</th><th className="px-4 py-2.5">UOM</th>
+                      <th className="px-4 py-2.5 text-right">Opening</th><th className="px-4 py-2.5 text-right">Added</th><th className="px-4 py-2.5 text-right">Sold</th>
+                      <th className="px-4 py-2.5 text-right">Net change</th><th className="px-4 py-2.5 text-right">Closing</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map((r) => (
-                      <tr key={`${r.productId}|${r.locationId}`} className={cn('border-t', !r.reconciles && 'bg-warning/10')}>
-                        <td className="px-4 py-3"><span className="font-semibold">{r.name}</span><span className="block text-xs text-muted-foreground">{r.sku ?? 'No SKU'}{r.reconciles ? '' : ' · does not add up'}</span></td>
-                        <td className="px-4 py-3 text-right tabular-nums">{plain(r.opening, r)}</td>
-                        <td className="px-4 py-3 text-right tabular-nums text-success">{r.received ? signed(r.received, r) : '-'}</td>
-                        <td className="px-4 py-3 text-right tabular-nums text-destructive">{r.issued ? signed(r.issued, r) : '-'}</td>
-                        <td className="px-4 py-3 text-right tabular-nums">{r.adjustments ? signed(r.adjustments, r) : '-'}</td>
-                        <td className={cn('px-4 py-3 text-right font-semibold tabular-nums', r.net < 0 ? 'text-destructive' : r.net > 0 ? 'text-success' : '')}>{signed(r.net, r)}</td>
-                        <td className="px-4 py-3 text-right font-bold tabular-nums">{plain(r.closing, r)}</td>
-                      </tr>
+                    {groups.map((g) => (
+                      <Fragment key={g.category}>
+                        <tr className="border-t bg-muted/60"><td colSpan={7} className="px-4 py-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">{g.category} · {g.rows.length}</td></tr>
+                        {g.rows.map((r) => (
+                          <tr key={`${r.productId}|${r.locationId}`} className={cn('border-t', !r.reconciles && 'bg-warning/10')}>
+                            <td className="px-4 py-2.5"><span className="font-semibold">{r.name}</span>{!r.reconciles && <span className="block text-xs text-warning">does not add up</span>}</td>
+                            <td className="px-4 py-2.5 text-muted-foreground">{uom(r)}</td>
+                            <td className="px-4 py-2.5 text-right tabular-nums">{num(r.opening, r)}</td>
+                            <td className="px-4 py-2.5 text-right tabular-nums text-success">{dash(r.added, r, '+')}</td>
+                            <td className="px-4 py-2.5 text-right tabular-nums text-destructive">{dash(r.removed, r, '−')}</td>
+                            <td className={cn('px-4 py-2.5 text-right font-semibold tabular-nums', r.net < 0 ? 'text-destructive' : r.net > 0 ? 'text-success' : 'text-muted-foreground')}>{netCell(r.net, r)}</td>
+                            <td className="px-4 py-2.5 text-right font-bold tabular-nums">{num(r.closing, r)}</td>
+                          </tr>
+                        ))}
+                      </Fragment>
                     ))}
                   </tbody>
                 </table>
