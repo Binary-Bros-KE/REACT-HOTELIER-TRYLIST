@@ -115,10 +115,10 @@ export default function RetailCheckoutModal({ items, lines, total, channel, loca
     }
   }
 
-  /** Closing with a saved-but-unpaid service sale withdraws it, so no hidden unpaid order is left behind. */
+  /** Closing with a saved-but-unpaid sale withdraws it, so no hidden unpaid order is left behind. */
   async function close() {
     const saved = savedOrder.current
-    if (saved && channel === 'SERVICES') {
+    if (saved) {
       try { await api(`/pos/orders/${saved.id}/revert`, { method: 'DELETE' }) } catch { /* the order stays; the cashier can find it and settle it */ }
     }
     onClose()
