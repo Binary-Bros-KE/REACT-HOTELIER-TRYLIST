@@ -99,6 +99,10 @@ export interface NavItem {
   // REQUISITION_APPROVE reaching Purchase Requisitions with no Inventory
   // section access). See navItemAllowed(). A list means "any of these".
   permission?: string | string[]
+  // Extra way in, on top of the section: holding this capability also reaches
+  // the item (unlike `permission`, it never narrows who with the section sees it).
+  // E.g. a Storekeeper with STOCK_TAKE opening the Inventory Report to count.
+  alsoPermission?: string
 }
 
 export interface NavGroup {
@@ -236,7 +240,7 @@ export const navigation: NavGroup[] = [
     items: [
       { label: 'Sales Report', href: '/reports', icon: LuChartColumn, moduleKey: 'REPORTS' },
       { label: 'Credit & Debtors', href: '/reports/credit-debtors', icon: LuHandCoins, moduleKey: 'REPORTS' },
-      { label: 'Inventory Report', href: '/reports/inventory-report', icon: LuBoxes },
+      { label: 'Inventory Report', href: '/reports/inventory-report', icon: LuBoxes, alsoPermission: 'STOCK_TAKE' },
       { label: 'Products Report', href: '/reports/products-report', icon: LuTrendingUp },
       { label: 'Rooms Report', href: '/reports/rooms-report', icon: LuBedDouble, moduleKey: 'ROOMS' },
       { label: 'Assets Report', href: '/reports/assets-report', icon: LuArmchair },
@@ -283,6 +287,7 @@ export function navItemForPath(pathname: string): { item: NavItem; section: Perm
  * the group's section, AND the item's permission too if it declares one
  * (narrowing within an already-accessible section, e.g. Approvals). */
 export function navItemAllowed(item: NavItem, hasSection: boolean, permissions: string[]): boolean {
+  if (item.alsoPermission && permissions.includes(item.alsoPermission)) return true
   const required = item.permission == null ? [] : Array.isArray(item.permission) ? item.permission : [item.permission]
   if (required.length > 0 && required.some((p) => permissions.includes(p))) return true
   return hasSection && required.length === 0

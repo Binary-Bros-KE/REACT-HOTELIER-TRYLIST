@@ -11,6 +11,7 @@ import PrintReportButton from '@/components/documents/PrintReportButton'
 import type { ReportDocData, ReportSection } from '@/components/documents/pdf'
 import { productTagLabel } from '@/lib/productTags'
 import LocationMovements from '@/components/inventory/LocationMovements'
+import { useAppSelector } from '@/store/hooks'
 
 type Location = { id: string; name: string }
 type CategoryBucket = { category: string; units: number; value: number; percent: number }
@@ -112,6 +113,9 @@ function SetupMessage() {
 
 export default function InventoryOverview() {
   const toast = useToast()
+  // Count stock in a location's Stock take (sets the stock to what was counted).
+  const role = useAppSelector((s) => s.auth.user?.role)
+  const canCount = role?.name === 'Super Admin' || Boolean(role?.permissions.includes('STOCK_TAKE'))
   const [tab, setTab] = useState<'live' | 'asOf'>('live')
   const [asOfDate, setAsOfDate] = useState(toLocalIso(new Date()))
   const [locationId, setLocationId] = useState('')
@@ -278,7 +282,7 @@ export default function InventoryOverview() {
                       {view === 'STOCK' && <PrintReportButton data={buildSectionDoc(overview, loc)} disabled={loading} label="Print section" />}
                     </div>
                   </header>
-                  {view === 'MOVEMENTS' ? <LocationMovements locationId={loc.locationId} locationName={loc.name} /> : (<>
+                  {view === 'MOVEMENTS' ? <LocationMovements locationId={loc.locationId} locationName={loc.name} canCount={canCount} /> : (<>
                   <div className="flex gap-1 border-b p-2">
                     {(['ALL', 'LOW_OUT'] as const).map((f) => (
                       <button key={f} onClick={() => setLocationFilter((s) => ({ ...s, [loc.locationId]: f }))} className={cn('rounded-sm px-3 py-1 text-xs font-semibold', filter === f ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}>

@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
-import { LuCalendarDays, LuChevronLeft, LuChevronRight, LuCircleAlert, LuDownload, LuLoaderCircle, LuSearch } from 'react-icons/lu'
+import { LuCalendarDays, LuCheck, LuChevronLeft, LuChevronRight, LuCircleAlert, LuClipboardCheck, LuDownload, LuLoaderCircle, LuSearch } from 'react-icons/lu'
 import { api } from '@/lib/api'
 import { downloadCsvRows } from '@/lib/csv'
 import ActionButton from '@/components/ui/ActionButton'
@@ -8,6 +8,7 @@ import { packAndUnit } from '@/components/ui/PackQtyInput'
 import { cn } from '@/lib/utils'
 import PrintReportButton from '@/components/documents/PrintReportButton'
 import type { ReportDocData } from '@/components/documents/pdf'
+import ModalShell from '@/components/ui/ModalShell'
 
 // Stock take for one location over a period: every product carried there, by
 // category, with opening, added (anything that increased stock), sold (anything
@@ -81,7 +82,11 @@ function rangeLabel(period: Period, startIso: string, endIso: string) {
   return `${s.toLocaleDateString('en-KE', { day: 'numeric', month: 'short' })} - ${e.toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric' })}`
 }
 
-export default function LocationMovements({ locationId, locationName }: { locationId: string; locationName: string }) {
+// One product's count so far today (GET/POST /stock-issues/stock-take). previous/counted/difference in the stock unit.
+type CountEntry = { productId: string; previous: number; counted: number; difference: number; value: number; at: string }
+
+/** `canCount`: may run a count (STOCK_TAKE) - each entered count sets that product's stock here. */
+export default function LocationMovements({ locationId, locationName, canCount = false }: { locationId: string; locationName: string; canCount?: boolean }) {
   const toast = useToast()
   const [period, setPeriod] = useState<Period>('day')
   const [anchor, setAnchor] = useState(todayIso())
@@ -92,9 +97,17 @@ export default function LocationMovements({ locationId, locationName }: { locati
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  // Count mode: today only, since a count overrides the current stock.
+  const [counting, setCounting] = useState(false)
+  const [counts, setCounts] = useState<Record<string, CountEntry>>({})
+  const [drafts, setDrafts] = useState<Record<string, string>>({})
+  const [savingId, setSavingId] = useState<string | null>(null)
+  const [finishOpen, setFinishOpen] = useState(false)
+  const isToday = period === 'day' && anchor === todayIso()
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  // `silent`: refresh after a count without swapping the table for a spinner (keeps the inputs).
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true)
     setError('')
     try {
       const query = new URLSearchParams({ period, locationId, allProducts: 'true' })
@@ -109,6 +122,44 @@ export default function LocationMovements({ locationId, locationName }: { locati
     }
   }, [period, anchor, customFrom, customTo, locationId, toast])
   useEffect(() => { void load() }, [load])
+
+  // Today's counts at this location, so ticks survive a refresh and a count can be carried on.
+  const loadCounts = useCallback(async (since: string) => {
+    try {
+      const r = await api<{ entries: CountEntry[] }>(`/stock-issues/stock-take?${new URLSearchParams({ locationId, since })}`)
+      setCounts(Object.fromEntries(r.entries.map((e) => [e.productId, e])))
+    } catch { /* marks are a convenience - the stock itself is already saved */ }
+  }, [locationId])
+  useEffect(() => {
+    if (isToday && report) void loadCounts(report.range.start)
+    else { setCounts({}); setCounting(false) }
+  }, [isToday, report, loadCounts])
+
+  async function saveCount(r: SummaryRow) {
+    const raw = drafts[r.productId]
+    if (raw == null || raw.trim() === '' || savingId) return
+    const typed = Number(raw)
+    if (!Number.isFinite(typed) || typed < 0) { toast.error('Enter a count of zero or more'); return }
+    // Entered in the UOM shown (packs for pack-tracked products); stock is kept in the base unit.
+    const counted = r.packSize && r.packSize > 0 ? +(typed * r.packSize).toFixed(3) : typed
+    setSavingId(r.productId)
+    try {
+      const entry = await api<CountEntry>('/stock-issues/stock-take', { method: 'POST', body: JSON.stringify({ locationId, productId: r.productId, counted }) })
+      setCounts((cur) => {
+        const prior = cur[r.productId]
+        return { ...cur, [r.productId]: { ...entry, previous: prior ? prior.previous : entry.previous, difference: +((prior?.difference ?? 0) + entry.difference).toFixed(3), value: (prior?.value ?? 0) + entry.value, at: new Date().toISOString() } }
+      })
+      setDrafts((cur) => { const next = { ...cur }; delete next[r.productId]; return next })
+      void load(true)
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : `Could not save the count for ${r.name}`)
+    } finally {
+      setSavingId(null)
+    }
+  }
+  const countList = Object.values(counts)
+  const changed = countList.filter((c) => Math.abs(c.difference) > 0.0005)
+  const countValue = countList.reduce((sum, c) => sum + c.value, 0)
 
   const needle = search.trim().toLowerCase()
   const rows = useMemo(() => (report?.rows ?? []).filter((r) => !needle || r.name.toLowerCase().includes(needle) || (r.sku ?? '').toLowerCase().includes(needle)), [report, needle])
@@ -186,6 +237,9 @@ export default function LocationMovements({ locationId, locationName }: { locati
           ))}
         </div>
         <div className="ml-auto flex gap-2">
+          {canCount && isToday && (counting
+            ? <ActionButton tone="primary" icon={<LuClipboardCheck />} onClick={() => setFinishOpen(true)}>Finish count ({countList.length})</ActionButton>
+            : <ActionButton tone="primary" icon={<LuClipboardCheck />} onClick={() => { setCounting(true); setView('summary') }}>{countList.length ? `Continue count (${countList.length})` : 'Start count'}</ActionButton>)}
           <ActionButton tone="neutral" icon={<LuDownload />} disabled={!report || loading} onClick={() => report && exportCsv(report)}>Export CSV</ActionButton>
           <PrintReportButton data={report ? doc(report) : null} disabled={loading} label="Print section" />
         </div>
@@ -214,13 +268,13 @@ export default function LocationMovements({ locationId, locationName }: { locati
                     <tr>
                       <th className="px-4 py-2.5">Product</th><th className="px-4 py-2.5">UOM</th>
                       <th className="px-4 py-2.5 text-right">Opening</th><th className="px-4 py-2.5 text-right">Added</th><th className="px-4 py-2.5 text-right">Sold</th>
-                      <th className="px-4 py-2.5 text-right">Net change</th><th className="px-4 py-2.5 text-right">Closing</th><th className="px-4 py-2.5 text-right">Value</th>
+                      <th className="px-4 py-2.5 text-right">Net change</th><th className="px-4 py-2.5 text-right">Closing</th><th className="px-4 py-2.5 text-right">Value</th>{counting && <th className="px-4 py-2.5 text-right">Counted</th>}
                     </tr>
                   </thead>
                   <tbody>
                     {groups.map((g) => (
                       <Fragment key={g.category}>
-                        <tr className="border-t bg-muted/60"><td colSpan={8} className="px-4 py-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">{g.category} · {g.rows.length}</td></tr>
+                        <tr className="border-t bg-muted/60"><td colSpan={counting ? 9 : 8} className="px-4 py-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">{g.category} · {g.rows.length}</td></tr>
                         {g.rows.map((r) => (
                           <tr key={`${r.productId}|${r.locationId}`} className={cn('border-t', !r.reconciles && 'bg-warning/10')}>
                             <td className="px-4 py-2.5"><span className="font-semibold">{r.name}</span>{!r.reconciles && <span className="block text-xs text-warning">does not add up</span>}</td>
@@ -231,6 +285,26 @@ export default function LocationMovements({ locationId, locationName }: { locati
                             <td className={cn('px-4 py-2.5 text-right font-semibold tabular-nums', r.net < 0 ? 'text-destructive' : r.net > 0 ? 'text-success' : 'text-muted-foreground')}>{netCell(r.net, r)}</td>
                             <td className="px-4 py-2.5 text-right font-bold tabular-nums">{num(r.closing, r)}</td>
                             <td className="px-4 py-2.5 text-right tabular-nums">{kes(r.value)}</td>
+                            {counting && (
+                              <td className="px-4 py-1.5 text-right">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  {counts[r.productId] && <LuCheck className="size-4 shrink-0 text-success" title="Counted" />}
+                                  <input
+                                    type="number" min="0" step="any" inputMode="decimal"
+                                    value={drafts[r.productId] ?? ''}
+                                    placeholder={counts[r.productId] ? num(counts[r.productId].counted, r) : ''}
+                                    disabled={savingId === r.productId}
+                                    onChange={(e) => setDrafts((cur) => ({ ...cur, [r.productId]: e.target.value }))}
+                                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void saveCount(r) } }}
+                                    onBlur={() => void saveCount(r)}
+                                    className="input h-8 w-24 py-1 text-right"
+                                  />
+                                </div>
+                                {counts[r.productId] && Math.abs(counts[r.productId].difference) > 0.0005 && (
+                                  <span className={cn('text-[11px] font-semibold', counts[r.productId].difference < 0 ? 'text-destructive' : 'text-success')}>{netCell(counts[r.productId].difference, r)} vs books</span>
+                                )}
+                              </td>
+                            )}
                           </tr>
                         ))}
                       </Fragment>
@@ -263,6 +337,19 @@ export default function LocationMovements({ locationId, locationName }: { locati
             )
           )}
         </>
+      )}
+      {finishOpen && (
+        <ModalShell size="sm" kicker="Stock take" title={`${locationName} count`} onClose={() => setFinishOpen(false)}
+          footer={<>
+            <button type="button" onClick={() => setFinishOpen(false)} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted">Keep counting</button>
+            <button type="button" onClick={() => { setFinishOpen(false); setCounting(false) }} className="bg-primary px-5 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground">Finish</button>
+          </>}>
+          <div className="space-y-2 p-5 text-sm">
+            <p><b>{countList.length}</b> product{countList.length === 1 ? '' : 's'} counted today, <b>{changed.length}</b> different from the books.</p>
+            <p>Value of the difference: <b className={cn(countValue < 0 ? 'text-destructive' : countValue > 0 ? 'text-success' : '')}>{countValue < 0 ? '−' : countValue > 0 ? '+' : ''}{kes(Math.abs(countValue))}</b> at unit cost.</p>
+            <p className="text-xs text-muted-foreground">Every count is already saved: the stock now matches what was counted. Print section gives the stock take with the corrections in Added / Sold.</p>
+          </div>
+        </ModalShell>
       )}
     </div>
   )
