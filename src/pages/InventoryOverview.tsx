@@ -265,7 +265,7 @@ export default function InventoryOverview() {
                   <header className="flex flex-wrap items-center justify-between gap-3 border-b border-l-4 border-l-accent p-4">
                     <div className="min-w-0">
                       <h2 className="font-display text-lg font-semibold leading-tight">{loc.name}</h2>
-                      <p className="text-xs text-muted-foreground">{productTagLabel(loc.type)} products only</p>
+                      <p className="text-xs text-muted-foreground">{productTagLabel(loc.type)} products and everything held here</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
                       <span><span className="font-semibold text-foreground">{loc.totalProducts}</span> products</span>
