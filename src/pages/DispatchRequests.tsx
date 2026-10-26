@@ -290,6 +290,7 @@ export default function DispatchRequests() {
     try {
       const r = await api<{ request: Request }>(`/dispatch-requests/${requestId}/refresh`, { method: 'POST' })
       setDispatching((current) => (current && current.id === requestId ? r.request : current))
+      setViewing((current) => (current && current.id === requestId ? r.request : current))
     } catch (cause) { toast.error(cause instanceof Error ? cause.message : 'Could not refresh the request') }
     void load(true)
   }
@@ -381,12 +382,13 @@ export default function DispatchRequests() {
                     </div>
                     <StatusPill tone={STATUS_TONE[request.status]}>{statusLabel(request)}</StatusPill>
                   </div>
-                  <DishList
-                    dishes={request.dishes}
-                    requesting={waiting}
-                    onEditDishStock={waiting ? (dish) => void openDishStock(request.id, dish) : undefined}
-                  />
-                  {!waiting && request.dishes.length === 0 && <p className="mt-3 text-sm text-muted-foreground">No dishes recorded.</p>}
+                  {/* The dishes and their ingredients are in View items, not repeated on the card. */}
+                  <p className="mt-3 text-sm text-muted-foreground">
+                    {request.dishes.length > 0
+                      ? request.dishes.map((dish) => `${qty(dish.quantity)} × ${dish.name}`).join(" · ")
+                      : "No dishes recorded"}
+                    {request.items.length > 0 && <span className="block text-xs">{request.items.length} item{request.items.length === 1 ? "" : "s"} asked from the store</span>}
+                  </p>
                   <p className="mt-3 text-xs text-muted-foreground">
                     Requested {when(request.requestedAt)}{request.requestedByName ? ` by ${request.requestedByName}` : ''}
                     {request.status !== 'REQUESTED' && request.respondedAt ? ` · ${statusLabel(request).toLowerCase()} ${when(request.respondedAt)}${request.respondedByName ? ` by ${request.respondedByName}` : ''}` : ''}
@@ -405,7 +407,7 @@ export default function DispatchRequests() {
         )}
 
       {dispatching && <DispatchModal request={dispatching} onClose={() => setDispatching(null)} onDishStock={(dish) => void openDishStock(dispatching.id, dish)} onDone={() => { setDispatching(null); toast.success('Dispatched to the kitchen'); void load(true) }} />}
-      {viewing && <ItemsModal request={viewing} onClose={() => setViewing(null)} onPrint={() => void printSlip(viewing)} />}
+      {viewing && <ItemsModal request={viewing} onClose={() => setViewing(null)} onPrint={() => void printSlip(viewing)} onEditDishStock={(dish) => void openDishStock(viewing.id, dish)} />}
       {rejecting && <RejectModal request={rejecting} onClose={() => setRejecting(null)} onDone={() => { setRejecting(null); toast.success('Request rejected'); void load(true) }} />}
       {recipeEdit && <RecipeEditModal recipe={recipeEdit.recipe} products={recipeEdit.products} onClose={() => setRecipeEdit(null)} onSaved={() => void recipeSaved()} />}
       {variantEdit && <VariantStockModal edit={variantEdit} onChange={(stock) => setVariantEdit({ ...variantEdit, stock })} onClose={() => setVariantEdit(null)} onSaved={(requestId) => void refreshAfterStockEdit(requestId)} />}
@@ -524,53 +526,48 @@ function VariantStockModal({ edit, onChange, onClose, onSaved }: { edit: Variant
   )
 }
 
-/** What a request asked the store for, on screen: each product with how much was asked
- * and (once dispatched) how much actually went out - plus the dishes behind it, if recorded. */
-function ItemsModal({ request, onClose, onPrint }: { request: Request; onClose: () => void; onPrint: () => void }) {
-  const dispatched = request.status === 'DISPATCHED'
+/** A request on screen, laid out like the store works it: each dish, then the
+ * ingredients it asks for. Waiting requests keep "Edit stock" per dish; a request with
+ * no dish breakdown shows its plain product list. */
+function ItemsModal({ request, onClose, onPrint, onEditDishStock }: { request: Request; onClose: () => void; onPrint: () => void; onEditDishStock?: (dish: Dish) => void }) {
+  const waiting = request.status === 'REQUESTED'
+  const unitOf = (item: Item) => item.product?.unit ?? ''
+  // Once dispatched: anything that went out short of what was asked.
+  const short = request.status === 'DISPATCHED'
+    ? request.items.filter((item) => item.dispatchedQty != null && Number(item.dispatchedQty) + STOCK_EPSILON < Number(item.requestedQty))
+    : []
   return (
     <ModalShell kicker={request.requestNo} title={`Order #${request.orderNumber}${request.order.table ? ` · ${request.order.table.label}` : ''}`} subtitle={`${request.fromLocation.name} → ${request.toLocation.name} · ${statusLabel(request)}`} onClose={onClose} size="md"
       footer={<Button variant="secondary" onClick={onPrint}><LuPrinter className="size-4" /> Print slip</Button>}>
       <div className="space-y-4 p-5">
-        {request.dishes.length > 0 && (
-          <div>
-            <p className="mb-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">Dishes</p>
-            <ul className="divide-y border">
-              {request.dishes.map((dish, index) => (
-                <li key={index} className="flex justify-between gap-3 px-3 py-2 text-sm">
-                  <span className="font-semibold">{dish.quantity} × {dish.name}</span>
-                </li>
+        {request.dishes.length > 0 ? (
+          <DishList dishes={request.dishes} requesting={waiting} onEditDishStock={waiting ? onEditDishStock : undefined} />
+        ) : request.items.length > 0 ? (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-[10px] uppercase tracking-wider text-muted-foreground">
+                <th className="py-1 font-semibold">Item</th>
+                <th className="py-1 text-right font-semibold">Asked</th>
+              </tr>
+            </thead>
+            <tbody>
+              {request.items.map((item) => (
+                <tr key={item.id} className="border-t border-dashed">
+                  <td className="py-1">{item.productName} <span className="text-xs text-muted-foreground">{unitOf(item)}</span></td>
+                  <td className="py-1 text-right tabular-nums">{qty(item.requestedQty)}</td>
+                </tr>
               ))}
+            </tbody>
+          </table>
+        ) : <p className="border border-dashed p-6 text-center text-sm text-muted-foreground">Nothing recorded on this request.</p>}
+        {short.length > 0 && (
+          <div className="border border-warning/40 bg-warning/10 p-3 text-sm">
+            <p className="font-semibold text-warning">Sent less than asked</p>
+            <ul className="mt-1 space-y-0.5 text-xs">
+              {short.map((item) => <li key={item.id}>{item.productName}: sent {qty(item.dispatchedQty!)} of {qty(item.requestedQty)} {unitOf(item)}</li>)}
             </ul>
           </div>
         )}
-        <div>
-          <p className="mb-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">Items requested</p>
-          {request.items.length === 0 ? <p className="border border-dashed p-6 text-center text-sm text-muted-foreground">No items on this request.</p> : (
-            <table className="w-full border text-sm">
-              <thead className="bg-muted/60 text-left text-xs uppercase tracking-wider text-muted-foreground">
-                <tr>
-                  <th className="px-3 py-2">Product</th>
-                  <th className="px-3 py-2 text-right">Asked</th>
-                  {dispatched && <th className="px-3 py-2 text-right">Dispatched</th>}
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {request.items.map((item) => {
-                  const unit = item.product?.unit ?? ''
-                  const short = dispatched && item.dispatchedQty != null && Number(item.dispatchedQty) < Number(item.requestedQty)
-                  return (
-                    <tr key={item.id}>
-                      <td className="px-3 py-2 font-medium">{item.productName}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{qty(item.requestedQty)} {unit}</td>
-                      {dispatched && <td className={cn('px-3 py-2 text-right tabular-nums', short && 'font-semibold text-warning')}>{item.dispatchedQty != null ? `${qty(item.dispatchedQty)} ${unit}` : '—'}</td>}
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
         {request.rejectReason && <p className="text-sm text-destructive">Rejected: {request.rejectReason}</p>}
         {request.note && <p className="text-sm text-muted-foreground">Note: {request.note}</p>}
       </div>
