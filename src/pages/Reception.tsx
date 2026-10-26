@@ -6,6 +6,7 @@ import {
   LuBedDouble,
   LuBuilding2,
   LuCalendarCheck,
+  LuCircleCheck,
   LuCircleAlert,
   LuCheck,
   LuFileText,
@@ -26,6 +27,7 @@ import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/Toast";
 import { useAppSelector } from "@/store/hooks";
 import { useWorkingLocation } from "@/lib/useWorkingLocation";
+import { folioPots, ROOM_POT } from "@/lib/folioAllocation";
 import SharedStatCard from "@/components/ui/StatCard";
 import ActionButton from "@/components/ui/ActionButton";
 import ConfirmModal from "@/components/ui/ConfirmModal";
@@ -72,7 +74,7 @@ type FolioLineItem = {
   taxTreatment?: "STANDARD" | "ZERO_RATED" | "EXEMPT" | null;
 };
 type PaymentMethod = { id: string; name: string; requiresReference: boolean };
-type FolioPayment = { id: string; kind: "DEPOSIT" | "SETTLEMENT"; paymentMethod: PaymentMethod; amount: string | number; reference: string | null; createdAt: string };
+type FolioPayment = { id: string; kind: "DEPOSIT" | "SETTLEMENT"; paymentMethod: PaymentMethod; amount: string | number; reference: string | null; createdAt: string; appliesToLineId?: string | null; appliesToRoom?: boolean };
 type Folio = { id: string; folioNo: string; status: "OPEN" | "SETTLED"; lineItems: FolioLineItem[]; payments: FolioPayment[]; creditAmount?: string | number; creditReason?: string | null; creditExpectedAt?: string | null; creditOutstanding?: number };
 type Guest = { id: string; name: string; idNumber: string | null; notes: string | null; addedAt: string };
 type ReservationStatus = "PENDING" | "CONFIRMED" | "CHECKED_IN" | "CHECKED_OUT" | "CANCELLED" | "NO_SHOW";
@@ -1045,6 +1047,8 @@ function StayModal({ reservation, rooms, at, onClose, onChanged, onCheckedOut }:
   const [payMethodId, setPayMethodId] = useState("");
   const [payAmount, setPayAmount] = useState("");
   const [payReference, setPayReference] = useState("");
+  // What "Record deposit" pays for: "" (the whole folio), ROOM_POT, or a charged bill's line id.
+  const [payFor, setPayFor] = useState("");
   const [creditReason, setCreditReason] = useState("");
   const [creditExpectedAt, setCreditExpectedAt] = useState("");
   const [termsOpen, setTermsOpen] = useState(false);
@@ -1103,6 +1107,14 @@ function StayModal({ reservation, rooms, at, onClose, onChanged, onCheckedOut }:
   const canUpgradeLater = upgradeMin <= upgradeMax;
 
   const totals = folioTotals(reservation.folio, bizTax);
+  // Which charges the payments cover: each charged bill on its own, the room & stay charges together.
+  const { pots, potOfLine } = useMemo(() => {
+    const folio = reservation.folio;
+    if (!folio) return { pots: [], potOfLine: new Map() };
+    return folioPots(folio.lineItems, folio.payments, (line) => folioTotals({ ...folio, lineItems: [line], payments: [] }, bizTax).charges);
+  }, [reservation.folio, bizTax]);
+  const owingPots = pots.filter((pot) => pot.owing > 0.01);
+  const payForPot = pots.find((pot) => pot.key === payFor);
   const enteredPay = Number(payAmount) || 0;
   // Whatever the guest isn't paying now is left owing — completed on credit.
   const onCredit = Math.round((totals.balance - enteredPay) * 100) / 100;
@@ -1258,9 +1270,9 @@ function StayModal({ reservation, rooms, at, onClose, onChanged, onCheckedOut }:
     if (selectedPayMethod?.requiresReference && !payReference.trim()) { toast.error(`${selectedPayMethod.name} requires a reference number`); return; }
     setBusy(true);
     try {
-      await at(`/reception/reservations/${reservation.id}/folio/deposits`, { method: "POST", body: JSON.stringify({ paymentMethodId: payMethodId, amount: Number(payAmount), reference: payReference || undefined }) });
-      toast.success("Deposit recorded.");
-      setPayMethodId(""); setPayAmount(""); setPayReference("");
+      await at(`/reception/reservations/${reservation.id}/folio/deposits`, { method: "POST", body: JSON.stringify({ paymentMethodId: payMethodId, amount: Number(payAmount), reference: payReference || undefined, appliesTo: payFor || undefined }) });
+      toast.success(payForPot ? `Payment recorded for ${payForPot.label}.` : "Deposit recorded.");
+      setPayMethodId(""); setPayAmount(""); setPayReference(""); setPayFor("");
       onChanged();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not record deposit");
@@ -1321,6 +1333,13 @@ function StayModal({ reservation, rooms, at, onClose, onChanged, onCheckedOut }:
                         <td className="px-3 py-2 text-right">{formatKes(Number(item.amount) * item.quantity)}</td>
                         <td className="px-2 py-2 text-right">
                           <div className="flex items-center justify-end gap-1">
+                            {(() => {
+                              const pot = potOfLine.get(item.id);
+                              if (!pot || pot.total <= 0.01) return null;
+                              if (pot.owing <= 0.01) return <span title={pot.key === ROOM_POT ? "Room & stay charges paid" : "This bill is paid"} className="inline-flex items-center gap-1 text-xs font-semibold text-success"><LuCircleCheck className="size-4" /> Paid</span>;
+                              if (pot.key !== ROOM_POT && pot.paid > 0.01) return <span className="text-xs font-semibold text-warning">{formatKes(pot.paid)} paid</span>;
+                              return null;
+                            })()}
                             {item.source === "POS_ORDER" && item.sourceRefId && (
                               <button type="button" onClick={() => setReceiptOrderId(item.sourceRefId ?? null)} title="View / print receipt" className="rounded-sm p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground">
                                 <LuPrinter className="size-4" />
@@ -1536,6 +1555,15 @@ function StayModal({ reservation, rooms, at, onClose, onChanged, onCheckedOut }:
                   <p className="mt-1 text-xs text-muted-foreground">Includes {formatKes(totals.tax.taxAmount)} tax</p>
                 )}
               </div>
+              {owingPots.length > 1 && (
+                <label className="block text-xs font-semibold text-muted-foreground">
+                  Pays for (Record deposit)
+                  <select className="input mt-1" value={payFor} onChange={(e) => { const key = e.target.value; setPayFor(key); const pot = pots.find((x) => x.key === key); setPayAmount(pot ? String(pot.owing) : ""); }}>
+                    <option value="">The whole folio (oldest charges first)</option>
+                    {owingPots.map((pot) => <option key={pot.key} value={pot.key}>{pot.label} — {formatKes(pot.owing)} owing</option>)}
+                  </select>
+                </label>
+              )}
               <div className="grid grid-cols-3 gap-2">
                 <select className="input" value={payMethodId} onChange={(e) => setPayMethodId(e.target.value)}>
                   <option value="">Choose payment method</option>
@@ -1545,14 +1573,15 @@ function StayModal({ reservation, rooms, at, onClose, onChanged, onCheckedOut }:
                 <input placeholder={selectedPayMethod?.requiresReference ? "Reference *" : "Reference (optional)"} required={selectedPayMethod?.requiresReference} className="input" value={payReference} onChange={(e) => setPayReference(e.target.value)} />
               </div>
               {enteredPay > totals.balance + 0.01 && <p className="text-xs font-semibold text-destructive">Amount exceeds the balance due of {formatKes(totals.balance)}.</p>}
+              {payForPot && enteredPay > payForPot.owing + 0.01 && <p className="text-xs font-semibold text-destructive">Amount exceeds the {formatKes(payForPot.owing)} owing on {payForPot.label}.</p>}
               {totals.balance > 0.01 && (
                 <button type="button" onClick={() => setPayAmount(String(Math.round(totals.balance * 100) / 100))} className="text-xs font-semibold text-secondary hover:underline">Pay the full balance ({formatKes(totals.balance)})</button>
               )}
               {onCredit > 0.01 && <CreditFields reason={creditReason} expectedAt={creditExpectedAt} onReason={setCreditReason} onExpectedAt={setCreditExpectedAt} />}
               {onCredit > 0.01 && <p className="text-xs font-semibold text-warning">{formatKes(onCredit)} will be left owing on this guest's account.</p>}
               <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => void addDeposit()} disabled={busy || !payAmount || !payMethodId || enteredPay > totals.balance + 0.01} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted disabled:opacity-60">Record deposit</button>
-                <button type="button" onClick={() => setConfirmCheckout(true)} disabled={busy || enteredPay > totals.balance + 0.01} className={cn("inline-flex items-center justify-center gap-2 rounded-sm px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60", onCredit > 0.01 ? "bg-warning" : "bg-success")}>
+                <button type="button" onClick={() => void addDeposit()} disabled={busy || !payAmount || !payMethodId || enteredPay > totals.balance + 0.01 || (payForPot != null && enteredPay > payForPot.owing + 0.01)} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted disabled:opacity-60">Record deposit</button>
+                <button type="button" onClick={() => setConfirmCheckout(true)} disabled={busy || enteredPay > totals.balance + 0.01 || Boolean(payFor)} title={payFor ? "Checkout settles the whole folio - set Pays for back to the whole folio" : undefined} className={cn("inline-flex items-center justify-center gap-2 rounded-sm px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60", onCredit > 0.01 ? "bg-warning" : "bg-success")}>
                   {busy && <LuLoaderCircle className="animate-spin" />} {onCredit > 0.01 ? "Complete on credit" : "Complete checkout"}
                 </button>
               </div>

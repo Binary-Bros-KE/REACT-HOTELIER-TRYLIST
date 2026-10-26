@@ -401,6 +401,29 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
     if (mode === 'PAY' && selectedMethod?.requiresReference && !reference.trim()) { const message = `${selectedMethod.name} requires a reference number`; setError(message); toast.error(message); return }
     setPaying(true)
     setError('')
+    // A bill already charged to a room is paid on that room's folio, against this bill -
+    // the folio shows it cleared and the stay's balance (or credit) drops by it.
+    if (order.billedToRoomAt) {
+      try {
+        await api(`/reception/room-bills/${order.id}/payments`, {
+          method: 'POST',
+          body: JSON.stringify({ paymentMethodId, amount: Number(amount) || remaining, reference: reference || undefined }),
+        })
+        const fresh = await api<{ order: Order }>(`/pos/orders/${order.id}`)
+        setOrder(fresh.order)
+        setAmount(String(Math.max(0, fresh.order.total - fresh.order.paid)))
+        setReference('')
+        toast.success('Payment recorded on the room folio against this bill.')
+        onChanged()
+      } catch (cause) {
+        const message = cause instanceof Error ? cause.message : 'Could not record this payment'
+        setError(message)
+        toast.error(message)
+      } finally {
+        setPaying(false)
+      }
+      return
+    }
     try {
       const paymentAmount = isLinkedBill ? remaining : Number(amount) || remaining
       const endpoint = order.billGroupId && isLinkedBill ? `/pos/bill-groups/${order.billGroupId}/payments` : `/pos/orders/${order.id}/payments`
@@ -643,7 +666,7 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
               {pendingReturnTotal === 0 && (order.status === 'SERVED' || (order.status === 'COMPLETED' && canCollectCredit)) && remaining > 0.01 && (
                 <form onSubmit={settle} noValidate className="mt-5 space-y-3 border-t pt-5">
                   <div className="flex gap-1 rounded-sm bg-muted/50 p-1">
-                    {(['PAY', 'ROOM'] as const).map((value) => (
+                    {(order.billedToRoomAt ? (['PAY'] as const) : (['PAY', 'ROOM'] as const)).map((value) => (
                       <button key={value} type="button" onClick={() => setMode(value)} className={cn('flex-1 rounded-sm py-1.5 text-sm font-semibold', mode === value ? 'bg-card text-secondary shadow-sm' : 'text-muted-foreground')}>
                         {value === 'PAY' ? 'Pay now' : 'Charge to Room'}
                       </button>

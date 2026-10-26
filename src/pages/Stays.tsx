@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
-import { LuCircleAlert, LuEye, LuLoaderCircle, LuSearch } from 'react-icons/lu'
+import { LuCircleAlert, LuCircleCheck, LuEye, LuLoaderCircle, LuSearch } from 'react-icons/lu'
 import { api } from '@/lib/api'
 import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
@@ -8,6 +8,7 @@ import ModalShell from '@/components/ui/ModalShell'
 import StatusPill, { type PillTone } from '@/components/ui/StatusPill'
 import ActionButton from '@/components/ui/ActionButton'
 import { computeFinancialsFromRows } from '@/lib/orderTotals'
+import { folioPots, ROOM_POT } from '@/lib/folioAllocation'
 import { useAppSelector } from '@/store/hooks'
 import type { BizTax } from '@/lib/taxChoices'
 
@@ -20,6 +21,8 @@ const STATUSES: ReservationStatus[] = ['PENDING', 'CONFIRMED', 'CHECKED_IN', 'CH
 type FolioLineItem = {
   id: string
   source: string
+  sourceRefId?: string | null
+  createdAt: string
   label: string
   amount: string | number
   quantity: number
@@ -27,7 +30,7 @@ type FolioLineItem = {
   taxMode?: 'INCLUSIVE' | 'EXCLUSIVE' | null
   taxTreatment?: 'STANDARD' | 'ZERO_RATED' | 'EXEMPT' | null
 }
-type FolioPayment = { id: string; kind: 'DEPOSIT' | 'SETTLEMENT'; paymentMethod: { id: string; name: string }; amount: string | number; reference: string | null; createdAt: string }
+type FolioPayment = { id: string; kind: 'DEPOSIT' | 'SETTLEMENT'; paymentMethod: { id: string; name: string }; amount: string | number; reference: string | null; createdAt: string; appliesToLineId?: string | null; appliesToRoom?: boolean }
 type Folio = { id: string; folioNo: string; status: 'OPEN' | 'SETTLED'; lineItems: FolioLineItem[]; payments: FolioPayment[]; creditAmount?: string | number; creditReason?: string | null; creditExpectedAt?: string | null; creditOutstanding?: number }
 type Guest = { id: string; name: string; idNumber: string | null; addedAt: string }
 type Activity = {
@@ -248,6 +251,14 @@ function StayDetailModal({ stay, onClose, onChanged }: { stay: Stay; onClose: ()
   const [amount, setAmount] = useState(owing > 0 ? String(owing) : '')
   const [reference, setReference] = useState('')
   const [paying, setPaying] = useState(false)
+  // Which charges the payments cover: each charged bill on its own, the room & stay charges together.
+  const { pots, potOfLine } = stay.folio
+    ? folioPots(stay.folio.lineItems, stay.folio.payments, (line) => folioTotals({ ...stay.folio!, lineItems: [line], payments: [] }, bizTax).charges)
+    : { pots: [], potOfLine: new Map() }
+  // What the credit payment pays for: "" (whatever is owing, oldest first), ROOM_POT, or a charged bill's line.
+  const [payFor, setPayFor] = useState('')
+  const owingPots = pots.filter((pot) => pot.owing > 0.01)
+  const payForPot = pots.find((pot) => pot.key === payFor)
   useEffect(() => {
     if (owing <= 0.01) return
     api<{ methods: { id: string; name: string; requiresReference: boolean; code: string }[] }>('/payment-methods?activeOnly=true')
@@ -268,9 +279,10 @@ function StayDetailModal({ stay, onClose, onChanged }: { stay: Stay; onClose: ()
     if (method?.requiresReference && !reference.trim()) { toast.error(`${method.name} requires a reference number`); return }
     setPaying(true)
     try {
-      await api(`/reception/reservations/${stay.id}/folio/credit-payments`, { method: 'POST', body: JSON.stringify({ paymentMethodId: methodId, amount: Number(amount), reference: reference.trim() || undefined }) })
-      toast.success('Payment received.')
+      await api(`/reception/reservations/${stay.id}/folio/credit-payments`, { method: 'POST', body: JSON.stringify({ paymentMethodId: methodId, amount: Number(amount), reference: reference.trim() || undefined, appliesTo: payFor || undefined }) })
+      toast.success(payForPot ? `Payment received for ${payForPot.label}.` : 'Payment received.')
       setReference('')
+      setPayFor('')
       onChanged()
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : 'Could not record the payment')
@@ -322,7 +334,16 @@ function StayDetailModal({ stay, onClose, onChanged }: { stay: Stay; onClose: ()
                       <tr key={item.id} className="even:bg-muted/30">
                         <td className="px-3 py-2">{item.label}</td>
                         <td className="px-3 py-2">{item.quantity}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{formatKes(Number(item.amount) * item.quantity)}</td>
+                        <td className="px-3 py-2 text-right tabular-nums">
+                          {formatKes(Number(item.amount) * item.quantity)}
+                          {(() => {
+                            const pot = potOfLine.get(item.id)
+                            if (!pot || pot.total <= 0.01) return null
+                            if (pot.owing <= 0.01) return <span title={pot.key === ROOM_POT ? 'Room & stay charges paid' : 'This bill is paid'} className="ml-2 inline-flex items-center gap-1 text-xs font-semibold text-success"><LuCircleCheck className="size-4" /> Paid</span>
+                            if (pot.key !== ROOM_POT && pot.paid > 0.01) return <span className="ml-2 text-xs font-semibold text-warning">{formatKes(pot.paid)} paid</span>
+                            return null
+                          })()}
+                        </td>
                       </tr>
                     ))}
                     {stay.folio.lineItems.length === 0 && <tr><td colSpan={3} className="px-3 py-4 text-center text-xs text-muted-foreground">No charges.</td></tr>}
@@ -362,6 +383,15 @@ function StayDetailModal({ stay, onClose, onChanged }: { stay: Stay; onClose: ()
                   {owing > 0.01 && <p className="text-right text-lg font-bold tabular-nums text-warning">{formatKes(owing)}<span className="block text-[11px] font-normal text-muted-foreground">still owing</span></p>}
                 </div>
                 {owing > 0.01 && !canCollectCredit && <p className="text-xs font-semibold text-warning">Only an accountant or manager can clear debts - ask them to record this payment.</p>}
+                {owing > 0.01 && canCollectCredit && owingPots.length > 1 && (
+                  <label className="block text-xs font-semibold text-muted-foreground">
+                    Pays for
+                    <select className="input mt-1" value={payFor} onChange={(e) => { const key = e.target.value; setPayFor(key); const pot = pots.find((x) => x.key === key); setAmount(String(pot ? Math.min(pot.owing, owing) : owing)) }}>
+                      <option value="">Whatever is owing (oldest charges first)</option>
+                      {owingPots.map((pot) => <option key={pot.key} value={pot.key}>{pot.label} — {formatKes(pot.owing)} owing</option>)}
+                    </select>
+                  </label>
+                )}
                 {owing > 0.01 && canCollectCredit && (
                   <form onSubmit={receivePayment} className="grid gap-2 sm:grid-cols-[1fr_9rem_1fr_auto]">
                     <select className="input" value={methodId} onChange={(e) => setMethodId(e.target.value)}>
