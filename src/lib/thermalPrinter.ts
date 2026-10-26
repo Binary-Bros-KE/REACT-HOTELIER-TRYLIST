@@ -633,6 +633,12 @@ export function buildDispatchSlipBytes(slip: DispatchSlip, profile: ReceiptProfi
   }
   renderSection('ALREADY ON ORDER', slip.existingDishes ?? [], false)
   renderSection(slip.kind === 'UPDATED_ORDER' ? 'UPDATED ITEMS TO DISPATCH' : 'ITEMS TO DISPATCH', slip.dishes ?? [], slip.kind === 'UPDATED_ORDER')
+  // No dishes recorded (e.g. an older request): the store still gets the pick list.
+  if (!slip.dishes?.length && !slip.existingDishes?.length && slip.items.length) {
+    e.bold(true).line(rule).line(center('ITEMS TO DISPATCH', cols)).line(rule)
+    for (const item of slip.items) e.table([{ width: cols - 14, align: 'left' }, { width: 14, align: 'right' }], [[item.name, `${qtyText(item.quantity)} ${item.unit}`.trim()]])
+    e.bold(false)
+  }
   e.line(rule)
   if (slip.note) for (const l of wrapWords(slip.note, cols)) e.line(l)
   e.newline(1)
@@ -653,7 +659,7 @@ function printSlipViaWindow(slip: DispatchSlip): void {
 <div>Request: ${esc(slip.requestNo)}</div><div>Order: #${slip.orderNumber}${slip.table ? ' (' + esc(slip.table) + ')' : ''}</div>
 <div>For: ${esc(slip.to)}</div><div>From: ${esc(slip.from)}</div>${slip.waiterName ?? slip.requestedByName ? '<div>Waiter: ' + esc((slip.waiterName ?? slip.requestedByName)!) + '</div>' : ''}
 <div>Time: ${esc(eatTime(slip.requestedAt))}</div><hr>
-${section('ALREADY ON ORDER', slip.existingDishes ?? [])}${section(slip.kind === 'UPDATED_ORDER' ? 'UPDATED ITEMS TO DISPATCH' : 'ITEMS TO DISPATCH', slip.dishes ?? [], slip.kind === 'UPDATED_ORDER' ? 'updated' : '')}<hr>${slip.note ? '<div>' + esc(slip.note) + '</div><hr>' : ''}
+${section('ALREADY ON ORDER', slip.existingDishes ?? [])}${section(slip.kind === 'UPDATED_ORDER' ? 'UPDATED ITEMS TO DISPATCH' : 'ITEMS TO DISPATCH', slip.dishes ?? [], slip.kind === 'UPDATED_ORDER' ? 'updated' : '')}${!slip.dishes?.length && !slip.existingDishes?.length && slip.items.length ? `<section><h2>ITEMS TO DISPATCH</h2>${slip.items.map((i) => `<div class="ingredient"><b>${esc(i.name)}</b><b>${qtyText(i.quantity)} ${esc(i.unit)}</b></div>`).join('')}</section>` : ''}<hr>${slip.note ? '<div>' + esc(slip.note) + '</div><hr>' : ''}
 <p>Received by: ____________</p>`)
   win.document.close()
   win.focus()

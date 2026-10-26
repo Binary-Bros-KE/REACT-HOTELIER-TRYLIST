@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { LuBan, LuCircleAlert, LuLoaderCircle, LuPackageCheck, LuPencil, LuPrinter, LuRefreshCw, LuSearch, LuStore, LuX } from 'react-icons/lu'
+import { LuBan, LuCircleAlert, LuList, LuLoaderCircle, LuPackageCheck, LuPencil, LuPrinter, LuRefreshCw, LuSearch, LuStore, LuX } from 'react-icons/lu'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { printDispatchSlip, type DispatchSlip } from '@/lib/thermalPrinter'
@@ -187,6 +187,7 @@ export default function DispatchRequests() {
   const [error, setError] = useState('')
   const [dispatching, setDispatching] = useState<Request | null>(null)
   const [rejecting, setRejecting] = useState<Request | null>(null)
+  const [viewing, setViewing] = useState<Request | null>(null)
   const [recipeEdit, setRecipeEdit] = useState<RecipeEdit | null>(null)
   const [variantEdit, setVariantEdit] = useState<VariantEdit | null>(null)
   const seen = useState(() => ({ ids: null as Set<string> | null }))[0]
@@ -394,6 +395,7 @@ export default function DispatchRequests() {
                   <div className="mt-auto flex flex-wrap gap-2 pt-4">
                     {waiting && <ActionButton tone="success" icon={<LuPackageCheck />} onClick={() => setDispatching(request)}>Dispatch</ActionButton>}
                     {waiting && <ActionButton tone="danger" icon={<LuBan />} onClick={() => setRejecting(request)}>Reject</ActionButton>}
+                    <ActionButton tone="neutral" icon={<LuList />} onClick={() => setViewing(request)}>View items</ActionButton>
                     <ActionButton tone="neutral" icon={<LuPrinter />} onClick={() => void printSlip(request)}>Print slip</ActionButton>
                   </div>
                 </article>
@@ -403,6 +405,7 @@ export default function DispatchRequests() {
         )}
 
       {dispatching && <DispatchModal request={dispatching} onClose={() => setDispatching(null)} onDishStock={(dish) => void openDishStock(dispatching.id, dish)} onDone={() => { setDispatching(null); toast.success('Dispatched to the kitchen'); void load(true) }} />}
+      {viewing && <ItemsModal request={viewing} onClose={() => setViewing(null)} onPrint={() => void printSlip(viewing)} />}
       {rejecting && <RejectModal request={rejecting} onClose={() => setRejecting(null)} onDone={() => { setRejecting(null); toast.success('Request rejected'); void load(true) }} />}
       {recipeEdit && <RecipeEditModal recipe={recipeEdit.recipe} products={recipeEdit.products} onClose={() => setRecipeEdit(null)} onSaved={() => void recipeSaved()} />}
       {variantEdit && <VariantStockModal edit={variantEdit} onChange={(stock) => setVariantEdit({ ...variantEdit, stock })} onClose={() => setVariantEdit(null)} onSaved={(requestId) => void refreshAfterStockEdit(requestId)} />}
@@ -516,6 +519,60 @@ function VariantStockModal({ edit, onChange, onClose, onSaved }: { edit: Variant
     >
       <div className="p-5">
         <VariantStockEditor value={edit.stock} onChange={onChange} productOptions={productOptions} recipes={edit.recipes} />
+      </div>
+    </ModalShell>
+  )
+}
+
+/** What a request asked the store for, on screen: each product with how much was asked
+ * and (once dispatched) how much actually went out - plus the dishes behind it, if recorded. */
+function ItemsModal({ request, onClose, onPrint }: { request: Request; onClose: () => void; onPrint: () => void }) {
+  const dispatched = request.status === 'DISPATCHED'
+  return (
+    <ModalShell kicker={request.requestNo} title={`Order #${request.orderNumber}${request.order.table ? ` · ${request.order.table.label}` : ''}`} subtitle={`${request.fromLocation.name} → ${request.toLocation.name} · ${statusLabel(request)}`} onClose={onClose} size="md"
+      footer={<Button variant="secondary" onClick={onPrint}><LuPrinter className="size-4" /> Print slip</Button>}>
+      <div className="space-y-4 p-5">
+        {request.dishes.length > 0 && (
+          <div>
+            <p className="mb-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">Dishes</p>
+            <ul className="divide-y border">
+              {request.dishes.map((dish, index) => (
+                <li key={index} className="flex justify-between gap-3 px-3 py-2 text-sm">
+                  <span className="font-semibold">{dish.quantity} × {dish.name}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <div>
+          <p className="mb-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">Items requested</p>
+          {request.items.length === 0 ? <p className="border border-dashed p-6 text-center text-sm text-muted-foreground">No items on this request.</p> : (
+            <table className="w-full border text-sm">
+              <thead className="bg-muted/60 text-left text-xs uppercase tracking-wider text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2">Product</th>
+                  <th className="px-3 py-2 text-right">Asked</th>
+                  {dispatched && <th className="px-3 py-2 text-right">Dispatched</th>}
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {request.items.map((item) => {
+                  const unit = item.product?.unit ?? ''
+                  const short = dispatched && item.dispatchedQty != null && Number(item.dispatchedQty) < Number(item.requestedQty)
+                  return (
+                    <tr key={item.id}>
+                      <td className="px-3 py-2 font-medium">{item.productName}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{qty(item.requestedQty)} {unit}</td>
+                      {dispatched && <td className={cn('px-3 py-2 text-right tabular-nums', short && 'font-semibold text-warning')}>{item.dispatchedQty != null ? `${qty(item.dispatchedQty)} ${unit}` : '—'}</td>}
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+        {request.rejectReason && <p className="text-sm text-destructive">Rejected: {request.rejectReason}</p>}
+        {request.note && <p className="text-sm text-muted-foreground">Note: {request.note}</p>}
       </div>
     </ModalShell>
   )
