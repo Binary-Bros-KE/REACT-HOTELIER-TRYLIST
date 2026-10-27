@@ -253,7 +253,7 @@ function StayDetailModal({ stay, onClose, onChanged }: { stay: Stay; onClose: ()
   const [paying, setPaying] = useState(false)
   // Which charges the payments cover: each charged bill on its own, the room & stay charges together.
   const { pots, potOfLine } = stay.folio
-    ? folioPots(stay.folio.lineItems, stay.folio.payments, (line) => folioTotals({ ...stay.folio!, lineItems: [line], payments: [] }, bizTax).charges)
+    ? folioPots(stay.folio.lineItems, stay.folio.payments, (line) => (Number(line.amount) < 0 ? -1 : 1) * folioTotals({ ...stay.folio!, lineItems: [{ ...line, amount: Math.abs(Number(line.amount)) }], payments: [] }, bizTax).charges)
     : { pots: [], potOfLine: new Map() }
   // What the credit payment pays for: "" (whatever is owing, oldest first), ROOM_POT, or a charged bill's line.
   const [payFor, setPayFor] = useState('')

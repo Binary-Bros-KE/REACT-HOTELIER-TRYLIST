@@ -1111,7 +1111,7 @@ function StayModal({ reservation, rooms, at, onClose, onChanged, onCheckedOut }:
   const { pots, potOfLine } = useMemo(() => {
     const folio = reservation.folio;
     if (!folio) return { pots: [], potOfLine: new Map() };
-    return folioPots(folio.lineItems, folio.payments, (line) => folioTotals({ ...folio, lineItems: [line], payments: [] }, bizTax).charges);
+    return folioPots(folio.lineItems, folio.payments, (line) => (Number(line.amount) < 0 ? -1 : 1) * folioTotals({ ...folio, lineItems: [{ ...line, amount: Math.abs(Number(line.amount)) }], payments: [] }, bizTax).charges);
   }, [reservation.folio, bizTax]);
   const owingPots = pots.filter((pot) => pot.owing > 0.01);
   const payForPot = pots.find((pot) => pot.key === payFor);

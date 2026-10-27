@@ -213,7 +213,11 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
       setAmount(String(due))
       setCreditReason(response.order.creditReason ?? '')
       setCreditExpectedAt(response.order.creditExpectedAt ? response.order.creditExpectedAt.slice(0, 10) : '')
-      if (response.order.reservation) {
+      // Rung up "bill to Room X" but not charged yet: default to charging it. Once it IS on
+      // the room, the only thing left is paying it (recorded on the folio) - never charging again.
+      if (response.order.billedToRoomAt) {
+        setMode('PAY')
+      } else if (response.order.reservation) {
         setMode('ROOM')
         setReservationId(response.order.reservation.id)
         setStays([response.order.reservation])
