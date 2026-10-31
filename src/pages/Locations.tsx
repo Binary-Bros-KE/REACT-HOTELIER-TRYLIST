@@ -73,6 +73,7 @@ type LocationRow = {
   canSellProducts: boolean
   serveMode: ServeMode
   requireStoreDispatch: boolean
+  skipKitchenAfterDispatch: boolean
   allowOutOfStockOrders: boolean
   dispatchAutoPrint: boolean
   orderTicketAutoPrint: boolean
@@ -103,6 +104,7 @@ type LocationForm = {
   canSellProducts: boolean
   serveMode: ServeMode
   requireStoreDispatch: boolean
+  skipKitchenAfterDispatch: boolean
   allowOutOfStockOrders: boolean
   dispatchAutoPrint: boolean
   orderTicketAutoPrint: boolean
@@ -121,6 +123,7 @@ const emptyLocationForm: LocationForm = {
   canSellRooms: true, canSellMenu: true, canSellServices: true, canSellProducts: true,
   serveMode: 'KITCHEN',
   requireStoreDispatch: false,
+  skipKitchenAfterDispatch: false,
   allowOutOfStockOrders: false,
   dispatchAutoPrint: true,
   orderTicketAutoPrint: false,
@@ -190,6 +193,7 @@ export default function Locations() {
       canSellProducts: location.canSellProducts,
       serveMode: location.serveMode,
       requireStoreDispatch: location.requireStoreDispatch,
+      skipKitchenAfterDispatch: location.skipKitchenAfterDispatch ?? false,
       allowOutOfStockOrders: location.allowOutOfStockOrders,
       dispatchAutoPrint: location.dispatchAutoPrint,
       orderTicketAutoPrint: location.orderTicketAutoPrint ?? false,
@@ -208,7 +212,7 @@ export default function Locations() {
     event.preventDefault()
     setSaving(true)
     try {
-      await api(editing ? `/locations/${editing.id}` : '/locations', { method: editing ? 'PATCH' : 'POST', body: JSON.stringify({ ...form, dispatchFromLocationId: form.dispatchFromLocationId || null }) })
+      await api(editing ? `/locations/${editing.id}` : '/locations', { method: editing ? 'PATCH' : 'POST', body: JSON.stringify({ ...form, skipKitchenAfterDispatch: form.requireStoreDispatch && form.skipKitchenAfterDispatch, dispatchFromLocationId: form.dispatchFromLocationId || null }) })
       toast.success(editing ? 'Location updated.' : 'Location created.')
       setShowForm(false)
       await load()
@@ -491,6 +495,15 @@ export default function Locations() {
                         <span>
                           <span className="block text-sm font-semibold">Print the dispatch slip automatically at the store</span>
                           <span className="block text-xs text-muted-foreground">The store&apos;s printer prints what to dispatch as soon as an order is posted. Off = the storekeeper prints it with the Print button. Needs a printer set up on the store computer.</span>
+                        </span>
+                      </label>
+                    )}
+                    {form.requireStoreDispatch && (
+                      <label className={cn('mt-3 flex cursor-pointer items-start gap-2.5 border p-3 transition-colors', form.skipKitchenAfterDispatch ? 'border-secondary bg-secondary/10' : 'bg-muted/40')}>
+                        <input type="checkbox" checked={form.skipKitchenAfterDispatch} onChange={(e) => setForm({ ...form, skipKitchenAfterDispatch: e.target.checked })} className="mt-0.5 size-4 accent-secondary" />
+                        <span>
+                          <span className="block text-sm font-semibold">Skip the kitchen after dispatch</span>
+                          <span className="block text-xs text-muted-foreground">No chef step: the moment the store dispatches an order it is Ready for the waiter to serve, and it never shows on the kitchen screen. Added rounds work the same way.</span>
                         </span>
                       </label>
                     )}
