@@ -18,6 +18,7 @@ import ShiftSummaryModal, { type ShiftSession, type ShiftSummary } from '@/compo
 import ShiftTeamPanels from '@/components/shifts/ShiftTeamPanels'
 import { ShiftContext, useNow, useShift, type ConfirmAction, type ShiftCtx, type ShiftPayload, type ShiftRow } from '@/components/shifts/shiftContext'
 import DashboardSkeleton from '@/components/ui/DashboardSkeleton'
+import DayByLocation from '@/components/dashboard/DayByLocation'
 
 function getGreeting() {
   const hour = new Date().getHours()
@@ -295,9 +296,10 @@ function RevenueDashboard({ variant, pickerSlot }: { variant: 'operations' | 'fi
         </section>
       )}
 
+      {variant === 'operations' && <DayByLocation locationId={effectiveLocationId || undefined} />}
+
       {variant === 'operations' ? (
-        <section className="mt-6 grid gap-4 lg:grid-cols-2">
-          <MiniBreakdown title="Sales by Location" rows={report.salesByLocation.map((l) => ({ key: l.locationId ?? 'unassigned', label: l.name, value: l.revenue, percent: l.percentOfTotal }))} />
+        <section className="mt-6 grid gap-4 lg:grid-cols-3">
           <MiniBreakdown title="Sales by Payment Method" rows={report.byPaymentMethod.map((m) => ({ key: m.name, label: m.name, value: m.total, percent: m.percentOfTotal }))} />
           <MiniBreakdown title="Sales by Employee" rows={report.byEmployee.map((e) => ({ key: e.name, label: e.name, value: e.total, percent: e.percentOfTotal }))} />
           <MiniBreakdown title="Sales by Customer" rows={report.byCustomer.map((c) => ({ key: c.name, label: c.name, value: c.revenue, percent: c.percentOfTotal }))} />
