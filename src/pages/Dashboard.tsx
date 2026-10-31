@@ -638,12 +638,23 @@ function MiniCount({ label, value, cls }: { label: string; value: number; cls: s
 
 type WaiterOrderItem = { id: string; quantity: number }
 type WaiterOrder = { id: string; orderNumber: number; status: string; total: number; table: { label: string } | null; items: WaiterOrderItem[] }
+// A bill this waiter completed on credit (or part-paid) that is still owed.
+type WaiterCreditOrder = WaiterOrder & {
+  paid: number
+  createdAt: string
+  updatedAt: string
+  creditExpectedAt: string | null
+  billedToRoomAt: string | null
+  customer: { firstName: string; lastName: string | null; phone?: string | null } | null
+}
 
 const WAITER_NON_FINAL = ['OPEN', 'PREPARING', 'READY', 'SERVED']
 
 function WaiterDashboard() {
+  const userId = useAppSelector((s) => s.auth.user?.id)
   const [activeOrders, setActiveOrders] = useState<WaiterOrder[]>([])
   const [completedToday, setCompletedToday] = useState<WaiterOrder[]>([])
+  const [creditBills, setCreditBills] = useState<WaiterCreditOrder[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [servingId, setServingId] = useState<string | null>(null)
@@ -653,18 +664,23 @@ function WaiterDashboard() {
     setError('')
     try {
       const today = localIsoDay(new Date())
-      const [activeResponse, completedResponse] = await Promise.all([
+      const [activeResponse, completedResponse, owingResponse] = await Promise.all([
         api<{ orders: WaiterOrder[] }>('/pos/orders?channel=FOOD'),
         api<{ orders: WaiterOrder[] }>(`/pos/orders?channel=FOOD&status=COMPLETED&from=${today}&to=${today}&limit=100`),
+        // Every bill this waiter left on credit, however old (the list is the waiter's own orders).
+        // employeeId: only this waiter's, even for a role that may see every order.
+        api<{ orders: WaiterCreditOrder[] }>(`/pos/orders?channel=FOOD&owing=true${userId ? `&employeeId=${userId}` : ''}`).catch(() => ({ orders: [] as WaiterCreditOrder[] })),
       ])
       setActiveOrders(activeResponse.orders.filter((o) => WAITER_NON_FINAL.includes(o.status)))
       setCompletedToday(completedResponse.orders)
+      // A room-billed bill is paid on the guest's folio - not the waiter's credit.
+      setCreditBills(owingResponse.orders.filter((o) => !o.billedToRoomAt && o.total - o.paid > 0.01))
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not load your orders')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [userId])
 
   useEffect(() => { void load() }, [load])
 
@@ -688,6 +704,14 @@ function WaiterDashboard() {
   const otherActive = activeOrders.filter((o) => o.status !== 'READY')
   const salesToday = completedToday.reduce((s, o) => s + o.total, 0)
   const itemCount = (o: WaiterOrder) => o.items.reduce((s, i) => s + i.quantity, 0)
+  const now = Date.now()
+  const owed = (o: WaiterCreditOrder) => Math.max(0, o.total - o.paid)
+  const isOverdue = (o: WaiterCreditOrder) => Boolean(o.creditExpectedAt && new Date(o.creditExpectedAt).getTime() < now)
+  const creditTotal = creditBills.reduce((sum, o) => sum + owed(o), 0)
+  const overdueCount = creditBills.filter(isOverdue).length
+  // Overdue first, then the oldest.
+  const sortedCredit = [...creditBills].sort((a, b) => Number(isOverdue(b)) - Number(isOverdue(a)) || a.createdAt.localeCompare(b.createdAt))
+  const shortDate = (iso: string) => new Date(iso).toLocaleDateString('en-KE', { day: 'numeric', month: 'short' })
 
   return (
     <>
@@ -700,6 +724,15 @@ function WaiterDashboard() {
           <StatCard tone="warn" label="Ready to Serve" value={String(readyOrders.length)} icon={<LuBellRing className="size-4" />} hint={readyOrders.length > 0 ? 'Waiting on you' : undefined} />
           <StatCard index={1} label="Completed Today" value={String(completedToday.length)} icon={<LuCircleCheck className="size-4" />} />
           <StatCard index={2} label="My Sales Today" value={formatKes(salesToday)} icon={<LuWallet className="size-4" />} />
+        </div>
+        <div className="mt-3">
+          <StatCard
+            tone={creditBills.length > 0 ? 'danger' : undefined}
+            label="My credit owed"
+            value={formatKes(creditTotal)}
+            icon={<LuTriangleAlert className="size-4" />}
+            hint={creditBills.length === 0 ? 'No unpaid credit on your bills' : `${creditBills.length} bill${creditBills.length === 1 ? '' : 's'} on credit${overdueCount ? ` · ${overdueCount} overdue` : ''}`}
+          />
         </div>
       </section>
 
@@ -725,6 +758,37 @@ function WaiterDashboard() {
                 </button>
               </div>
             ))}
+          </div>
+        </section>
+      )}
+
+      {creditBills.length > 0 && (
+        <section className="mt-6 overflow-hidden rounded-sm border border-destructive/40 bg-card">
+          <header className="flex items-center justify-between border-b bg-destructive/5 p-4">
+            <div>
+              <h2 className="font-semibold text-destructive">My credit bills · {creditBills.length}</h2>
+              <p className="text-xs text-muted-foreground">Bills you gave on credit that are still unpaid. Follow them up.</p>
+            </div>
+            <span className="text-sm font-bold tabular-nums text-destructive">{formatKes(creditTotal)}</span>
+          </header>
+          <div className="divide-y">
+            {sortedCredit.map((o) => {
+              const who = o.customer ? `${o.customer.firstName} ${o.customer.lastName ?? ''}`.trim() : 'No customer'
+              return (
+                <div key={o.id} className={cn('flex items-center gap-3 p-3.5 text-sm', isOverdue(o) && 'bg-destructive/5')}>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium">Order #{o.orderNumber} · {who}{o.customer?.phone ? <span className="text-muted-foreground"> · {o.customer.phone}</span> : null}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {shortDate(o.createdAt)}
+                      {o.creditExpectedAt ? <> · expected by {shortDate(o.creditExpectedAt)}</> : null}
+                      {o.paid > 0.01 ? <> · {formatKes(o.paid)} paid of {formatKes(o.total)}</> : null}
+                    </p>
+                  </div>
+                  {isOverdue(o) && <span className="shrink-0 rounded-full bg-destructive px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-destructive-foreground">Overdue</span>}
+                  <span className="shrink-0 font-bold tabular-nums text-destructive">{formatKes(owed(o))}</span>
+                </div>
+              )
+            })}
           </div>
         </section>
       )}
