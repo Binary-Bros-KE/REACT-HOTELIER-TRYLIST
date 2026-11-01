@@ -107,7 +107,7 @@ function SectionHeader({ title, subtitle, to, linkLabel }: { title: string; subt
   return (
     <header className="flex items-start justify-between gap-3 border-b border-primary/20 bg-primary/5 p-4">
       <div className="min-w-0">
-        <h2 className="font-semibold">{title}</h2>
+        <h2 className="font-bold uppercase tracking-wide text-primary">{title}</h2>
         {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
       </div>
       <Link to={to} className="shrink-0 text-xs font-semibold text-secondary hover:underline">{linkLabel} →</Link>
