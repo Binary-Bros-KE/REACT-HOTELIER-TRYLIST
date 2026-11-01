@@ -86,7 +86,7 @@ export default function DayByLocation() {
       ) : error ? (
         <div className="mt-3 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert />{error}</div>
       ) : report && (
-        <div className={cn('mt-3 space-y-4', loading && 'opacity-60')}>
+        <div className={cn('mt-3 space-y-5', loading && 'opacity-60')}>
           {sections.length === 0 && <p className="rounded-sm border bg-card p-6 text-center text-sm text-muted-foreground">No locations to show.</p>}
           {sections.map((s) => <LocationCard key={s.locationId} section={s} />)}
           <div className="grid gap-4 lg:grid-cols-2">
@@ -105,7 +105,7 @@ function Empty({ text }: { text: string }) {
 
 function SectionHeader({ title, subtitle, to, linkLabel }: { title: string; subtitle?: string; to: string; linkLabel: string }) {
   return (
-    <header className="flex items-start justify-between gap-3 border-b p-4">
+    <header className="flex items-start justify-between gap-3 border-b border-primary/20 bg-primary/5 p-4">
       <div className="min-w-0">
         <h2 className="font-semibold">{title}</h2>
         {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
@@ -139,156 +139,165 @@ function LocationCard({ section: s }: { section: LocationSection }) {
     showsMemberships ? `${s.memberships.length} new membership${s.memberships.length === 1 ? '' : 's'}` : null,
   ].filter(Boolean).join(' · ') || 'No activity this day'
 
-  return (
-    <div className="overflow-hidden rounded-sm border bg-card">
-      <SectionHeader title={s.name} subtitle={subtitle} to={salesLink} linkLabel="Full report" />
-
-      <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 lg:grid-cols-6">
-          <Figure label="Total sales" value={formatKes(t.sales)} />
-          <Figure label="Paid" value={formatKes(t.paid)} tone="success" />
-          <Figure label="On credit" value={formatKes(t.credit)} tone={t.credit > 0.01 ? 'danger' : undefined} />
-          <Figure label="Billed to rooms" value={formatKes(t.roomBills)} />
-          <Figure label="Complimentary" value={formatKes(t.complimentary)} />
-          <Figure label="Orders" value={String(t.orders)} />
-      </div>
-
-      <div className="grid gap-4 border-t p-4 lg:grid-cols-[1fr_16rem]">
-          <div className="space-y-4">
-            {kinds.length === 0 && (
-              <div>
-                <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Items sold · 0</p>
-                <Empty text="Nothing sold this day." />
-              </div>
-            )}
-            {kinds.map((kind) => {
-              const rows = s.items.filter((i) => i.kind === kind)
-              return (
-                <div key={kind}>
-                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{KIND_LABEL[kind]} sold · {rows.length}</p>
-                  <div className="overflow-x-auto rounded-sm border">
-                    <table className="w-full text-sm">
-                      <thead className="bg-muted/40 text-xs text-muted-foreground">
-                        <tr><th className="px-3 py-2 text-left font-medium">Item</th><th className="px-3 py-2 text-right font-medium">Qty</th><th className="px-3 py-2 text-right font-medium">Value</th></tr>
-                      </thead>
-                      <tbody className="divide-y">
-                        {rows.map((i) => (
-                          <tr key={i.key}>
-                            <td className="px-3 py-1.5">{i.name}{i.complimentaryQuantity > 0 && <span className="ml-1.5 text-xs text-muted-foreground">({i.complimentaryQuantity} complimentary)</span>}</td>
-                            <td className="px-3 py-1.5 text-right tabular-nums">{i.quantity.toLocaleString('en-KE', { maximumFractionDigits: 3 })}</td>
-                            <td className="px-3 py-1.5 text-right font-medium tabular-nums">{formatKes(i.value)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot className="border-t bg-muted/40 font-semibold">
-                        <tr><td className="px-3 py-1.5">Total</td><td className="px-3 py-1.5 text-right tabular-nums">{rows.reduce((sum, i) => sum + i.quantity, 0).toLocaleString('en-KE', { maximumFractionDigits: 3 })}</td><td className="px-3 py-1.5 text-right tabular-nums">{formatKes(rows.reduce((sum, i) => sum + i.value, 0))}</td></tr>
-                      </tfoot>
-                    </table>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-          <div>
-            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Payments received</p>
-            {s.paymentMethods.length === 0 ? (
-              <Empty text="No payments taken." />
-            ) : (
-              <div className="divide-y rounded-sm border">
-                {s.paymentMethods.map((m) => (
-                  <div key={m.name} className="flex justify-between gap-2 px-3 py-1.5 text-sm"><span className="truncate">{m.name}</span><span className="shrink-0 font-medium tabular-nums">{formatKes(m.amount)}</span></div>
-                ))}
-              </div>
-            )}
-          </div>
+  const salesBlock = (
+    <div>
+        <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 lg:grid-cols-6">
+            <Figure label="Total sales" value={formatKes(t.sales)} />
+            <Figure label="Paid" value={formatKes(t.paid)} tone="success" />
+            <Figure label="On credit" value={formatKes(t.credit)} tone={t.credit > 0.01 ? 'danger' : undefined} />
+            <Figure label="Billed to rooms" value={formatKes(t.roomBills)} />
+            <Figure label="Complimentary" value={formatKes(t.complimentary)} />
+            <Figure label="Orders" value={String(t.orders)} />
         </div>
-
-      {showsRooms && (
-        <div className="border-t p-4">
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Rooms · {s.stays.length} stay{s.stays.length === 1 ? '' : 's'}</p>
-            <Link to="/reports/rooms-report" className="text-xs font-semibold text-secondary hover:underline">Rooms report →</Link>
+  
+        <div className="grid gap-4 border-t p-4 lg:grid-cols-[1fr_16rem]">
+            <div className="space-y-4">
+              {kinds.length === 0 && (
+                <div>
+                  <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Items sold · 0</p>
+                  <Empty text="Nothing sold this day." />
+                </div>
+              )}
+              {kinds.map((kind) => {
+                const rows = s.items.filter((i) => i.kind === kind)
+                return (
+                  <div key={kind}>
+                    <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{KIND_LABEL[kind]} sold · {rows.length}</p>
+                    <div className="overflow-x-auto rounded-sm border">
+                      <table className="w-full text-sm">
+                        <thead className="bg-muted/40 text-xs text-muted-foreground">
+                          <tr><th className="px-3 py-2 text-left font-medium">Item</th><th className="px-3 py-2 text-right font-medium">Qty</th><th className="px-3 py-2 text-right font-medium">Value</th></tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {rows.map((i) => (
+                            <tr key={i.key}>
+                              <td className="px-3 py-1.5">{i.name}{i.complimentaryQuantity > 0 && <span className="ml-1.5 text-xs text-muted-foreground">({i.complimentaryQuantity} complimentary)</span>}</td>
+                              <td className="px-3 py-1.5 text-right tabular-nums">{i.quantity.toLocaleString('en-KE', { maximumFractionDigits: 3 })}</td>
+                              <td className="px-3 py-1.5 text-right font-medium tabular-nums">{formatKes(i.value)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot className="border-t bg-muted/40 font-semibold">
+                          <tr><td className="px-3 py-1.5">Total</td><td className="px-3 py-1.5 text-right tabular-nums">{rows.reduce((sum, i) => sum + i.quantity, 0).toLocaleString('en-KE', { maximumFractionDigits: 3 })}</td><td className="px-3 py-1.5 text-right tabular-nums">{formatKes(rows.reduce((sum, i) => sum + i.value, 0))}</td></tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            <div>
+              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Payments received</p>
+              {s.paymentMethods.length === 0 ? (
+                <Empty text="No payments taken." />
+              ) : (
+                <div className="divide-y rounded-sm border">
+                  {s.paymentMethods.map((m) => (
+                    <div key={m.name} className="flex justify-between gap-2 px-3 py-1.5 text-sm"><span className="truncate">{m.name}</span><span className="shrink-0 font-medium tabular-nums">{formatKes(m.amount)}</span></div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-          {s.stays.length === 0 ? (
-            <Empty text="No stays this day." />
-          ) : (
-            <>
-              <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <Figure label="Room charges" value={formatKes(t.roomCharges)} />
-                <Figure label="Paid" value={formatKes(t.roomPaid)} tone="success" />
-                <Figure label="Balance" value={formatKes(t.roomBalance)} tone={t.roomBalance > 0.01 ? 'danger' : undefined} />
-              </div>
+    </div>
+  )
+  const roomsBlock = (
+          <div className="p-4">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Rooms · {s.stays.length} stay{s.stays.length === 1 ? '' : 's'}</p>
+              <Link to="/reports/rooms-report" className="text-xs font-semibold text-secondary hover:underline">Rooms report →</Link>
+            </div>
+            {s.stays.length === 0 ? (
+              <Empty text="No stays this day." />
+            ) : (
+              <>
+                <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <Figure label="Room charges" value={formatKes(t.roomCharges)} />
+                  <Figure label="Paid" value={formatKes(t.roomPaid)} tone="success" />
+                  <Figure label="Balance" value={formatKes(t.roomBalance)} tone={t.roomBalance > 0.01 ? 'danger' : undefined} />
+                </div>
+                <div className="overflow-x-auto rounded-sm border">
+                  <table className="w-full min-w-[46rem] text-sm">
+                    <thead className="bg-muted/40 text-xs text-muted-foreground">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-medium">Guest</th>
+                        <th className="px-3 py-2 text-left font-medium">Room</th>
+                        <th className="px-3 py-2 text-left font-medium">Stay</th>
+                        <th className="px-3 py-2 text-left font-medium">Today</th>
+                        <th className="px-3 py-2 text-right font-medium">Charges</th>
+                        <th className="px-3 py-2 text-right font-medium">Paid</th>
+                        <th className="px-3 py-2 text-right font-medium">Balance</th>
+                        <th className="px-3 py-2 text-left font-medium">Payment</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {s.stays.map((r) => (
+                        <tr key={r.id}>
+                          <td className="px-3 py-1.5"><p className="font-medium">{r.guest}</p><p className="text-xs text-muted-foreground">{r.reservationNo}{r.phone ? ` · ${r.phone}` : ''}</p></td>
+                          <td className="px-3 py-1.5">{r.room}</td>
+                          <td className="px-3 py-1.5 whitespace-nowrap">{shortDate(r.checkIn)} – {shortDate(r.checkOut)}<p className="text-xs text-muted-foreground">{r.nights} night{r.nights === 1 ? '' : 's'} · {r.status.replace(/_/g, ' ').toLowerCase()}</p></td>
+                          <td className="px-3 py-1.5">{STAGE_LABEL[r.stage]}</td>
+                          <td className="px-3 py-1.5 text-right tabular-nums">{formatKes(r.charges)}</td>
+                          <td className="px-3 py-1.5 text-right tabular-nums">{formatKes(r.paid)}</td>
+                          <td className={cn('px-3 py-1.5 text-right font-medium tabular-nums', r.balance > 0.01 && 'text-destructive')}>{formatKes(r.balance)}</td>
+                          <td className="px-3 py-1.5"><span className={cn('rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', PAY_TONE[r.paymentStatus])}>{r.paymentStatus.replace('_', ' ')}</span></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </div>
+  )
+  const membershipsBlock = (
+          <div className="p-4">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">New memberships · {s.memberships.length}{t.membershipPayments > 0 ? ` · ${formatKes(t.membershipPayments)} collected` : ''}</p>
+              <Link to="/service-center/memberships" className="text-xs font-semibold text-secondary hover:underline">Memberships →</Link>
+            </div>
+            {s.memberships.length === 0 ? (
+              <Empty text="No new memberships this day." />
+            ) : (
               <div className="overflow-x-auto rounded-sm border">
-                <table className="w-full min-w-[46rem] text-sm">
+                <table className="w-full min-w-[36rem] text-sm">
                   <thead className="bg-muted/40 text-xs text-muted-foreground">
-                    <tr>
-                      <th className="px-3 py-2 text-left font-medium">Guest</th>
-                      <th className="px-3 py-2 text-left font-medium">Room</th>
-                      <th className="px-3 py-2 text-left font-medium">Stay</th>
-                      <th className="px-3 py-2 text-left font-medium">Today</th>
-                      <th className="px-3 py-2 text-right font-medium">Charges</th>
-                      <th className="px-3 py-2 text-right font-medium">Paid</th>
-                      <th className="px-3 py-2 text-right font-medium">Balance</th>
-                      <th className="px-3 py-2 text-left font-medium">Payment</th>
-                    </tr>
+                    <tr><th className="px-3 py-2 text-left font-medium">Member</th><th className="px-3 py-2 text-left font-medium">Plan</th><th className="px-3 py-2 text-left font-medium">Period</th><th className="px-3 py-2 text-right font-medium">Price</th><th className="px-3 py-2 text-right font-medium">Paid</th></tr>
                   </thead>
                   <tbody className="divide-y">
-                    {s.stays.map((r) => (
-                      <tr key={r.id}>
-                        <td className="px-3 py-1.5"><p className="font-medium">{r.guest}</p><p className="text-xs text-muted-foreground">{r.reservationNo}{r.phone ? ` · ${r.phone}` : ''}</p></td>
-                        <td className="px-3 py-1.5">{r.room}</td>
-                        <td className="px-3 py-1.5 whitespace-nowrap">{shortDate(r.checkIn)} – {shortDate(r.checkOut)}<p className="text-xs text-muted-foreground">{r.nights} night{r.nights === 1 ? '' : 's'} · {r.status.replace(/_/g, ' ').toLowerCase()}</p></td>
-                        <td className="px-3 py-1.5">{STAGE_LABEL[r.stage]}</td>
-                        <td className="px-3 py-1.5 text-right tabular-nums">{formatKes(r.charges)}</td>
-                        <td className="px-3 py-1.5 text-right tabular-nums">{formatKes(r.paid)}</td>
-                        <td className={cn('px-3 py-1.5 text-right font-medium tabular-nums', r.balance > 0.01 && 'text-destructive')}>{formatKes(r.balance)}</td>
-                        <td className="px-3 py-1.5"><span className={cn('rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', PAY_TONE[r.paymentStatus])}>{r.paymentStatus.replace('_', ' ')}</span></td>
+                    {s.memberships.map((m) => (
+                      <tr key={m.id}>
+                        <td className="px-3 py-1.5"><p className="font-medium">{m.member}</p>{m.phone && <p className="text-xs text-muted-foreground">{m.phone}</p>}</td>
+                        <td className="px-3 py-1.5">{m.plan}</td>
+                        <td className="px-3 py-1.5 whitespace-nowrap">{shortDate(m.startsAt)} – {shortDate(m.endsAt)}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums">{formatKes(m.price)}</td>
+                        <td className={cn('px-3 py-1.5 text-right font-medium tabular-nums', m.paid + 0.01 < m.price && 'text-destructive')}>{formatKes(m.paid)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            </>
-          )}
-        </div>
-      )}
-
-      {showsMemberships && (
-        <div className="border-t p-4">
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">New memberships · {s.memberships.length}{t.membershipPayments > 0 ? ` · ${formatKes(t.membershipPayments)} collected` : ''}</p>
-            <Link to="/service-center/memberships" className="text-xs font-semibold text-secondary hover:underline">Memberships →</Link>
+            )}
           </div>
-          {s.memberships.length === 0 ? (
-            <Empty text="No new memberships this day." />
-          ) : (
-            <div className="overflow-x-auto rounded-sm border">
-              <table className="w-full min-w-[36rem] text-sm">
-                <thead className="bg-muted/40 text-xs text-muted-foreground">
-                  <tr><th className="px-3 py-2 text-left font-medium">Member</th><th className="px-3 py-2 text-left font-medium">Plan</th><th className="px-3 py-2 text-left font-medium">Period</th><th className="px-3 py-2 text-right font-medium">Price</th><th className="px-3 py-2 text-right font-medium">Paid</th></tr>
-                </thead>
-                <tbody className="divide-y">
-                  {s.memberships.map((m) => (
-                    <tr key={m.id}>
-                      <td className="px-3 py-1.5"><p className="font-medium">{m.member}</p>{m.phone && <p className="text-xs text-muted-foreground">{m.phone}</p>}</td>
-                      <td className="px-3 py-1.5">{m.plan}</td>
-                      <td className="px-3 py-1.5 whitespace-nowrap">{shortDate(m.startsAt)} – {shortDate(m.endsAt)}</td>
-                      <td className="px-3 py-1.5 text-right tabular-nums">{formatKes(m.price)}</td>
-                      <td className={cn('px-3 py-1.5 text-right font-medium tabular-nums', m.paid + 0.01 < m.price && 'text-destructive')}>{formatKes(m.paid)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
+  )
+
+  return (
+    <div className="overflow-hidden rounded-sm border border-primary/30 bg-card shadow-sm">
+      <SectionHeader title={s.name} subtitle={subtitle} to={salesLink} linkLabel="Full report" />
+      {/* Rooms come first where rooms are sold; the till sales follow. */}
+      <div className="divide-y">
+        {showsRooms && roomsBlock}
+        {showsRooms && showsMemberships && membershipsBlock}
+        {salesBlock}
+        {!showsRooms && showsMemberships && membershipsBlock}
+      </div>
     </div>
   )
 }
 
 function CreditCard({ credit }: { credit: DayReport['credit'] }) {
   return (
-    <div className="overflow-hidden rounded-sm border bg-card">
+    <div className="overflow-hidden rounded-sm border border-primary/30 bg-card shadow-sm">
       <SectionHeader title="Credit" subtitle={`${credit.count} customer${credit.count === 1 ? '' : 's'} owe ${formatKes(credit.total)} (as of now)`} to="/reports/credit-debtors" linkLabel="Credit report" />
       {credit.debtors.length === 0 ? (
         <div className="p-4"><Empty text="No customer owes you right now." /></div>
@@ -309,7 +318,7 @@ function CreditCard({ credit }: { credit: DayReport['credit'] }) {
 
 function PurchasesCard({ purchases }: { purchases: DayReport['purchases'] }) {
   return (
-    <div className="overflow-hidden rounded-sm border bg-card">
+    <div className="overflow-hidden rounded-sm border border-primary/30 bg-card shadow-sm">
       <SectionHeader title="Purchases" subtitle={`${purchases.count} purchase${purchases.count === 1 ? '' : 's'} · ${formatKes(purchases.total)}`} to="/reports/purchases-report" linkLabel="Purchases report" />
       {purchases.rows.length === 0 ? (
         <div className="p-4"><Empty text="No purchases this day." /></div>
