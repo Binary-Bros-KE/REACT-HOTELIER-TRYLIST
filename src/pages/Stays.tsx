@@ -48,6 +48,7 @@ type Stay = {
   checkOut: string
   status: ReservationStatus
   source: string
+  roomSaleType?: 'PAID' | 'COMPLIMENTARY'
   cancellationReason: string | null
   cancellationNotes: string | null
   customer: { id: string; firstName: string; lastName: string | null; phone: string; customerNo: string }
@@ -87,6 +88,36 @@ function stayBalance(stay: { status: string }, balance: number) {
   return stay.status === 'CANCELLED' || stay.status === 'NO_SHOW' ? 0 : balance
 }
 
+type PaymentFilter = 'OWING' | 'PARTIAL' | 'UNPAID' | 'PAID' | 'COMPLIMENTARY' | 'CREDIT'
+const PAYMENT_FILTERS: [PaymentFilter, string][] = [
+  ['OWING', 'Owing (part paid + unpaid)'],
+  ['PARTIAL', 'Partially paid'],
+  ['UNPAID', 'Nothing paid'],
+  ['PAID', 'Paid in full'],
+  ['COMPLIMENTARY', 'Complimentary'],
+  ['CREDIT', 'Checked out on credit'],
+]
+
+// Same reading as the Check In list's payment pill: complimentary first, then
+// paid / partially paid / nothing paid. A stay checked out on credit owes what's
+// left of that credit (repayments aren't folio payments). Cancelled and no-show
+// stays owe nothing and have no payment state, so they only show under "All".
+function matchesPaymentFilter(stay: Stay, totals: ReturnType<typeof folioTotals>, filter: PaymentFilter) {
+  if (stay.status === 'CANCELLED' || stay.status === 'NO_SHOW') return false
+  const onCredit = Number(stay.folio?.creditAmount ?? 0) > 0
+  const owed = onCredit ? stay.folio?.creditOutstanding ?? 0 : totals.balance
+  const paid = totals.paid
+  const complimentary = stay.roomSaleType === 'COMPLIMENTARY'
+  switch (filter) {
+    case 'OWING': return owed > 0.01
+    case 'PARTIAL': return !complimentary && paid > 0.01 && owed > 0.01
+    case 'UNPAID': return !complimentary && paid <= 0.01 && owed > 0.01
+    case 'PAID': return !complimentary && owed <= 0.01 && (paid > 0.01 || onCredit)
+    case 'COMPLIMENTARY': return complimentary
+    case 'CREDIT': return onCredit && owed > 0.01
+  }
+}
+
 const STATUS_TONE: Record<ReservationStatus, PillTone> = {
   PENDING: 'warning',
   CONFIRMED: 'secondary',
@@ -111,6 +142,7 @@ export default function Stays() {
   const [stays, setStays] = useState<Stay[]>([])
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [paymentFilter, setPaymentFilter] = useState<PaymentFilter | ''>('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [selected, setSelected] = useState<Stay | null>(null)
@@ -146,6 +178,8 @@ export default function Stays() {
   useEffect(() => {
     setSelected((current) => (current ? stays.find((s) => s.id === current.id) ?? current : current))
   }, [stays])
+  // Every stay is already loaded, so the payment filter works on the list in hand.
+  const visibleStays = paymentFilter ? stays.filter((stay) => matchesPaymentFilter(stay, folioTotals(stay.folio, bizTax), paymentFilter)) : stays
 
   return (
     <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
@@ -172,11 +206,15 @@ export default function Stays() {
             <option value="">All statuses</option>
             {STATUSES.map((s) => <option key={s} value={s}>{titleCase(s)}</option>)}
           </select>
+          <select value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value as PaymentFilter | '')} className="border bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring">
+            <option value="">All payments</option>
+            {PAYMENT_FILTERS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
         </div>
 
         {loading ? (
           <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><LuLoaderCircle className="animate-spin" /> Loading guest stays…</div>
-        ) : stays.length === 0 ? (
+        ) : visibleStays.length === 0 ? (
           <div className="min-h-64 p-16 text-center text-sm text-muted-foreground">No stays match your search.</div>
         ) : (
           <div className="overflow-x-auto">
@@ -193,7 +231,7 @@ export default function Stays() {
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {stays.map((stay) => {
+                {visibleStays.map((stay) => {
                   const totals = folioTotals(stay.folio, bizTax)
                   const balance = stayBalance(stay, totals.balance)
                   const info = deskOf(stay)
