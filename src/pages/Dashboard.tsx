@@ -1,5 +1,4 @@
 import { type ReactNode, useCallback, useEffect, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import {
   LuArrowDownLeft, LuArrowUpRight, LuBanknote, LuBedDouble, LuBellRing, LuBookOpen, LuBoxes, LuChefHat, LuCircleAlert, LuCircleCheck, LuClipboardList, LuClock3, LuLoaderCircle, LuLock,
@@ -98,11 +97,10 @@ type LocationOption = { id: string; name: string; isActive?: boolean; serveMode?
  * Gets the debtors/creditors/expected-profit and tax panels instead, which
  * the operations variant skips (Super Admin/Manager get that same detail
  * from the full Sales Report already). */
-function RevenueDashboard({ variant, pickerSlot }: { variant: 'operations' | 'finance'; pickerSlot: HTMLElement | null }) {
+// Always the whole business - no location filter here.
+function RevenueDashboard({ variant }: { variant: 'operations' | 'finance' }) {
   const moduleKeys = useAppSelector((s) => s.tenant.moduleKeys)
   const hasHotelModules = sectionModuleEnabled('RECEPTION', moduleKeys)
-  const [locations, setLocations] = useState<LocationOption[]>([])
-  const { fixed: fixedLocation, options: pickableLocations, selectedId: selectedLocationId, setLocation, effectiveId: effectiveLocationId } = useWorkingLocation(locations, { persist: false })
 
   const [report, setReport] = useState<SalesReport | null>(null)
   const [activeOrderCount, setActiveOrderCount] = useState(0)
@@ -117,13 +115,11 @@ function RevenueDashboard({ variant, pickerSlot }: { variant: 'operations' | 'fi
     setLoading(true)
     setError('')
     try {
-      const locQuery = effectiveLocationId ? `&locationId=${effectiveLocationId}` : ''
-      const [salesResponse, ordersResponse, tablesResponse, transactionsResponse, locationResponse, roomResult, reservationResult] = await Promise.all([
-        api<SalesReport>(`/reports/sales?period=day${locQuery}`),
-        variant === 'operations' ? api<{ orders: OrderSummary[] }>(`/pos/orders?channel=FOOD${locQuery}`) : Promise.resolve({ orders: [] }),
-        variant === 'operations' ? api<{ tables: TableSummary[] }>(`/tables${effectiveLocationId ? `?locationId=${effectiveLocationId}` : ''}`) : Promise.resolve({ tables: [] }),
-        api<{ transactions: TransactionRow[] }>(`/transactions?limit=${variant === 'finance' ? 12 : 8}${locQuery}`),
-        api<{ locations: LocationOption[] }>('/locations'),
+      const [salesResponse, ordersResponse, tablesResponse, transactionsResponse, roomResult, reservationResult] = await Promise.all([
+        api<SalesReport>('/reports/sales?period=day'),
+        variant === 'operations' ? api<{ orders: OrderSummary[] }>('/pos/orders?channel=FOOD') : Promise.resolve({ orders: [] }),
+        variant === 'operations' ? api<{ tables: TableSummary[] }>('/tables') : Promise.resolve({ tables: [] }),
+        api<{ transactions: TransactionRow[] }>(`/transactions?limit=${variant === 'finance' ? 12 : 8}`),
         variant === 'operations' && hasHotelModules ? api<{ rooms: HotelInsightRoom[] }>('/rooms/rooms').then((r) => ({ ok: true as const, data: r })).catch(() => ({ ok: false as const, data: { rooms: [] } })) : Promise.resolve({ ok: true as const, data: { rooms: [] } }),
         variant === 'operations' && hasHotelModules ? api<{ reservations: HotelInsightReservation[] }>('/reception/reservations').then((r) => ({ ok: true as const, data: r })).catch(() => ({ ok: false as const, data: { reservations: [] } })) : Promise.resolve({ ok: true as const, data: { reservations: [] } }),
       ])
@@ -131,7 +127,6 @@ function RevenueDashboard({ variant, pickerSlot }: { variant: 'operations' | 'fi
       setActiveOrderCount(ordersResponse.orders.filter((o) => NON_FINAL_STATUSES.includes(o.status)).length)
       setTables(tablesResponse.tables)
       setTransactions(transactionsResponse.transactions)
-      setLocations(locationResponse.locations)
       setHotelRooms(roomResult.data.rooms)
       setHotelReservations(reservationResult.data.reservations)
     } catch (cause) {
@@ -139,18 +134,9 @@ function RevenueDashboard({ variant, pickerSlot }: { variant: 'operations' | 'fi
     } finally {
       setLoading(false)
     }
-  }, [effectiveLocationId, hasHotelModules, variant])
+  }, [hasHotelModules, variant])
 
   useEffect(() => { void load() }, [load])
-
-  const locationPicker = fixedLocation ? (
-    <span className="text-sm font-medium text-muted-foreground">{fixedLocation.name}</span>
-  ) : pickableLocations.length > 0 ? (
-    <select aria-label="Filter by location" value={selectedLocationId} onChange={(e) => setLocation(e.target.value)} className="input w-auto !border-black !bg-black !text-white">
-      <option value="">All locations</option>
-      {pickableLocations.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-    </select>
-  ) : null
 
   if (loading) {
     return <DashboardSkeleton />
@@ -177,7 +163,6 @@ function RevenueDashboard({ variant, pickerSlot }: { variant: 'operations' | 'fi
 
   return (
     <>
-      {locationPicker && pickerSlot && createPortal(locationPicker, pickerSlot)}
       <section className="mt-7">
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Today's financial overview</p>
         <div className="mt-2.5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -1756,7 +1741,6 @@ export default function Dashboard() {
   const moduleKeys = useAppSelector((s) => s.tenant.moduleKeys)
   const [shiftReady, setShiftReady] = useState(user?.role?.name === 'Super Admin')
   const [shiftLoaded, setShiftLoaded] = useState(false)
-  const [pickerSlot, setPickerSlot] = useState<HTMLDivElement | null>(null)
   const markShiftLoaded = useCallback(() => setShiftLoaded(true), [])
   const firstName = user?.firstName ?? 'there'
   // Revenue and every figure derived from it: Super Admin, Manager, and
@@ -1787,14 +1771,13 @@ export default function Dashboard() {
           </p>
         
         </div>
-        <div ref={setPickerSlot} />
       </header>
 
       <ShiftProvider onReady={setShiftReady} onLoaded={markShiftLoaded}>
         <ShiftControl />
         {!shiftLoaded && roleName !== 'Super Admin' && <DashboardSkeleton />}
 
-      {shiftReady && revenueVariant && <RevenueDashboard variant={revenueVariant} pickerSlot={pickerSlot} />}
+      {shiftReady && revenueVariant && <RevenueDashboard variant={revenueVariant} />}
       {shiftReady && isReceptionist && <ReceptionDashboard />}
       {shiftReady && isWaiter && <WaiterDashboard />}
       {shiftReady && isStorekeeper && <StorekeeperDashboard />}
