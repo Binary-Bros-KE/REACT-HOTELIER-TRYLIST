@@ -296,7 +296,7 @@ function RevenueDashboard({ variant, pickerSlot }: { variant: 'operations' | 'fi
         </section>
       )}
 
-      {variant === 'operations' && <DayByLocation locationId={effectiveLocationId || undefined} />}
+      {variant === 'operations' && <DayByLocation />}
 
       {variant === 'operations' ? (
         <section className="mt-6 grid gap-4 lg:grid-cols-3">

@@ -46,7 +46,9 @@ const PAY_TONE: Record<StayRow['paymentStatus'], string> = {
   NO_CHARGES: 'bg-muted text-muted-foreground',
 }
 
-export default function DayByLocation({ locationId }: { locationId?: string }) {
+// Always the whole business: the dashboard's location filter (which opens on the
+// user's default location) does not narrow this owner's view.
+export default function DayByLocation() {
   const [date, setDate] = useState(() => localIsoDay(new Date()))
   const [report, setReport] = useState<DayReport | null>(null)
   const [loading, setLoading] = useState(true)
@@ -66,8 +68,7 @@ export default function DayByLocation({ locationId }: { locationId?: string }) {
 
   useEffect(() => { void load() }, [load])
 
-  // The dashboard's location filter narrows the location sections too.
-  const sections = (report?.locations ?? []).filter((s) => !locationId || s.locationId === locationId)
+  const sections = report?.locations ?? []
   const isToday = date === localIsoDay(new Date())
 
   return (
@@ -88,16 +89,18 @@ export default function DayByLocation({ locationId }: { locationId?: string }) {
         <div className={cn('mt-3 space-y-4', loading && 'opacity-60')}>
           {sections.length === 0 && <p className="rounded-sm border bg-card p-6 text-center text-sm text-muted-foreground">No locations to show.</p>}
           {sections.map((s) => <LocationCard key={s.locationId} section={s} />)}
-          {!locationId && (
-            <div className="grid gap-4 lg:grid-cols-2">
-              <CreditCard credit={report.credit} />
-              <PurchasesCard purchases={report.purchases} />
-            </div>
-          )}
+          <div className="grid gap-4 lg:grid-cols-2">
+            <CreditCard credit={report.credit} />
+            <PurchasesCard purchases={report.purchases} />
+          </div>
         </div>
       )}
     </section>
   )
+}
+
+function Empty({ text }: { text: string }) {
+  return <p className="rounded-sm border border-dashed p-4 text-center text-sm text-muted-foreground">{text}</p>
 }
 
 function SectionHeader({ title, subtitle, to, linkLabel }: { title: string; subtitle?: string; to: string; linkLabel: string }) {
@@ -125,9 +128,11 @@ function LocationCard({ section: s }: { section: LocationSection }) {
   const t = s.totals
   const hasSales = t.orders > 0
   const kinds = (['MENU', 'SERVICE', 'PRODUCT'] as const).filter((k) => s.items.some((i) => i.kind === k))
-  const showsRooms = s.sells.rooms || s.stays.length > 0
-  const showsMemberships = s.memberships.length > 0 || t.membershipPayments > 0
-  const salesLink = showsRooms && !hasSales ? '/reports/rooms-report' : '/reports'
+  // Each widget shows even with nothing in it (with an empty note) wherever the
+  // location does that kind of business.
+  const showsRooms = s.sells.rooms || s.type === 'RECEPTION' || s.stays.length > 0
+  const showsMemberships = s.type === 'GYM' || s.memberships.length > 0 || t.membershipPayments > 0
+  const salesLink = '/reports'
   const subtitle = [
     hasSales ? `${t.orders} order${t.orders === 1 ? '' : 's'} · ${formatKes(t.sales)} sold` : null,
     showsRooms ? `${s.stays.length} stay${s.stays.length === 1 ? '' : 's'} active` : null,
@@ -138,20 +143,23 @@ function LocationCard({ section: s }: { section: LocationSection }) {
     <div className="overflow-hidden rounded-sm border bg-card">
       <SectionHeader title={s.name} subtitle={subtitle} to={salesLink} linkLabel="Full report" />
 
-      {hasSales && (
-        <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 lg:grid-cols-6">
           <Figure label="Total sales" value={formatKes(t.sales)} />
           <Figure label="Paid" value={formatKes(t.paid)} tone="success" />
           <Figure label="On credit" value={formatKes(t.credit)} tone={t.credit > 0.01 ? 'danger' : undefined} />
           <Figure label="Billed to rooms" value={formatKes(t.roomBills)} />
           <Figure label="Complimentary" value={formatKes(t.complimentary)} />
           <Figure label="Orders" value={String(t.orders)} />
-        </div>
-      )}
+      </div>
 
-      {hasSales && (
-        <div className="grid gap-4 border-t p-4 lg:grid-cols-[1fr_16rem]">
+      <div className="grid gap-4 border-t p-4 lg:grid-cols-[1fr_16rem]">
           <div className="space-y-4">
+            {kinds.length === 0 && (
+              <div>
+                <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Items sold · 0</p>
+                <Empty text="Nothing sold this day." />
+              </div>
+            )}
             {kinds.map((kind) => {
               const rows = s.items.filter((i) => i.kind === kind)
               return (
@@ -183,7 +191,7 @@ function LocationCard({ section: s }: { section: LocationSection }) {
           <div>
             <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Payments received</p>
             {s.paymentMethods.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No payments taken.</p>
+              <Empty text="No payments taken." />
             ) : (
               <div className="divide-y rounded-sm border">
                 {s.paymentMethods.map((m) => (
@@ -193,7 +201,6 @@ function LocationCard({ section: s }: { section: LocationSection }) {
             )}
           </div>
         </div>
-      )}
 
       {showsRooms && (
         <div className="border-t p-4">
@@ -202,7 +209,7 @@ function LocationCard({ section: s }: { section: LocationSection }) {
             <Link to="/reports/rooms-report" className="text-xs font-semibold text-secondary hover:underline">Rooms report →</Link>
           </div>
           {s.stays.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No stays this day.</p>
+            <Empty text="No stays this day." />
           ) : (
             <>
               <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -252,7 +259,7 @@ function LocationCard({ section: s }: { section: LocationSection }) {
             <Link to="/service-center/memberships" className="text-xs font-semibold text-secondary hover:underline">Memberships →</Link>
           </div>
           {s.memberships.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No new memberships this day.</p>
+            <Empty text="No new memberships this day." />
           ) : (
             <div className="overflow-x-auto rounded-sm border">
               <table className="w-full min-w-[36rem] text-sm">
@@ -284,7 +291,7 @@ function CreditCard({ credit }: { credit: DayReport['credit'] }) {
     <div className="overflow-hidden rounded-sm border bg-card">
       <SectionHeader title="Credit" subtitle={`${credit.count} customer${credit.count === 1 ? '' : 's'} owe ${formatKes(credit.total)} (as of now)`} to="/reports/credit-debtors" linkLabel="Credit report" />
       {credit.debtors.length === 0 ? (
-        <p className="p-6 text-center text-sm text-muted-foreground">No customer owes you right now.</p>
+        <div className="p-4"><Empty text="No customer owes you right now." /></div>
       ) : (
         <div className="divide-y">
           {credit.debtors.map((d) => (
@@ -305,7 +312,7 @@ function PurchasesCard({ purchases }: { purchases: DayReport['purchases'] }) {
     <div className="overflow-hidden rounded-sm border bg-card">
       <SectionHeader title="Purchases" subtitle={`${purchases.count} purchase${purchases.count === 1 ? '' : 's'} · ${formatKes(purchases.total)}`} to="/reports/purchases-report" linkLabel="Purchases report" />
       {purchases.rows.length === 0 ? (
-        <p className="p-6 text-center text-sm text-muted-foreground">No purchases this day.</p>
+        <div className="p-4"><Empty text="No purchases this day." /></div>
       ) : (
         <div className="divide-y">
           {purchases.rows.map((p) => (
