@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { LuCircleAlert, LuLoaderCircle } from 'react-icons/lu'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import StatCard from '@/components/ui/StatCard'
 
 // The owner's full day by location: everything each location sold, reception's
 // stays with their money, new memberships, who owes, and the day's purchases.
@@ -115,13 +116,9 @@ function SectionHeader({ title, subtitle, to, linkLabel }: { title: string; subt
   )
 }
 
-function Figure({ label, value, tone }: { label: string; value: string; tone?: 'success' | 'warn' | 'danger' }) {
-  return (
-    <div className={cn('rounded-sm border p-3', tone === 'success' ? 'bg-success/5' : tone === 'warn' ? 'bg-warning/10' : tone === 'danger' ? 'bg-destructive/5' : 'bg-muted/30')}>
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="font-semibold tabular-nums">{value}</p>
-    </div>
-  )
+// The dashboard's signature stat card, a touch tighter to fit six in a row.
+function Figure({ label, value, tone, index }: { label: string; value: string; tone?: 'success' | 'danger'; index: number }) {
+  return <StatCard label={label} value={value} tone={tone} index={index} className="p-4" />
 }
 
 function LocationCard({ section: s }: { section: LocationSection }) {
@@ -142,12 +139,12 @@ function LocationCard({ section: s }: { section: LocationSection }) {
   const salesBlock = (
     <div>
         <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 lg:grid-cols-6">
-            <Figure label="Total sales" value={formatKes(t.sales)} />
-            <Figure label="Paid" value={formatKes(t.paid)} tone="success" />
-            <Figure label="On credit" value={formatKes(t.credit)} tone={t.credit > 0.01 ? 'danger' : undefined} />
-            <Figure label="Billed to rooms" value={formatKes(t.roomBills)} />
-            <Figure label="Complimentary" value={formatKes(t.complimentary)} />
-            <Figure label="Orders" value={String(t.orders)} />
+            <Figure index={4} label="Total sales" value={formatKes(t.sales)} />
+            <Figure index={1} label="Paid" value={formatKes(t.paid)} tone="success" />
+            <Figure index={8} label="On credit" value={formatKes(t.credit)} tone={t.credit > 0.01 ? 'danger' : undefined} />
+            <Figure index={2} label="Billed to rooms" value={formatKes(t.roomBills)} />
+            <Figure index={7} label="Complimentary" value={formatKes(t.complimentary)} />
+            <Figure index={6} label="Orders" value={String(t.orders)} />
         </div>
   
         <div className="grid gap-4 border-t p-4 lg:grid-cols-[1fr_16rem]">
@@ -212,9 +209,9 @@ function LocationCard({ section: s }: { section: LocationSection }) {
             ) : (
               <>
                 <div className="mb-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <Figure label="Room charges" value={formatKes(t.roomCharges)} />
-                  <Figure label="Paid" value={formatKes(t.roomPaid)} tone="success" />
-                  <Figure label="Balance" value={formatKes(t.roomBalance)} tone={t.roomBalance > 0.01 ? 'danger' : undefined} />
+                  <Figure index={4} label="Room charges" value={formatKes(t.roomCharges)} />
+                  <Figure index={1} label="Paid" value={formatKes(t.roomPaid)} tone="success" />
+                  <Figure index={8} label="Balance" value={formatKes(t.roomBalance)} tone={t.roomBalance > 0.01 ? 'danger' : undefined} />
                 </div>
                 <div className="overflow-x-auto rounded-sm border">
                   <table className="w-full min-w-[46rem] text-sm">
