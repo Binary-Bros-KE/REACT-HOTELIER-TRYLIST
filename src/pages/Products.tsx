@@ -15,6 +15,7 @@ import {
   LuSearch,
   LuTriangleAlert,
   LuTrash2,
+  LuUtensils,
 } from 'react-icons/lu'
 import { api, hasApiTenant } from '@/lib/api'
 import QuickAddModal, { QuickNewButton } from '@/components/QuickAddModal'
@@ -28,9 +29,10 @@ import PackQtyInput, { packAndUnit } from '@/components/ui/PackQtyInput'
 import SearchableSelect from '@/components/ui/SearchableSelect'
 import { operationOptionsFromLocations, productTagLabel } from '@/lib/productTags'
 import ProductHistoryModal, { MOVEMENT_LABELS } from '@/components/ProductHistoryModal'
+import ProductMenuModal, { type MenuCategory } from '@/components/products/ProductMenuModal'
 
 type Category = { id: string; name: string; level: number; parentId: string | null }
-type Location = { id: string; name: string; type?: string; isActive?: boolean }
+type Location = { id: string; name: string; type?: string; isActive?: boolean; canSellMenu?: boolean }
 type TrackingMode = 'PER_SALE' | 'ISSUE_ONLY' | 'PERIODIC_COUNT'
 type StockByLocation = { locationId: string; locationName: string; quantity: string }
 type Product = {
@@ -167,6 +169,12 @@ export default function Products() {
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [historyProduct, setHistoryProduct] = useState<Product | null>(null)
+  const [menuProduct, setMenuProduct] = useState<Product | null>(null)
+  // Null until loaded; stays null without the POS module, which hides "Sell on the menu".
+  const [menuCategories, setMenuCategories] = useState<MenuCategory[] | null>(null)
+  useEffect(() => {
+    api<{ categories: MenuCategory[] }>('/menu-categories').then((r) => setMenuCategories(r.categories)).catch(() => {})
+  }, [])
   const [transfer, setTransfer] = useState(emptyTransfer)
   const [showTransfer, setShowTransfer] = useState(false)
   const [transferring, setTransferring] = useState(false)
@@ -522,6 +530,7 @@ export default function Products() {
                         <button onClick={() => openAdjust(product)} title="Add or remove stock" className="rounded-sm border p-2 text-muted-foreground hover:bg-success/10 hover:text-success"><LuPackagePlus /></button>
                         <button onClick={() => setHistoryProduct(product)} title="Stock history" className="rounded-sm border p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuHistory /></button>
                         <button onClick={() => openTransfer(product)} title="Transfer stock" className="rounded-sm border p-2 text-muted-foreground hover:bg-accent/10 hover:text-accent"><LuArrowLeftRight /></button>
+                        {menuCategories && !product.isExpenseItem && <button onClick={() => setMenuProduct(product)} title="Sell on the menu" className="rounded-sm border p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuUtensils /></button>}
                         <button onClick={() => openEdit(product)} title="Edit product" className="rounded-sm border p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuPencil /></button>
                         <button onClick={() => void deleteProduct(product)} title="Delete product" className="rounded-sm border p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><LuTrash2 /></button>
                       </div>
@@ -799,6 +808,7 @@ export default function Products() {
       )}
 
       {historyProduct && <ProductHistoryModal product={historyProduct} onClose={() => setHistoryProduct(null)} />}
+      {menuProduct && menuCategories && <ProductMenuModal product={menuProduct} categories={menuCategories} locations={locations} onClose={() => setMenuProduct(null)} />}
 
       {showTransfer && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
