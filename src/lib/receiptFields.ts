@@ -17,6 +17,11 @@ export function receiptVariantSuffix(item: { variant?: { name: string } | null; 
   return name ? ` (${name})` : ''
 }
 
+/** "#910 Restaurant", one per location order, when a receipt covers a whole linked bill. */
+export function receiptBillParts(order: ReceiptOrder): string[] {
+  return (order.billParts ?? []).map((part) => `#${part.orderNumber}${part.locationName ? ` ${part.locationName}` : ''}`)
+}
+
 /** Location's own phone(s) — primary[/secondary] — else the business's. */
 export function receiptPhone(order: ReceiptOrder, profile: ReceiptProfile): string | null {
   const loc = order.location

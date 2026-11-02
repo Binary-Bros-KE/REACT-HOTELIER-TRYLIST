@@ -1,7 +1,7 @@
 import ReceiptPrinterEncoder from '@point-of-sale/receipt-printer-encoder'
 import type { ReceiptOrder, ReceiptProfile } from '@/components/pos/OrderReceipt'
 import { apiOrigin, resolveLogoUrl } from '@/lib/api'
-import { receiptFooterText, receiptHeaderText, receiptItemName, receiptVariantSuffix, receiptPhone, servedByName, showsTaxAsAddedOn } from '@/lib/receiptFields'
+import { receiptBillParts, receiptFooterText, receiptHeaderText, receiptItemName, receiptVariantSuffix, receiptPhone, servedByName, showsTaxAsAddedOn } from '@/lib/receiptFields'
 import { createPrintJob } from '@/lib/printRelay'
 
 /**
@@ -460,6 +460,7 @@ export function buildReceiptBytes(order: ReceiptOrder, profile: ReceiptProfile, 
 
   // -------- receipt / date / served by (left-aligned) --------
   e.line(`Receipt: ${order.orderNumber}`)
+  for (const part of receiptBillParts(order)) e.line(`Includes: ${part}`)
   const dateFmt = compact ? { day: '2-digit' as const, month: '2-digit' as const, year: '2-digit' as const, hour: '2-digit' as const, minute: '2-digit' as const } : undefined
   e.line(`Date: ${new Date(order.createdAt).toLocaleString('en-KE', dateFmt)}`)
   if (order.completedAt) e.line(`Paid: ${new Date(order.completedAt).toLocaleString('en-KE', dateFmt)}`)

@@ -59,7 +59,7 @@ export function usePrintRelayHost(): void {
               if (!claimed.slip) throw new Error('This dispatch request is no longer available')
               bytes = buildDispatchSlipBytes(claimed.slip, profileRef.current ?? null, s)
             } else {
-              const { order } = await api<{ order: ReceiptOrder }>(`/pos/orders/${claimed.orderId}`)
+              const { order } = await api<{ order: ReceiptOrder }>(`/pos/orders/${claimed.orderId}/receipt`)
               bytes = await buildReceiptBytesForPrint(order, profileRef.current ?? null, s)
             }
             await sendLocal(bytes, s)

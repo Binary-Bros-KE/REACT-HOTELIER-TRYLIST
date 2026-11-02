@@ -64,6 +64,8 @@ export type ReceiptOrder = {
   returnRequests?: { id: string; status: 'PENDING' | 'APPROVED' | 'REJECTED'; quantity: number; reason: string; orderItem: { menuItem: { name: string } | null; variant: { name: string } | null } }[]
   payments: ReceiptPayment[]
   financials: ReceiptFinancials
+  // Set when this receipt covers a whole linked bill: the location orders it combines.
+  billParts?: { orderNumber: number; locationName: string | null }[]
 }
 export type ReceiptProfile = {
   businessName: string
@@ -77,7 +79,7 @@ export type ReceiptProfile = {
 } | null
 
 import { resolveLogoUrl } from '@/lib/api'
-import { receiptFooterText, receiptHeaderText, receiptItemName, receiptVariantSuffix, receiptPhone, servedByName, showsTaxAsAddedOn } from '@/lib/receiptFields'
+import { receiptBillParts, receiptFooterText, receiptHeaderText, receiptItemName, receiptVariantSuffix, receiptPhone, servedByName, showsTaxAsAddedOn } from '@/lib/receiptFields'
 
 const formatKes = (value: number | string) => `KSh ${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const employeeName = (employee?: { firstName: string; lastName: string } | null) => employee ? `${employee.firstName} ${employee.lastName}`.trim() : 'Reception'
@@ -141,6 +143,7 @@ export default function OrderReceipt({ order, profile }: { order: ReceiptOrder; 
 
       <div className="space-y-0.5 text-xs">
         <div className="flex justify-between"><span>Receipt</span><span>#{order.orderNumber}</span></div>
+        {receiptBillParts(order).map((part) => <div key={part} className="flex justify-between text-gray-600"><span>Includes</span><span>{part}</span></div>)}
         <div className="flex justify-between"><span>Date</span><span>{new Date(order.createdAt).toLocaleString('en-KE')}</span></div>
         {order.completedAt && <div className="flex justify-between"><span>Paid</span><span>{new Date(order.completedAt).toLocaleString('en-KE')}</span></div>}
         {served && <div className="flex justify-between"><span>Served by</span><span>{served}</span></div>}

@@ -17,7 +17,17 @@ import ReasonModal from '@/components/ui/ReasonModal'
 import { TouchInput } from '@/components/ui/TouchInput'
 
 type PaymentStatus = 'UNPAID' | 'PARTIAL' | 'PAID'
-type ReceiptRow = ReceiptOrder & { total: number; paid: number; paymentStatus?: PaymentStatus; createdBy: string | null; customer?: { firstName: string; lastName: string | null; phone: string | null } | null }
+type ReceiptRow = ReceiptOrder & {
+  total: number
+  paid: number
+  paymentStatus?: PaymentStatus
+  createdBy: string | null
+  customer?: { firstName: string; lastName: string | null; phone: string | null } | null
+  billGroupId?: string | null
+  // The server's "whole bill" list, and the rows of that bill this row stands for once merged.
+  billParts?: { orderNumber: number; locationName: string | null }[]
+  merged?: ReceiptRow[]
+}
 type LocationOption = { id: string; name: string }
 type PaymentMethod = { id: string; name: string; requiresReference: boolean }
 type EmployeeOption = { id: string; firstName: string; lastName: string | null }
@@ -36,6 +46,36 @@ type RegisterSummary = { sales: number; salesCount: number; collected: number; o
 const EMPTY_SUMMARY: RegisterSummary = { sales: 0, salesCount: 0, collected: 0, outstanding: 0, cancelled: 0, cancelledCount: 0 }
 
 const formatKes = (value: number | string) => `KSh ${Number(value).toLocaleString()}`
+
+/** One row per bill: the parts of a linked bill on this page merge into the row of their lowest number.
+ * A cancelled part stays its own row - it's no longer on the bill. */
+function mergeLinkedRows(rows: ReceiptRow[]): ReceiptRow[] {
+  const byBill = new Map<string, ReceiptRow[]>()
+  for (const row of rows) if (row.billGroupId && row.status !== 'CANCELLED') byBill.set(row.billGroupId, [...(byBill.get(row.billGroupId) ?? []), row])
+  return rows.flatMap((row) => {
+    const parts = row.billGroupId && row.status !== 'CANCELLED' ? byBill.get(row.billGroupId) ?? [] : []
+    if (parts.length < 2) return [row]
+    // Shown where the bill's newest part sorts.
+    if (parts[0].id !== row.id) return []
+    const ordered = [...parts].sort((a, b) => a.orderNumber - b.orderNumber)
+    const total = ordered.reduce((sum, part) => sum + part.total, 0)
+    const paid = ordered.reduce((sum, part) => sum + part.paid, 0)
+    return [{
+      ...ordered[0],
+      total,
+      paid,
+      paymentStatus: total - paid <= 0.01 ? 'PAID' : paid > 0.01 ? 'PARTIAL' : 'UNPAID',
+      customer: ordered.find((part) => part.customer)?.customer ?? null,
+      creditExpectedAt: ordered.find((part) => part.creditExpectedAt)?.creditExpectedAt ?? null,
+      items: ordered.flatMap((part) => part.items),
+      payments: ordered.flatMap((part) => part.payments),
+      merged: ordered,
+    }]
+  })
+}
+const rowLabel = (row: ReceiptRow) => (row.merged ? row.merged.map((part) => `#${part.orderNumber}`).join(' + ') : `#${row.orderNumber}`)
+// This row is only a part of its bill: a location filter or the page break left the rest out.
+const partOfLabel = (row: ReceiptRow) => (!row.merged && row.billParts && row.status !== 'CANCELLED' ? `Part of bill ${row.billParts.map((part) => `#${part.orderNumber}`).join(' + ')}` : null)
 
 const badgeFor = (row: ReceiptRow): { label: string; tone: PillTone } => {
   if (row.status === 'CANCELLED') return { label: 'Cancelled', tone: 'danger' }
@@ -154,12 +194,14 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
   async function voidSale(order: ReceiptRow, reason: string) {
     setVoidingId(order.id)
     try {
-      await api(`/pos/orders/${order.id}/void`, { method: 'POST', body: JSON.stringify({ reason }) })
-      toast.success(`Order #${order.orderNumber} voided.`)
+      for (const part of order.merged ?? [order]) await api(`/pos/orders/${part.id}/void`, { method: 'POST', body: JSON.stringify({ reason }) })
+      toast.success(`${order.merged ? 'Bill' : 'Order'} ${rowLabel(order)} voided.`)
       setVoidTarget(null)
       await load()
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : 'Could not void this sale')
+      // A bill's earlier parts may already be voided: show where it really stands.
+      if (order.merged) await load()
     } finally {
       setVoidingId(null)
     }
@@ -167,7 +209,7 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
 
   const staffNames = useMemo(() => Object.fromEntries(employees.map((e) => [e.id, `${e.firstName} ${e.lastName ?? ''}`.trim()])), [employees])
 
-  const visible = orders
+  const visible = useMemo(() => mergeLinkedRows(orders), [orders])
 
   return (
     <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
@@ -298,7 +340,8 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
                 <article key={order.id} className="border bg-background p-3 text-sm shadow-sm" onClick={() => setManageId(order.id)}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="font-semibold">#{order.orderNumber}</p>
+                      <p className="font-semibold">{rowLabel(order)}</p>
+                      {partOfLabel(order) && <p className="text-[11px] text-muted-foreground">{partOfLabel(order)}</p>}
                       {order.items.some((i) => i.listPrice) && <span className="mt-1 inline-block"><StatusPill tone="warning">Price changed</StatusPill></span>}
                     </div>
                     <StatusPill tone={badge.tone}>{badge.label}</StatusPill>
@@ -360,7 +403,7 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
                   const owed = Math.max(0, order.total - order.paid)
                   return (
                     <tr key={order.id} className="cursor-pointer align-middle transition even:bg-muted/30 hover:bg-muted/60" onClick={() => setManageId(order.id)}>
-                      <td className="px-5 py-3.5 font-semibold">#{order.orderNumber}{order.items.some((i) => i.listPrice) && <span className="mt-1 block"><StatusPill tone="warning">Price changed</StatusPill></span>}</td>
+                      <td className="px-5 py-3.5 font-semibold">{rowLabel(order)}{partOfLabel(order) && <span className="block text-[11px] font-normal text-muted-foreground">{partOfLabel(order)}</span>}{order.items.some((i) => i.listPrice) && <span className="mt-1 block"><StatusPill tone="warning">Price changed</StatusPill></span>}</td>
                       <td className="px-5 py-3.5 text-muted-foreground">
                         {order.table?.label ?? (isServices ? '' : 'Takeaway')}
                         {order.createdBy && staffNames[order.createdBy] && (
@@ -436,7 +479,7 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
 
       {voidTarget && (
         <ReasonModal
-          title={`Void completed sale #${voidTarget.orderNumber}?`}
+          title={`Void completed sale ${rowLabel(voidTarget)}?`}
           tone="danger"
           confirmLabel="Void sale"
           busy={voidingId === voidTarget.id}

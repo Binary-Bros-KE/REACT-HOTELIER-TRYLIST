@@ -111,6 +111,9 @@ type ActiveOrder = {
   createdBy: string | null
   customer: { firstName: string; lastName: string | null } | null
   table: { label: string } | null
+  billGroupId?: string | null
+  // The whole linked bill this order is part of, including parts not on this list.
+  billParts?: { id: string; orderNumber: number; status: string; locationName: string | null; total: number; paid: number }[]
   items: { id: string; quantity: number; addedAfterSend?: boolean; dispatchRequest?: { status: 'REQUESTED' | 'DISPATCHED' | 'REJECTED' | 'CANCELLED' } | null; menuItem: { name: string } | null; variant: { name: string } | null; returnRequests?: { id: string; status: 'PENDING' | 'APPROVED' | 'REJECTED'; quantity: number }[] }[]
 }
 type CompletedOrder = ActiveOrder & { paid: number; paymentStatus: 'UNPAID' | 'PARTIAL' | 'PAID'; updatedAt: string }
@@ -464,6 +467,18 @@ export default function PointOfSale() {
     if (updateDiff !== 0) return updateDiff
     return b.orderNumber - a.orderNumber
   })
+  // Each card is one bill: the parts of a linked bill on this list share a card, placed where its
+  // least advanced part sorts. The barman's Awaiting service rows stay per location.
+  const activeCards: ActiveOrder[][] = []
+  for (const order of orderedActiveOrders.filter((o) => !inServeList(o))) {
+    const card = order.billGroupId ? activeCards.find((parts) => parts[0].billGroupId === order.billGroupId) : undefined
+    if (card) card.push(order)
+    else activeCards.push([order])
+  }
+  const activeBillCount = new Set(activeOrders.map((o) => o.billGroupId ?? o.id)).size
+  const billNumbers = (order: ActiveOrder) => (order.billParts ?? []).map((part) => `#${part.orderNumber}`).join(' + ')
+  // Mirrors the bill-group payment rule: every part must be served before any of it can be paid.
+  const billServed = (order: ActiveOrder) => (order.billParts ?? []).every((part) => part.status === 'SERVED' || part.status === 'COMPLETED')
   // Mirrors the server: only an order nobody has started (OPEN) can be reverted. A counter
   // order is born READY, so it never shows Revert - after posting it's a return or Super Admin.
   const canRevertActiveOrder = (order: ActiveOrder) => order.status === 'OPEN' && !order.location?.requireStoreDispatch
@@ -572,7 +587,7 @@ export default function PointOfSale() {
     const s = getThermalSettings()
     if (!s.enabled || !s.autoPrint || s.connection === 'dialog') return
     try {
-      const { order } = await api<{ order: ReceiptOrder }>(`/pos/orders/${orderId}`)
+      const { order } = await api<{ order: ReceiptOrder }>(`/pos/orders/${orderId}/receipt`)
       const result = await printReceipt(order, profile as ReceiptProfile)
       toast.success(result.method === 'relay' ? 'Sent to the printer — printing shortly' : 'Receipt sent to printer')
     } catch (cause) {
@@ -608,13 +623,14 @@ export default function PointOfSale() {
       setConfirmation(response.order)
       const linked = response.linkedOrders ?? [response.order]
       const msg = linked.length > 1
-        ? `Split into ${linked.map((order) => `#${order.orderNumber}${order.location?.name ? ` ${order.location.name}` : ''}`).join(', ')}`
+        ? `Bill ${linked.map((order) => `#${order.orderNumber}`).join(' + ')} sent to ${linked.map((order) => order.location?.name ?? 'another location').join(' and ')}`
         : instantServe ? `Order #${response.order.orderNumber} served` : sendsToCounter ? `Order #${response.order.orderNumber} sent to the counter` : `Order #${response.order.orderNumber} sent to the kitchen`
       toast.success(saleType === 'COMPLIMENTARY' ? `${msg} as complimentary` : msg)
       setSentPulse(true)
       window.clearTimeout(sentTimer.current)
       sentTimer.current = window.setTimeout(() => setSentPulse(false), 2000)
-      linked.forEach((order) => void autoPrint(order.id))
+      // A linked bill prints as one sheet, whichever of its orders is asked for.
+      void autoPrint(linked[0].id)
       await loadPos()
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Could not save the order'
@@ -720,7 +736,7 @@ export default function PointOfSale() {
           ['NEW', <>New Sale</>, <LuPlus key="i" className="size-4" />],
           ['ACTIVE', (
             <>
-              Active Orders{activeOrders.length > 0 ? ` (${activeOrders.length})` : ''}
+              Active Orders{activeBillCount > 0 ? ` (${activeBillCount})` : ''}
               {readyCount > 0 && <span className="ml-1.5 keep-round inline-flex items-center justify-center rounded-full bg-destructive px-1.5 py-0.5 text-[10px] font-bold text-destructive-foreground">{readyCount} to serve</span>}
               {updatedCount > 0 && <span className="ml-1.5 keep-round inline-flex items-center justify-center rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white">{updatedCount} updated</span>}
             </>
@@ -886,7 +902,7 @@ export default function PointOfSale() {
                           <div className="w-full min-w-0 sm:w-auto sm:flex-1">
                             <p className="break-words text-sm font-bold text-foreground sm:truncate">#{order.orderNumber} · {order.customer ? `${order.customer.firstName} ${order.customer.lastName ?? ''}` : 'Walk-in'}</p>
                             <p className="mt-0.5 break-words text-xs text-muted-foreground sm:truncate">
-                              {count} item{count === 1 ? '' : 's'} · {order.table?.label ?? 'Takeaway'}{waiter ? ` · rung up by ${waiter}` : ''}
+                              {count} item{count === 1 ? '' : 's'} · {order.table?.label ?? 'Takeaway'}{waiter ? ` · rung up by ${waiter}` : ''}{order.billParts ? ` · part of bill ${billNumbers(order)}` : ''}
                             </p>
                           </div>
                           {compBadge && <span className={cn('shrink-0 keep-round border border-dashed px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', compBadge.cls)}>{compBadge.label}</span>}
@@ -914,7 +930,74 @@ export default function PointOfSale() {
                 </div>
               )}
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                {orderedActiveOrders.filter((order) => !inServeList(order)).map((order) => {
+                {activeCards.map((parts) => {
+                  if (parts.length > 1) {
+                    const first = parts[0]
+                    const stage = parts.map(stageLabel).sort((a, b) => a.rank - b.rank)[0]
+                    const whole = first.billParts ?? []
+                    const wholeTotal = whole.reduce((sum, part) => sum + part.total, 0)
+                    const wholePaid = whole.reduce((sum, part) => sum + part.paid, 0)
+                    const waiter = first.createdBy ? staffNames[first.createdBy] : undefined
+                    const compBadge = complementaryBadge(first)
+                    const elsewhere = whole.filter((part) => !parts.some((order) => order.id === part.id))
+                    return (
+                      <article key={first.billGroupId} className={cn('rounded-sm border bg-card p-5 shadow-sm', stage.card, compBadge && 'border-secondary/30', parts.some((order) => updatedLines(order).length > 0) && 'ring-2 ring-amber-400')}>
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <h3 className="font-semibold">Bill {billNumbers(first)}</h3>
+                            <p className="mt-0.5 text-[11px] font-medium text-muted-foreground">{stage.hint}</p>
+                          </div>
+                          <span className={cn('keep-round border border-dashed px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide', stage.badge)}>{stage.label}</span>
+                        </div>
+                        {waiter && <p className="mt-1.5 flex items-center gap-1.5 text-xs font-bold text-amber-600"><LuUserRound className="size-3.5" /> Waiter: {waiter}</p>}
+                        <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground"><LuUserRound className="size-3.5" /> {first.customer ? `${first.customer.firstName} ${first.customer.lastName ?? ''}` : 'Walk-in'} · {first.table?.label ?? 'Takeaway'}</p>
+                        {compBadge && <p className={cn('mt-2 inline-flex keep-round border border-dashed px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', compBadge.cls)}>{compBadge.label}</p>}
+                        <div className="mt-3 divide-y border-y">
+                          {[...parts].sort((a, b) => a.orderNumber - b.orderNumber).map((part) => {
+                            const partStage = stageLabel(part)
+                            const count = part.items.reduce((s, i) => s + i.quantity, 0)
+                            const changed = updatedLines(part)
+                            const canServe = stageFor(part) === 'READY'
+                            const pendingReturns = pendingReturnQuantity(part)
+                            return (
+                              <div key={part.id} className="py-2.5">
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className="min-w-0 truncate text-xs font-semibold">{part.location?.name ?? 'No location'} · {count} item{count === 1 ? '' : 's'}</p>
+                                  <span className={cn('shrink-0 keep-round border border-dashed px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', partStage.badge)}>{partStage.label}</span>
+                                </div>
+                                <p className="mt-0.5 flex justify-between text-xs text-muted-foreground"><span>#{part.orderNumber}</span><span className="font-medium tabular-nums text-foreground">{formatKes(part.total)}</span></p>
+                                {pendingReturns > 0 && <p className="mt-1 text-xs font-semibold text-warning">{pendingReturns} item{pendingReturns === 1 ? '' : 's'} waiting return approval</p>}
+                                <UpdatedItemsStrip lines={changed} canConfirm={canConfirmUpdates && !canServe} confirming={ackingId === part.id} onConfirm={() => void confirmUpdates(part.id)} note={canServe ? 'Serving hands these over too.' : undefined} />
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  <button onClick={() => setAddItemsOrder(part)} className="inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1 text-xs font-semibold hover:bg-muted"><LuPencil className="size-3.5" /> Manage</button>
+                                  {canRevertActiveOrder(part) && <button onClick={() => setRevertOrder(part)} className="inline-flex items-center gap-1.5 rounded-sm border border-destructive/30 px-2.5 py-1 text-xs font-semibold text-destructive hover:bg-destructive/10"><LuTrash2 className="size-3.5" /> Revert</button>}
+                                  {canServe && canServeOrder(part) && (
+                                    <button type="button" disabled={servingId === part.id} onClick={() => void serveOrder(part.id)} className="inline-flex items-center gap-1.5 rounded-sm bg-accent px-2.5 py-1 text-xs font-bold text-accent-foreground disabled:opacity-50">
+                                      {servingId === part.id ? <LuLoaderCircle className="size-3.5 animate-spin" /> : 'Serve Now'}
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            )
+                          })}
+                          {elsewhere.map((part) => (
+                            <p key={part.id} className="flex justify-between gap-2 py-2.5 text-xs text-muted-foreground"><span>{part.locationName ?? 'No location'} · #{part.orderNumber} · {part.status === 'COMPLETED' ? 'Completed' : part.status === 'SERVED' ? 'Served' : 'In progress'}</span><span className="tabular-nums">{formatKes(part.total)}</span></p>
+                          ))}
+                        </div>
+                        <p className="mt-3 text-lg font-bold">{formatKes(wholeTotal)}</p>
+                        {wholePaid > 0.01 && <p className="text-xs font-semibold text-muted-foreground">{formatKes(wholePaid)} paid · {formatKes(Math.max(0, wholeTotal - wholePaid))} due</p>}
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <button onClick={() => setReceiptOrderId(first.id)} title="Receipt" className="inline-flex items-center justify-center rounded-sm border p-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted hover:text-foreground"><LuPrinter className="size-3.5" /></button>
+                          {parts.some(awaitingHandover)
+                            ? <span className="inline-flex items-center px-1 text-xs font-semibold text-warning">Pay once the added items are served</span>
+                            : billServed(first)
+                              ? <button onClick={() => setSettlementOrderId(first.id)} className="inline-flex items-center gap-1.5 rounded-sm bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"><LuReceiptText className="size-3.5" /> Complete & Pay</button>
+                              : <span className="inline-flex items-center px-1 text-xs font-semibold text-muted-foreground">Pay once every location has served</span>}
+                        </div>
+                      </article>
+                    )
+                  }
+                  const order = parts[0]
                   const stage = stageLabel(order)
                   const compBadge = complementaryBadge(order)
                   const pendingReturns = pendingReturnQuantity(order)
@@ -939,6 +1022,7 @@ export default function PointOfSale() {
                       {compBadge && <p className={cn('mt-2 inline-flex keep-round border border-dashed px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide', compBadge.cls)}>{compBadge.label}</p>}
                       <p className="mt-2 text-xs text-muted-foreground">{count} item{count === 1 ? '' : 's'}{order.location?.name ? ` · ${order.location.name}` : ''}</p>
                       <p className="mt-3 text-lg font-bold">{formatKes(order.total)}</p>
+                      {order.billParts && <p className="mt-0.5 text-xs font-semibold text-muted-foreground">Part of bill {billNumbers(order)} · whole bill {formatKes(order.billParts.reduce((sum, part) => sum + part.total, 0))}</p>}
                       {pendingReturns > 0 && <p className="mt-1 text-xs font-semibold text-warning">{pendingReturns} item{pendingReturns === 1 ? '' : 's'} waiting return approval</p>}
                       <UpdatedItemsStrip lines={changed} canConfirm={canConfirmUpdates && !canServe} confirming={ackingId === order.id} onConfirm={() => void confirmUpdates(order.id)} note={canServe ? 'Serving hands these over too.' : undefined} />
                       <div className="mt-4 flex flex-wrap gap-2">
@@ -952,6 +1036,8 @@ export default function PointOfSale() {
                         )}
                         {order.status === 'SERVED' && (awaitingHandover(order)
                           ? <span className="inline-flex items-center px-1 text-xs font-semibold text-warning">Pay once the added items are served</span>
+                          : !billServed(order)
+                          ? <span className="inline-flex items-center px-1 text-xs font-semibold text-muted-foreground">Pay once every location has served</span>
                           : <button onClick={() => setSettlementOrderId(order.id)} className="inline-flex items-center gap-1.5 rounded-sm bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"><LuReceiptText className="size-3.5" /> Complete & Pay</button>
                         )}
                       </div>

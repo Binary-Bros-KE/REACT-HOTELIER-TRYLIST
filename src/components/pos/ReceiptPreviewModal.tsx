@@ -31,7 +31,7 @@ export default function ReceiptPreviewModal({
     let alive = true
     setOrder(null)
     setError('')
-    api<{ order: ReceiptOrder }>(`/pos/orders/${orderId}`)
+    api<{ order: ReceiptOrder }>(`/pos/orders/${orderId}/receipt`)
       .then((r) => { if (alive) setOrder(r.order) })
       .catch((cause) => { if (alive) setError(cause instanceof Error ? cause.message : 'Could not load the receipt') })
     return () => { alive = false }
