@@ -124,7 +124,6 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
   const stkPollRef = useRef<{ timer: number | null; tries: number }>({ timer: null, tries: 0 })
 
   const selectedMethod = paymentMethods.find((m) => m.id === paymentMethodId)
-  const isMpesaSelected = selectedMethod?.code === 'MPESA'
   const selectedStay = stays.find((s) => s.id === reservationId)
   const linkedTotal = linkedOrders.reduce((sum, linked) => sum + linked.total, 0)
   const linkedPaid = linkedOrders.reduce((sum, linked) => sum + linked.paid, 0)
@@ -138,6 +137,8 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
   const pendingReturnTotal = order?.items.reduce((sum, item) => sum + pendingReturnQty(item), 0) ?? 0
   const roomBillSettlement = order ? roomBillSettlementText(order) : null
   const isLinkedBill = linkedOrders.length > 1
+  // An STK push pays one order, so a linked bill takes its M-Pesa code by hand.
+  const isMpesaSelected = selectedMethod?.code === 'MPESA' && !isLinkedBill
   // Mirrors POST /pos/orders/:id/make-complimentary and /make-sale: Super Admin, active orders only.
   const isActiveOrder = !!order && ['OPEN', 'PREPARING', 'READY', 'SERVED'].includes(order.status)
   const canSwitchToComp = isSuperAdmin && isActiveOrder && !isComplementary && order!.paid <= 0.01 && !order!.billedToRoomAt
@@ -253,11 +254,15 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
     setError('')
     setSettling(true)
     try {
-      const response = await api<{ order: Order }>(`/pos/orders/${order.id}/settle`, {
-        method: 'POST',
-        body: JSON.stringify(remaining > 0.01 ? { creditReason: creditReason.trim(), creditExpectedAt } : {}),
-      })
-      setOrder(response.order)
+      const body = JSON.stringify(remaining > 0.01 ? { creditReason: creditReason.trim(), creditExpectedAt } : {})
+      if (order.billGroupId && isLinkedBill) {
+        const response = await api<{ orders: Order[] }>(`/pos/bill-groups/${order.billGroupId}/settle`, { method: 'POST', body })
+        setLinkedOrders(response.orders)
+        setOrder(response.orders.find((row) => row.id === order.id) ?? response.orders[0])
+      } else {
+        const response = await api<{ order: Order }>(`/pos/orders/${order.id}/settle`, { method: 'POST', body })
+        setOrder(response.order)
+      }
       toast.success(remaining > 0.01 ? 'Order completed on credit.' : 'Order completed.')
       onChanged()
     } catch (cause) {
@@ -429,7 +434,7 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
       return
     }
     try {
-      const paymentAmount = isLinkedBill ? remaining : Number(amount) || remaining
+      const paymentAmount = isLinkedBill && mode === 'ROOM' ? remaining : Number(amount) || remaining
       const endpoint = order.billGroupId && isLinkedBill ? `/pos/bill-groups/${order.billGroupId}/payments` : `/pos/orders/${order.id}/payments`
       const response = await api<{ order?: Order; orders?: Order[] }>(endpoint, {
         method: 'POST',
@@ -439,7 +444,8 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
             : { method: 'ROOM', reservationId, amount: paymentAmount },
         ),
       })
-      const updatedOrder = response.order ?? response.orders?.find((row) => row.id === order.id) ?? response.orders?.[0]
+      // A part payment can finish one order of a linked bill: carry on from the part still open.
+      const updatedOrder = response.order ?? response.orders?.find((row) => row.status === 'SERVED') ?? response.orders?.find((row) => row.id === order.id) ?? response.orders?.[0]
       if (response.orders) setLinkedOrders(response.orders)
       if (updatedOrder) setOrder(updatedOrder)
       const nextRemaining = response.orders
@@ -689,8 +695,8 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
                         </label>
                         <label className="block text-sm font-medium">
                           Amount
-                          <TouchInput required type="number" keyboardMode="number" min="0" step="0.01" max={remaining} disabled={isLinkedBill} className="input mt-1.5 disabled:bg-muted disabled:text-muted-foreground" value={isLinkedBill ? String(remaining) : amount} onValueChange={setAmount} />
-                          {isLinkedBill && <p className="mt-1 text-xs font-semibold text-muted-foreground">Linked bills clear in full with one code.</p>}
+                          <TouchInput required type="number" keyboardMode="number" min="0" step="0.01" max={remaining} className="input mt-1.5 disabled:bg-muted disabled:text-muted-foreground" value={amount} onValueChange={setAmount} />
+                          {isLinkedBill && <p className="mt-1 text-xs font-semibold text-muted-foreground">Paying in parts? Enter each payment with its own method and code.</p>}
                         </label>
                       </div>
                       {isMpesaSelected && (
