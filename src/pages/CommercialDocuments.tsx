@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
-import { LuCheck, LuChevronLeft, LuChevronRight, LuCircleAlert, LuCreditCard, LuFileText, LuLoaderCircle, LuPencil, LuPlus, LuPrinter, LuRefreshCw, LuSearch, LuSend, LuSignature, LuTrash2, LuUserPlus } from 'react-icons/lu'
+import { LuCheck, LuChevronLeft, LuChevronRight, LuCircleAlert, LuCreditCard, LuFileText, LuLoaderCircle, LuPencil, LuPlus, LuPrinter, LuRefreshCw, LuSearch, LuSend, LuSignature, LuTrash2, LuUserPlus, LuBan } from 'react-icons/lu'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { api } from '@/lib/api'
 import { useToast } from '@/components/ui/Toast'
@@ -39,6 +39,7 @@ type DocumentRow = {
   payments: { id: string; kind: 'DEPOSIT' | 'PAYMENT'; amount: string | number; reference: string | null; paidAt: string; transactionId: string | null; paymentMethod: PaymentMethod }[]
   convertedDocuments: { id: string; documentNo: string; type: DocType; status: Status }[]
   sourceDocument: { id: string; documentNo: string; type: DocType; status: Status } | null
+  cancelledAt?: string | null; cancelledByName?: string | null; cancelReason?: string | null
 }
 type Options = { customers: Customer[]; locations: Location[]; paymentMethods: PaymentMethod[]; tax: { taxRate: string | number; taxMode: TaxMode; taxTreatment: TaxTreatment }; units: { id: string; name: string }[] }
 
@@ -65,9 +66,9 @@ export default function CommercialDocuments({ type }: { type: DocType }) {
   const [paying, setPaying] = useState<DocumentRow | null>(null)
   const [printing, setPrinting] = useState<DocumentRow | null>(null)
   const [sourcePicker, setSourcePicker] = useState<'folio' | 'order' | null>(null)
-  const [deleting, setDeleting] = useState<DocumentRow | null>(null)
-  // Deleting is Super Admin only - the server enforces it too.
-  const canDelete = useAppSelector((s) => s.auth.user?.role?.name) === 'Super Admin'
+  const [cancelling, setCancelling] = useState<DocumentRow | null>(null)
+  // Cancelling is Super Admin only - the server enforces it too. Nothing can be deleted.
+  const canCancel = useAppSelector((s) => s.auth.user?.role?.name) === 'Super Admin'
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -159,7 +160,7 @@ export default function CommercialDocuments({ type }: { type: DocType }) {
                     <td className="px-5 py-3.5 text-xs text-muted-foreground">{isInvoice ? `Due ${doc.dueAt ? new Date(doc.dueAt).toLocaleDateString('en-KE') : '-'}` : `Expires ${doc.expiresAt ? new Date(doc.expiresAt).toLocaleDateString('en-KE') : '-'}`}</td>
                     <td className="px-5 py-3.5 text-right font-semibold tabular-nums">{money(Number(doc.total))}</td>
                     <td className="px-5 py-3.5 text-right tabular-nums">{money(Number(doc.balance))}</td>
-                    <td className="px-5 py-3.5"><StatusPill tone={statusTone(doc.status)}>{doc.status.replaceAll('_', ' ')}</StatusPill></td>
+                    <td className="px-5 py-3.5"><StatusPill tone={statusTone(doc.status)}>{doc.status.replaceAll('_', ' ')}</StatusPill>{doc.cancelledAt && <p className="mt-1 max-w-[220px] text-[11px] text-muted-foreground">By {doc.cancelledByName ?? 'unknown'}, {new Date(doc.cancelledAt).toLocaleDateString('en-KE')}{doc.cancelReason ? `: ${doc.cancelReason}` : ''}</p>}</td>
                     <td className="px-5 py-3.5"><div className="flex justify-end gap-1.5">
                       <ActionButton tone="neutral" icon={<LuPrinter />} title="Print / download" onClick={() => setPrinting(doc)} />
                       {doc.source === 'HOTEL_STAY' && doc.linkedStay ? <ActionButton tone="neutral" icon={<LuFileText />} title={`Open stay ${doc.linkedStay.reservationNo}`} onClick={() => navigate(`/reservations?stay=${doc.linkedStay!.reservationId}`)} /> : ['DRAFT', 'SENT', 'ISSUED'].includes(doc.status) && <ActionButton tone="neutral" icon={<LuPencil />} title="Edit" onClick={() => setEditor(doc)} />}
@@ -168,7 +169,7 @@ export default function CommercialDocuments({ type }: { type: DocType }) {
                       {doc.type === 'QUOTATION' && doc.status === 'ACCEPTED' && <ActionButton tone="primary" icon={<LuRefreshCw />} title="Convert to invoice" onClick={() => (doc.customerId ? void convert(doc) : setConvertTarget(doc))} />}
                       {doc.type === 'INVOICE' && doc.status === 'DRAFT' && <ActionButton tone="neutral" icon={<LuSend />} title="Issue" onClick={() => void setDocStatus(doc, 'ISSUED')} />}
                       {((doc.type === 'INVOICE' && !['DRAFT', 'PAID', 'CANCELLED', 'VOID'].includes(doc.status)) || (doc.type === 'QUOTATION' && ['DRAFT', 'SENT', 'ACCEPTED'].includes(doc.status))) && <ActionButton tone="primary" icon={<LuCreditCard />} title={doc.type === 'INVOICE' ? 'Record payment' : 'Record deposit'} onClick={() => setPaying(doc)} />}
-                      {canDelete && <ActionButton tone="neutral" icon={<LuTrash2 />} title={`Delete ${doc.type === 'INVOICE' ? 'invoice' : 'quotation'}`} onClick={() => setDeleting(doc)} />}
+                      {canCancel && !['CANCELLED', 'VOID'].includes(doc.status) && <ActionButton tone="neutral" icon={<LuBan />} title={`Cancel ${doc.type === 'INVOICE' ? 'invoice' : 'quotation'}`} onClick={() => setCancelling(doc)} />}
                     </div></td>
                   </tr>
                 ))}
@@ -179,7 +180,7 @@ export default function CommercialDocuments({ type }: { type: DocType }) {
         )}
       </section>
       {editor && <DocumentEditor type={type} document={editor === 'new' ? null : editor} options={options} sources={sources} fixedLocation={fixedLocation} locations={pickableLocations} selectedLocationId={effectiveId} setLocation={setLocation} onClose={() => setEditor(null)} onSaved={(doc) => { setEditor(null); setDocuments((cur) => editor === 'new' ? [doc, ...cur] : cur.map((d) => d.id === doc.id ? doc : d)); void load() }} />}
-      {deleting && <DeleteDocumentModal doc={deleting} onClose={() => setDeleting(null)} onDeleted={() => { setDocuments((cur) => cur.filter((d) => d.id !== deleting.id)); setDeleting(null); void load() }} />}
+      {cancelling && <CancelDocumentModal doc={cancelling} onClose={() => setCancelling(null)} onCancelled={() => { setCancelling(null); void load() }} />}
       {sourcePicker && <SourceInvoiceModal kind={sourcePicker} onClose={() => setSourcePicker(null)} onCreated={(doc) => { setSourcePicker(null); setDocuments((cur) => [doc, ...cur]); setPrinting(doc); void load() }} />}
       {convertTarget && (
         <ConvertQuotationModal
@@ -216,30 +217,31 @@ function customerOption(customer: Customer) {
   }
 }
 
-/** Confirms a delete and says exactly what happens to the money, which depends on where the document came from. */
-function DeleteDocumentModal({ doc, onClose, onDeleted }: { doc: DocumentRow; onClose: () => void; onDeleted: () => void }) {
+/** Confirms a cancel, takes the reason, and says exactly what happens to the money, which depends on where the document came from. */
+function CancelDocumentModal({ doc, onClose, onCancelled }: { doc: DocumentRow; onClose: () => void; onCancelled: () => void }) {
   const toast = useToast()
   const [busy, setBusy] = useState(false)
+  const [reason, setReason] = useState('')
   const label = doc.type === 'INVOICE' ? 'invoice' : 'quotation'
   // Only payments recorded on this document carry their own transaction; stay, order and carried-deposit payments don't.
   const ownPayments = doc.payments.filter((p) => p.transactionId)
   const ownTotal = ownPayments.reduce((sum, p) => sum + Number(p.amount), 0)
-  const convertedTo = doc.convertedDocuments.find((d) => d.type === 'INVOICE')
+  const convertedTo = doc.convertedDocuments.find((d) => d.type === 'INVOICE' && !['CANCELLED', 'VOID'].includes(d.status))
 
   const notes: string[] = []
-  if (doc.source === 'HOTEL_STAY') notes.push(`The stay${doc.linkedStay ? ` ${doc.linkedStay.reservationNo}` : ''} keeps its charges and payments on its folio. Only this invoice goes, and the stay can be invoiced again.`)
-  if (doc.source === 'RESTAURANT_ORDER' || doc.source === 'SERVICE_SALE') notes.push('The order keeps its sale and payments. Only this invoice goes, and the order can be invoiced again.')
+  if (doc.source === 'HOTEL_STAY') notes.push(`The stay${doc.linkedStay ? ` ${doc.linkedStay.reservationNo}` : ''} keeps its charges and payments on its folio, and can be invoiced again.`)
+  if (doc.source === 'RESTAURANT_ORDER' || doc.source === 'SERVICE_SALE') notes.push('The order keeps its sale and payments, and can be invoiced again.')
   if (doc.source === 'QUOTATION' && doc.sourceDocument) notes.push(`Quotation ${doc.sourceDocument.documentNo} goes back to Accepted, keeping its deposits, so it can be converted again.`)
   if (ownPayments.length > 0) notes.push(`${ownPayments.length} payment${ownPayments.length === 1 ? '' : 's'} recorded on this ${label} (${money(ownTotal)}) will be voided: removed from reports and cash-ups, and shown as voided in Transactions.`)
 
-  async function remove() {
+  async function cancel() {
     setBusy(true)
     try {
-      await api(`/commercial-documents/${doc.id}`, { method: 'DELETE' })
-      toast.success(`${doc.documentNo} deleted.`)
-      onDeleted()
+      await api(`/commercial-documents/${doc.id}/cancel`, { method: 'POST', body: JSON.stringify({ reason: reason.trim() }) })
+      toast.success(`${doc.documentNo} cancelled.`)
+      onCancelled()
     } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : `Could not delete the ${label}`)
+      toast.error(cause instanceof Error ? cause.message : `Could not cancel the ${label}`)
     } finally {
       setBusy(false)
     }
@@ -248,16 +250,16 @@ function DeleteDocumentModal({ doc, onClose, onDeleted }: { doc: DocumentRow; on
   return (
     <ModalShell
       size="sm"
-      kicker={`Delete ${label}`}
+      kicker={`Cancel ${label}`}
       title={doc.documentNo}
       onClose={onClose}
       footer={
         <>
-          <button type="button" onClick={onClose} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted">Cancel</button>
+          <button type="button" onClick={onClose} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted">Keep it</button>
           {!convertedTo && (
-            <button type="button" onClick={() => void remove()} disabled={busy} className="inline-flex items-center gap-2 bg-destructive px-5 py-2 text-xs font-bold uppercase tracking-wider text-white disabled:opacity-60">
+            <button type="button" onClick={() => void cancel()} disabled={busy || reason.trim().length < 3} className="inline-flex items-center gap-2 bg-destructive px-5 py-2 text-xs font-bold uppercase tracking-wider text-white disabled:opacity-60">
               {busy && <LuLoaderCircle className="animate-spin" />}
-              Delete permanently
+              Cancel {label}
             </button>
           )}
         </>
@@ -265,11 +267,15 @@ function DeleteDocumentModal({ doc, onClose, onDeleted }: { doc: DocumentRow; on
     >
       <div className="space-y-3 p-5 text-sm">
         {convertedTo ? (
-          <p className="flex gap-2 border border-warning/40 bg-warning/10 p-3 font-medium"><LuCircleAlert className="mt-0.5 shrink-0" /> This quotation was converted to invoice {convertedTo.documentNo}, which shows its deposits. Delete that invoice first.</p>
+          <p className="flex gap-2 border border-warning/40 bg-warning/10 p-3 font-medium"><LuCircleAlert className="mt-0.5 shrink-0" /> This quotation was converted to invoice {convertedTo.documentNo}, which shows its deposits. Cancel that invoice first.</p>
         ) : (
           <>
-            <p>{doc.documentNo} ({clientName(doc)}, {money(Number(doc.total))}) and its lines will be deleted. This can't be undone.</p>
+            <p>{doc.documentNo} ({clientName(doc)}, {money(Number(doc.total))}) will be marked cancelled. It stays in the list with your name, the date and the reason, and can't be un-cancelled.</p>
             {notes.length > 0 && <ul className="list-disc space-y-1.5 pl-5 text-muted-foreground">{notes.map((n) => <li key={n}>{n}</li>)}</ul>}
+            <label className="block font-medium">
+              Reason <span className="text-destructive">*</span>
+              <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} maxLength={500} placeholder="e.g. Raised twice - the client was invoiced on INV-000015" className="mt-1.5 w-full border bg-background px-3 py-2 text-sm font-normal outline-none focus:ring-2 focus:ring-ring" />
+            </label>
           </>
         )}
       </div>
