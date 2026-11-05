@@ -1,4 +1,9 @@
-import { getSessionSnapshot } from '@/lib/session'
+import { getSessionSnapshot, notifySessionEnded } from '@/lib/session'
+
+/** A 401 that means the sign-in is no longer valid, as opposed to a wrong PIN at login. */
+function endsSession(path: string, status: number, code?: string) {
+  return status === 401 && !path.startsWith('/auth/login') && (code === 'SESSION_EXPIRED' || code === 'AUTH_REQUIRED')
+}
 
 const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:4000/api'
 
@@ -30,6 +35,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   })
   if (response.status === 204) return undefined as T
   const data = await response.json() as T & { error?: string; code?: string }
+  if (endsSession(path, response.status, data.code)) notifySessionEnded()
   if (!response.ok) {
     // Keep the machine-readable code (and any extra fields) so a caller can
     // react to a specific refusal — e.g. ask "carry over?" instead of just toasting.
@@ -54,7 +60,8 @@ export async function apiUpload<T>(path: string, formData: FormData): Promise<T>
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
   })
-  const data = await response.json() as T & { error?: string }
+  const data = await response.json() as T & { error?: string; code?: string }
+  if (endsSession(path, response.status, data.code)) notifySessionEnded()
   if (!response.ok) throw new Error(data.error ?? 'The request failed')
   return data
 }

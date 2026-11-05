@@ -64,7 +64,7 @@ import {
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { logout, restoreSession } from "@/store/authSlice";
 import { fetchTenantContext, resolveTenant } from "@/store/tenantSlice";
-import { setOutsideShiftHandler } from "@/lib/session";
+import { setOutsideShiftHandler, setSessionEndedHandler } from "@/lib/session";
 
 const InventoryWorkspace = lazy(() => import("@/pages/InventoryWorkspace"));
 const Products = lazy(() => import("@/pages/Products"));
@@ -143,7 +143,8 @@ function App() {
     // signed-in employee's shift has ended; force them back to the login
     // screen the same way an expired session does.
     setOutsideShiftHandler(() => void dispatch(logout()));
-    return () => setOutsideShiftHandler(null);
+    setSessionEndedHandler(() => void dispatch(logout()));
+    return () => { setOutsideShiftHandler(null); setSessionEndedHandler(null); };
   }, [dispatch]);
 
   useEffect(() => {

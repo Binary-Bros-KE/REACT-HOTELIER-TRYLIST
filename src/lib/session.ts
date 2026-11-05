@@ -28,3 +28,15 @@ export function setOutsideShiftHandler(handler: (() => void) | null) {
 export function notifyOutsideShift() {
   outsideShiftHandler?.()
 }
+
+// The server ended the session (lapsed, logged out elsewhere, or the employee was
+// deactivated): api.ts reports it and the app signs out to the login screen.
+let sessionEndedHandler: (() => void) | null = null
+
+export function setSessionEndedHandler(handler: (() => void) | null) {
+  sessionEndedHandler = handler
+}
+
+export function notifySessionEnded() {
+  sessionEndedHandler?.()
+}
