@@ -226,6 +226,19 @@ export default function Purchases() {
   const [supplierPickerOpen, setSupplierPickerOpen] = useState(false)
 
   const [detail, setDetail] = useState<Purchase | null>(null)
+  // Stock before / after per line of the open purchase (from its deliveries, or expected).
+  const [stockLevels, setStockLevels] = useState<Record<string, { before: number | null; after: number | null; expected: boolean }>>({})
+  useEffect(() => {
+    setStockLevels({})
+    if (!detail) return
+    let cancelled = false
+    api<{ purchase: { items: { id: string; stockBefore: number | null; stockAfter: number | null; stockExpected: boolean }[] } }>(`/purchases/${detail.id}`)
+      .then((r) => { if (!cancelled) setStockLevels(Object.fromEntries(r.purchase.items.map((i) => [i.id, { before: i.stockBefore, after: i.stockAfter, expected: i.stockExpected }]))) })
+      .catch(() => {})
+    return () => { cancelled = true }
+    // Refetch when the open purchase changes (e.g. after a delivery), not on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detail?.id, detail?.status, detail?.goodsReceipts.length])
   const [working, setWorking] = useState(false)
   const [productQuery, setProductQuery] = useState('')
   const [profile, setProfile] = useState<DocProfile>(null)
@@ -777,7 +790,7 @@ export default function Purchases() {
             <div className="mt-5 overflow-hidden rounded-sm border">
               <table className="w-full text-left text-sm">
                 <thead className="bg-primary text-xs uppercase tracking-wider text-primary-foreground">
-                  <tr><th className="px-4 py-2">Product</th><th className="px-4 py-2 text-right">Qty</th><th className="px-4 py-2 text-right">Received</th><th className="px-4 py-2 text-right">Unit cost</th><th className="px-4 py-2 text-right">Line total</th></tr>
+                  <tr><th className="px-4 py-2">Product</th><th className="px-4 py-2 text-right">Qty</th><th className="px-4 py-2 text-right">Received</th><th className="px-4 py-2 text-right">Stock before</th><th className="px-4 py-2 text-right">Stock after</th><th className="px-4 py-2 text-right">Unit cost</th><th className="px-4 py-2 text-right">Line total</th></tr>
                 </thead>
                 <tbody>
                   {detail.items.map((i) => {
@@ -792,6 +805,19 @@ export default function Purchases() {
                         <td className="px-4 py-2 text-right tabular-nums">
                           <span className={received >= ordered ? 'text-success' : received > 0 ? 'text-warning' : 'text-muted-foreground'}>{packAndUnit(received, packSize, i.product.packLabel ?? '', unitLabel)}</span>
                         </td>
+                        {(() => {
+                          const level = stockLevels[i.id]
+                          const show = (value: number | null | undefined) => (value == null ? '—' : packAndUnit(value, packSize, i.product.packLabel ?? '', unitLabel))
+                          return (
+                            <>
+                              <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">{show(level?.before)}</td>
+                              <td className="px-4 py-2 text-right tabular-nums" title={level?.expected ? 'Expected once the rest of this item is received' : undefined}>
+                                <span className={level?.expected ? 'italic text-muted-foreground' : 'font-semibold'}>{show(level?.after)}</span>
+                                {level?.expected && level.after != null && <span className="block text-[10px] uppercase tracking-wide text-muted-foreground">expected</span>}
+                              </td>
+                            </>
+                          )
+                        })()}
                         <td className="px-4 py-2 text-right tabular-nums">{formatKes(Number(i.unitCost))}</td>
                         <td className="px-4 py-2 text-right tabular-nums">{formatKes(Number(i.lineTotal))}</td>
                       </tr>
