@@ -37,6 +37,7 @@ import {
   LuCircleCheck,
   LuChartColumn,
   LuSettings,
+  LuScrollText,
   LuBriefcaseBusiness,
   LuMapPin,
   LuPalette,
@@ -264,6 +265,8 @@ export const navigation: NavGroup[] = [
     items: [
       { label: 'Appearance', href: '/appearance', icon: LuPalette },
       { label: 'Settings', href: '/settings', icon: LuSettings },
+      // Every Super Admin holds ACTIVITY_VIEW; any other role it's granted to reaches this without the System section.
+      { label: 'Activity Log', href: '/activity-log', icon: LuScrollText, permission: 'ACTIVITY_VIEW' },
     ],
   },
 ]

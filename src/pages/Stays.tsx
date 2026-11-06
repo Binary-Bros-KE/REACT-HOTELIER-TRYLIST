@@ -7,6 +7,7 @@ import PageBanner from '@/components/ui/PageBanner'
 import ModalShell from '@/components/ui/ModalShell'
 import StatusPill, { type PillTone } from '@/components/ui/StatusPill'
 import ActionButton from '@/components/ui/ActionButton'
+import { ActivityHistoryButton, useCanViewActivity } from '@/components/activity/ActivityHistory'
 import { computeFinancialsFromRows } from '@/lib/orderTotals'
 import { folioPots, ROOM_POT } from '@/lib/folioAllocation'
 import { useAppSelector } from '@/store/hooks'
@@ -282,6 +283,7 @@ function StayDetailModal({ stay, onClose, onChanged }: { stay: Stay; onClose: ()
   const totals = folioTotals(stay.folio, bizTax)
   const balance = stayBalance(stay, totals.balance)
   const info = deskOf(stay)
+  const canViewActivity = useCanViewActivity()
   const credit = Number(stay.folio?.creditAmount ?? 0)
   const owing = stay.folio?.creditOutstanding ?? 0
   const [methods, setMethods] = useState<{ id: string; name: string; requiresReference: boolean; code: string }[]>([])
@@ -336,6 +338,7 @@ function StayDetailModal({ stay, onClose, onChanged }: { stay: Stay; onClose: ()
       subtitle={`${stay.reservationNo} · Room ${stay.room.number} · ${stay.room.roomType.name} · ${titleCase(stay.source)}`}
       onClose={onClose}
     >
+      {canViewActivity && <div className="flex justify-end border-b px-5 py-2"><ActivityHistoryButton targetType="Reservation" targetId={stay.id} label={stay.reservationNo} /></div>}
       <div className="grid grid-cols-2 border-b bg-card text-sm sm:grid-cols-4">
         {([
           ['Status', <StatusPill key="s" tone={STATUS_TONE[stay.status]}>{titleCase(stay.status)}</StatusPill>],

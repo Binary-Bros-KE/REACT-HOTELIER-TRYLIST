@@ -30,6 +30,7 @@ import SearchableSelect from '@/components/ui/SearchableSelect'
 import { operationOptionsFromLocations, productTagLabel } from '@/lib/productTags'
 import ProductHistoryModal, { MOVEMENT_LABELS } from '@/components/ProductHistoryModal'
 import ProductMenuModal, { type MenuCategory } from '@/components/products/ProductMenuModal'
+import { ActivityHistoryButton } from '@/components/activity/ActivityHistory'
 
 type Category = { id: string; name: string; level: number; parentId: string | null }
 type Location = { id: string; name: string; type?: string; isActive?: boolean; canSellMenu?: boolean }
@@ -529,6 +530,7 @@ export default function Products() {
                         {!product.isActive && <span className="keep-round border border-dashed border-muted-foreground/50 px-2 py-0.5 text-xs font-semibold text-muted-foreground">Inactive</span>}
                         <button onClick={() => openAdjust(product)} title="Add or remove stock" className="rounded-sm border p-2 text-muted-foreground hover:bg-success/10 hover:text-success"><LuPackagePlus /></button>
                         <button onClick={() => setHistoryProduct(product)} title="Stock history" className="rounded-sm border p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuHistory /></button>
+                        <ActivityHistoryButton compact targetType="Product" targetId={product.id} label={product.name} />
                         <button onClick={() => openTransfer(product)} title="Transfer stock" className="rounded-sm border p-2 text-muted-foreground hover:bg-accent/10 hover:text-accent"><LuArrowLeftRight /></button>
                         {menuCategories && !product.isExpenseItem && <button onClick={() => setMenuProduct(product)} title="Sell on the menu" className="rounded-sm border p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuUtensils /></button>}
                         <button onClick={() => openEdit(product)} title="Edit product" className="rounded-sm border p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuPencil /></button>

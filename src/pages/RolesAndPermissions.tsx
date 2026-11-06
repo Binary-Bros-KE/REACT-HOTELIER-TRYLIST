@@ -26,12 +26,12 @@ type Capability =
   | 'POS_APPROVE_CANCELLATION' | 'POS_APPROVE_COUNTER' | 'POS_VIEW_ALL_ORDERS'
   | 'SHIFT_MANAGE' | 'ATTENDANCE_MANAGE' | 'SHIFT_EXEMPT'
   | 'REQUISITION_CREATE' | 'REQUISITION_APPROVE'
-  | 'SHIFT_REVIEW' | 'SALARY_MANAGE' | 'STORE_DISPATCH' | 'CREDIT_COLLECT' | 'STOCK_TAKE'
+  | 'SHIFT_REVIEW' | 'SALARY_MANAGE' | 'STORE_DISPATCH' | 'CREDIT_COLLECT' | 'STOCK_TAKE' | 'ACTIVITY_VIEW'
 const capabilities: Capability[] = [
   'POS_APPROVE_CANCELLATION', 'POS_APPROVE_COUNTER', 'POS_VIEW_ALL_ORDERS',
   'SHIFT_MANAGE', 'ATTENDANCE_MANAGE', 'SHIFT_EXEMPT',
   'REQUISITION_CREATE', 'REQUISITION_APPROVE',
-  'SHIFT_REVIEW', 'SALARY_MANAGE', 'STORE_DISPATCH', 'CREDIT_COLLECT', 'STOCK_TAKE',
+  'SHIFT_REVIEW', 'SALARY_MANAGE', 'STORE_DISPATCH', 'CREDIT_COLLECT', 'STOCK_TAKE', 'ACTIVITY_VIEW',
 ]
 const capabilityLabels: Record<Capability, { label: string; hint: string }> = {
   POS_APPROVE_CANCELLATION: { label: 'Approve order cancellations', hint: 'Decide a waiter’s cancellation request (Sales ▸ Approvals) — approve or reject it.' },
@@ -46,6 +46,7 @@ const capabilityLabels: Record<Capability, { label: string; hint: string }> = {
   STORE_DISPATCH: { label: 'Approve store dispatches', hint: 'See the kitchen’s requests for ingredients (Inventory ▸ Dispatch Requests) and dispatch them to the kitchen or reject them. Typically the storekeeper.' },
   CREDIT_COLLECT: { label: 'Clear customer debts', hint: 'Take payment against money owed: an order completed on credit, or a stay checked out on credit. Keep this off waiters — a waiter clearing their own tabs skews the day’s totals. Typically the accountant. A Super Admin always has this.' },
   STOCK_TAKE: { label: 'Count stock (stock take)', hint: 'Count a location’s shelves on Reports ▸ Inventory Report ▸ Stock take: each number entered becomes that product’s stock there. Also opens that report without the Reports section — e.g. for a storekeeper or barman.' },
+  ACTIVITY_VIEW: { label: 'See the activity log', hint: 'Open System ▸ Activity Log and the History on orders, invoices, stays and products: who voided, cancelled, adjusted or changed what, and why. For an owner, manager or auditor. A Super Admin always has this.' },
   SALARY_MANAGE: { label: 'Record salary deductions & allowances', hint: 'Add a deduction or allowance to an employee’s monthly salary — including from a shift discrepancy — creating the month’s draft if it doesn’t exist yet.' },
 }
 

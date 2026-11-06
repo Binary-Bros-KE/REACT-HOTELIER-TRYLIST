@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { LuCircleAlert, LuGift, LuLoaderCircle, LuReceiptText, LuScissors, LuUserPlus, LuX } from 'react-icons/lu'
 import { api } from '@/lib/api'
+import { ActivityHistoryButton } from '@/components/activity/ActivityHistory'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/components/ui/Toast'
 import { useAppSelector } from '@/store/hooks'
@@ -473,6 +474,7 @@ export default function OrderSettlementPanel({ orderId, title, subtitle, payment
               <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">{title}</p>
               <h2 className="mt-1 font-display text-2xl font-semibold">{order ? (isLinkedBill ? `Bill ${linkedOrders.map((linked) => `#${linked.orderNumber}`).join(' + ')}` : `Order #${order.orderNumber}`) : 'Loading…'}</h2>
               {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
+              {order && <ActivityHistoryButton className="mt-2" targetType="PosOrder" targetId={order.id} label={`Order #${order.orderNumber}`} />}
             </div>
             <button onClick={onClose} title="Close" className="bg-black p-2 text-white transition hover:bg-black/80"><LuX /></button>
           </div>

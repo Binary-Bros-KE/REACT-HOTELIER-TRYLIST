@@ -8,6 +8,7 @@ import SharedReceiptPage from "@/pages/SharedReceiptPage";
 import Dashboard from "@/pages/Dashboard";
 import ModulePlaceholder from "@/pages/ModulePlaceholder";
 import CafeSettings from "@/pages/CafeSettings";
+import ActivityLog from "@/pages/ActivityLog";
 import PointOfSale from "@/pages/PointOfSale";
 import Kitchen from "@/pages/Kitchen";
 import Reception from "@/pages/Reception";
@@ -195,6 +196,7 @@ function App() {
       >
         <Route path="/" element={<Dashboard />} />
         <Route path="/settings" element={<CafeSettings />} />
+        <Route path="/activity-log" element={<ActivityLog />} />
         <Route path="/pos" element={<PointOfSale />} />
         <Route path="/sales/products-pos" element={<ProductsPointOfSale />} />
         <Route path="/reception/products-pos" element={<ProductsPointOfSale />} />

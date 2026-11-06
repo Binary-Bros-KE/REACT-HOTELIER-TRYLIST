@@ -12,6 +12,7 @@ import SearchableSelect from '@/components/ui/SearchableSelect'
 import StatusPill from '@/components/ui/StatusPill'
 import QuickCustomerModal from '@/components/customers/QuickCustomerModal'
 import DocumentViewer from '@/components/documents/DocumentViewer'
+import { ActivityHistoryButton } from '@/components/activity/ActivityHistory'
 import type { DocProfile } from '@/components/documents/pdf'
 import { useWorkingLocation } from '@/lib/useWorkingLocation'
 import { useAppSelector } from '@/store/hooks'
@@ -163,6 +164,7 @@ export default function CommercialDocuments({ type }: { type: DocType }) {
                     <td className="px-5 py-3.5"><StatusPill tone={statusTone(doc.status)}>{doc.status.replaceAll('_', ' ')}</StatusPill>{doc.cancelledAt && <p className="mt-1 max-w-[220px] text-[11px] text-muted-foreground">By {doc.cancelledByName ?? 'unknown'}, {new Date(doc.cancelledAt).toLocaleDateString('en-KE')}{doc.cancelReason ? `: ${doc.cancelReason}` : ''}</p>}</td>
                     <td className="px-5 py-3.5"><div className="flex justify-end gap-1.5">
                       <ActionButton tone="neutral" icon={<LuPrinter />} title="Print / download" onClick={() => setPrinting(doc)} />
+                      <ActivityHistoryButton compact targetType="CommercialDocument" targetId={doc.id} label={doc.documentNo} />
                       {doc.source === 'HOTEL_STAY' && doc.linkedStay ? <ActionButton tone="neutral" icon={<LuFileText />} title={`Open stay ${doc.linkedStay.reservationNo}`} onClick={() => navigate(`/reservations?stay=${doc.linkedStay!.reservationId}`)} /> : ['DRAFT', 'SENT', 'ISSUED'].includes(doc.status) && <ActionButton tone="neutral" icon={<LuPencil />} title="Edit" onClick={() => setEditor(doc)} />}
                       {doc.type === 'QUOTATION' && doc.status === 'DRAFT' && <ActionButton tone="neutral" icon={<LuSend />} title="Mark sent" onClick={() => void setDocStatus(doc, 'SENT')} />}
                       {doc.type === 'QUOTATION' && ['SENT', 'DRAFT'].includes(doc.status) && <ActionButton tone="neutral" icon={<LuCheck />} title="Accept" onClick={() => void setDocStatus(doc, 'ACCEPTED')} />}
