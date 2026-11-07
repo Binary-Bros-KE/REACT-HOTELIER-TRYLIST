@@ -258,6 +258,7 @@ export default function Reports() {
   const [customFrom, setCustomFrom] = useState(todayIso())
   const [customTo, setCustomTo] = useState(todayIso())
   const [locationId, setLocationId] = useState('')
+  const [openMethods, setOpenMethods] = useState<Set<string>>(new Set())
   const [locations, setLocations] = useState<Location[]>([])
   const [report, setReport] = useState<SalesReport | null>(null)
   const [loading, setLoading] = useState(true)
@@ -572,11 +573,25 @@ export default function Reports() {
           >
             <table className="w-full text-left text-sm">
               <thead className="bg-primary text-xs uppercase text-primary-foreground"><tr><th className="px-4 py-2.5">Method</th><th className="px-4 py-2.5 text-right">Payments</th><th className="px-4 py-2.5 text-right">Total</th><th className="px-4 py-2.5 text-right">% of Total</th></tr></thead>
-              <tbody>{report.byPaymentMethod.map((m) => (
+              <tbody>{report.byPaymentMethod.map((m) => {
+                const places = m.byLocation ?? []
+                const open = openMethods.has(m.name)
+                const noLocationTotal = places.filter((p) => p.noLocation).reduce((s, p) => s + p.total, 0)
+                const toggle = () => setOpenMethods((prev) => { const next = new Set(prev); if (next.has(m.name)) next.delete(m.name); else next.add(m.name); return next })
+                return (
                 <Fragment key={m.name}>
-                  <tr className="border-t"><td className="px-4 py-2.5 font-medium">{m.name}{!m.byLocation && m.locationName && <span className="ml-2 rounded-sm bg-muted px-1.5 py-0.5 text-[11px] font-normal text-muted-foreground">{m.locationName}</span>}</td><td className="px-4 py-2.5 text-right tabular-nums">{m.count || '—'}</td><td className="px-4 py-2.5 text-right tabular-nums font-semibold">{formatKes(m.total)}</td><td className="px-4 py-2.5 text-right tabular-nums">{m.percentOfTotal.toFixed(1)}%</td></tr>
+                  <tr className={cn('border-t', places.length > 0 && 'cursor-pointer hover:bg-muted/40')} onClick={places.length > 0 ? toggle : undefined}>
+                    <td className="px-4 py-2.5 font-medium">
+                      {places.length > 0 && <LuChevronRight className={cn('mr-1.5 inline size-3.5 text-muted-foreground transition-transform', open && 'rotate-90')} />}
+                      {m.name}
+                      {!m.byLocation && m.locationName && <span className="ml-2 rounded-sm bg-muted px-1.5 py-0.5 text-[11px] font-normal text-muted-foreground">{m.locationName}</span>}
+                      {/* Stays visible while collapsed, so money with no location is never just added in silently. */}
+                      {noLocationTotal > 0 && <span className="ml-2 rounded-sm bg-warning/15 px-1.5 py-0.5 text-[11px] font-semibold text-warning">{formatKes(noLocationTotal)} no location</span>}
+                    </td>
+                    <td className="px-4 py-2.5 text-right tabular-nums">{m.count || '—'}</td><td className="px-4 py-2.5 text-right tabular-nums font-semibold">{formatKes(m.total)}</td><td className="px-4 py-2.5 text-right tabular-nums">{m.percentOfTotal.toFixed(1)}%</td>
+                  </tr>
                   {/* Where the method's money was taken. Money with no location says what it was and who took it. */}
-                  {(m.byLocation ?? []).map((p) => (
+                  {open && places.map((p) => (
                     <tr key={`${m.name}:${p.name}`} className={cn('text-xs', p.noLocation ? 'bg-warning/10' : 'text-muted-foreground')}>
                       <td className="py-1.5 pl-9 pr-4">
                         <span className={cn(p.noLocation && 'font-bold uppercase tracking-wide text-warning')}>{p.noLocation ? 'No location' : p.name}</span>
@@ -588,7 +603,8 @@ export default function Reports() {
                     </tr>
                   ))}
                 </Fragment>
-              ))}</tbody>
+                )
+              })}</tbody>
             </table>
           </BreakdownSection>
 
