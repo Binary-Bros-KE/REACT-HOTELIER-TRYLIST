@@ -34,7 +34,7 @@ export type Usage = {
   items: UsageItem[]
 }
 type Product = { id: string; name: string; unit: string; packSize: string | null; packLabel: string | null; packUnit: { id: string; name: string } | null; stockByLocation: { locationId: string; quantity: string }[] }
-type MenuPick = { id: string; name: string; menuCategory: { name: string } | null; variants: { id: string; name: string }[] }
+type MenuPick = { id: string; name: string; menuCategory: { name: string } | null; variants: { id: string; name: string }[]; tracksStock?: boolean }
 // A dish on the usage: its recipe per one (perUnit), and what is actually sent for each ingredient.
 type MenuGroup = { key: string; label: string; quantity: string; ingredients: { productId: string; name: string; perUnit: number; send: string }[] }
 type Report = {
@@ -270,8 +270,12 @@ export function RecordUsageModal({ locations, onClose, onRecorded }: { locations
   }, [loadCategories])
 
   const onHand = useCallback((p: Product) => Number(p.stockByLocation?.find((s) => s.locationId === form.fromLocationId)?.quantity ?? 0), [form.fromLocationId])
+  // Every product, so a search always finds it; one with nothing in this store is shown as out of stock
+  // (and can't be entered) rather than missing. In-stock products come first.
   const visible = useMemo(
-    () => products.filter((p) => onHand(p) > 0 && (!search.trim() || p.name.toLowerCase().includes(search.trim().toLowerCase()))),
+    () => products
+      .filter((p) => !search.trim() || p.name.toLowerCase().includes(search.trim().toLowerCase()))
+      .sort((a, b) => Number(onHand(b) > 0) - Number(onHand(a) > 0) || a.name.localeCompare(b.name)),
     [products, onHand, search],
   )
   const staged = products.filter((p) => Number(lines[p.id]) > 0)
@@ -377,7 +381,16 @@ export function RecordUsageModal({ locations, onClose, onRecorded }: { locations
                       <table className="w-full text-left text-sm">
                         <thead className="sticky top-0 bg-primary text-xs uppercase text-primary-foreground"><tr><th className="px-3 py-2">Menu item</th><th className="px-3 py-2">How many</th><th className="px-3 py-2" /></tr></thead>
                         <tbody>
-                          {menuItems.map((item) => (
+                          {menuItems.map((item) => item.tracksStock === false ? (
+                            // Nothing tracks this dish's stock, so there's nothing to take out for it.
+                            <tr key={item.id} className="border-t bg-muted/40 text-muted-foreground">
+                              <td className="px-3 py-2">
+                                <p className="font-medium">{item.name}</p>
+                                {item.menuCategory && <p className="text-xs">{item.menuCategory.name}</p>}
+                              </td>
+                              <td className="px-3 py-2 text-xs" colSpan={2}>No recipe - add its products directly</td>
+                            </tr>
+                          ) : (
                             <tr key={item.id} className="border-t">
                               <td className="px-3 py-2">
                                 <p className="font-medium">{item.name}</p>
@@ -410,7 +423,7 @@ export function RecordUsageModal({ locations, onClose, onRecorded }: { locations
                 {loading ? (
                   <div className="p-8 text-center text-muted-foreground"><LuLoaderCircle className="mx-auto animate-spin" /></div>
                 ) : visible.length === 0 ? (
-                  <div className="p-8 text-center text-sm text-muted-foreground"><LuWarehouse className="mx-auto mb-2 size-6" />No products with stock here.</div>
+                  <div className="p-8 text-center text-sm text-muted-foreground"><LuWarehouse className="mx-auto mb-2 size-6" />No products match.</div>
                 ) : (
                   <table className="w-full text-left text-sm">
                     <thead className="sticky top-0 bg-primary text-xs uppercase text-primary-foreground"><tr><th className="px-3 py-2">Product</th><th className="px-3 py-2">In store</th><th className="px-3 py-2">Use</th></tr></thead>
@@ -418,12 +431,15 @@ export function RecordUsageModal({ locations, onClose, onRecorded }: { locations
                       {visible.map((p) => {
                         const max = onHand(p)
                         const unit = p.packUnit?.name ?? p.unit
+                        const out = max <= 0
                         return (
-                          <tr key={p.id} className="border-t">
-                            <td className="px-3 py-2 font-medium">{p.name}</td>
-                            <td className="px-3 py-2 text-muted-foreground">{packAndUnit(max, Number(p.packSize) || 0, p.packLabel ?? '', unit)}</td>
+                          <tr key={p.id} className={cn('border-t', out && 'bg-destructive/5')}>
+                            <td className={cn('px-3 py-2 font-medium', out && 'text-destructive')}>{p.name}</td>
+                            <td className={cn('px-3 py-2', out ? 'font-semibold text-destructive' : 'text-muted-foreground')}>{out ? 'Out of stock' : packAndUnit(max, Number(p.packSize) || 0, p.packLabel ?? '', unit)}</td>
                             <td className="px-3 py-2">
-                              <PackQtyInput value={lines[p.id] ?? ''} onChange={(v) => setLines((cur) => ({ ...cur, [p.id]: v }))} packSize={Number(p.packSize) || 0} packLabel={p.packLabel ?? ''} unitName={unit} max={max} className="input w-24 py-1.5" />
+                              {out
+                                ? <span className="text-xs text-muted-foreground">Nothing here to use</span>
+                                : <PackQtyInput value={lines[p.id] ?? ''} onChange={(v) => setLines((cur) => ({ ...cur, [p.id]: v }))} packSize={Number(p.packSize) || 0} packLabel={p.packLabel ?? ''} unitName={unit} max={max} className="input w-24 py-1.5" />}
                             </td>
                           </tr>
                         )
