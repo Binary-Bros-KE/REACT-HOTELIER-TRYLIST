@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { LuArrowRight, LuCircleAlert, LuEye, LuLoaderCircle, LuPackage, LuPackageMinus, LuPackagePlus, LuPrinter, LuSearch, LuTrash2, LuTruck, LuWarehouse } from 'react-icons/lu'
 import { api, hasApiTenant } from '@/lib/api'
+import { cn } from '@/lib/utils'
 import PageBanner from '@/components/ui/PageBanner'
 import ActionButton from '@/components/ui/ActionButton'
 import StatCard from '@/components/ui/StatCard'
