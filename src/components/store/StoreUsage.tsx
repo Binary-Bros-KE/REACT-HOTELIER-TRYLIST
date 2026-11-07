@@ -35,6 +35,8 @@ export type Usage = {
 }
 type Product = { id: string; name: string; unit: string; packSize: string | null; packLabel: string | null; packUnit: { id: string; name: string } | null; stockByLocation: { locationId: string; quantity: string }[] }
 type MenuPick = { id: string; name: string; menuCategory: { name: string } | null; variants: { id: string; name: string }[] }
+// A dish on the usage: its recipe per one (perUnit), and what is actually sent for each ingredient.
+type MenuGroup = { key: string; label: string; quantity: string; ingredients: { productId: string; name: string; perUnit: number; send: string }[] }
 type Report = {
   totals: { count: number; value: number }
   byCategory: { key: string; name: string; count: number; value: number }[]
@@ -45,6 +47,7 @@ type Report = {
 
 const money = (v: string | number) => `KSh ${Number(v).toLocaleString('en-KE', { maximumFractionDigits: 2 })}`
 const day = (v: string) => new Date(v).toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric' })
+const round3 = (n: number) => +n.toFixed(3)
 const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 // "4 (packet)", "2 (packs)": the amount with its unit in brackets, for the staged list.
 const qtyWithUnit = (qty: number, packSize: number, packLabel: string, unit: string) =>
@@ -209,7 +212,9 @@ export function RecordUsageModal({ locations, onClose, onRecorded }: { locations
   const [menuQty, setMenuQty] = useState<Record<string, string>>({})
   const [menuSize, setMenuSize] = useState<Record<string, string>>({})
   const [addingId, setAddingId] = useState('')
-  const [fromMenu, setFromMenu] = useState<{ label: string; quantity: number }[]>([])
+  // Each dish keeps its recipe as its own block (like a dispatch): how many scales every ingredient,
+  // each ingredient's Send can be changed (even to 0), and removing the dish removes its whole recipe.
+  const [menuGroups, setMenuGroups] = useState<MenuGroup[]>([])
   useEffect(() => {
     if (pickFrom !== 'MENU') return
     const timer = window.setTimeout(() => {
@@ -222,29 +227,41 @@ export function RecordUsageModal({ locations, onClose, onRecorded }: { locations
     const quantity = Number(menuQty[item.id])
     if (!(quantity > 0)) { toast.error(`Enter how many ${item.name}`); return }
     const variantId = item.variants.length ? menuSize[item.id] || item.variants[0].id : undefined
+    const size = item.variants.find((v) => v.id === variantId)
+    const key = `${item.id}:${variantId ?? ''}`
+    // The same dish again just makes that block bigger.
+    const already = menuGroups.find((g) => g.key === key)
+    if (already) {
+      changeGroupQty(key, String((Number(already.quantity) || 0) + quantity))
+      setMenuQty((cur) => ({ ...cur, [item.id]: '' }))
+      return
+    }
     setAddingId(item.id)
     try {
       const { lines: used } = await api<{ lines: { productId: string; name: string; quantity: number }[] }>('/store-usage/menu-lines', {
         method: 'POST', body: JSON.stringify({ lines: [{ menuItemId: item.id, variantId, quantity }] }),
       })
-      setLines((cur) => {
-        const next = { ...cur }
-        for (const line of used) next[line.productId] = String(+((Number(cur[line.productId]) || 0) + line.quantity).toFixed(3))
-        return next
-      })
-      // A recipe can still name a product that's been switched off; it can't be issued, so say so.
-      const inactive = used.filter((line) => !products.some((p) => p.id === line.productId))
-      if (inactive.length) toast.error(`${inactive.map((l) => l.name).join(', ')} ${inactive.length === 1 ? 'is' : 'are'} switched off, so not added - switch on or add another product`)
-      const size = item.variants.find((v) => v.id === variantId)
-      setFromMenu((cur) => [...cur, { label: `${item.name}${size ? ` (${size.name})` : ''}`, quantity }])
+      setMenuGroups((cur) => [...cur, {
+        key,
+        label: `${item.name}${size ? ` (${size.name})` : ''}`,
+        quantity: String(quantity),
+        ingredients: used.map((line) => ({ productId: line.productId, name: line.name, perUnit: line.quantity / quantity, send: String(round3(line.quantity)) })),
+      }])
       setMenuQty((cur) => ({ ...cur, [item.id]: '' }))
-      toast.success(`${item.name} x ${quantity}: ${used.length} product${used.length === 1 ? '' : 's'} added`)
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : 'Could not add that menu item')
     } finally {
       setAddingId('')
     }
   }
+
+  /** How many of a dish: every ingredient's Send goes back to the recipe amount for that many. */
+  function changeGroupQty(key: string, value: string) {
+    const quantity = Number(value) || 0
+    setMenuGroups((cur) => cur.map((g) => (g.key !== key ? g : { ...g, quantity: value, ingredients: g.ingredients.map((i) => ({ ...i, send: String(round3(i.perUnit * quantity)) })) })))
+  }
+  const setSend = (key: string, productId: string, value: string) =>
+    setMenuGroups((cur) => cur.map((g) => (g.key !== key ? g : { ...g, ingredients: g.ingredients.map((i) => (i.productId === productId ? { ...i, send: value } : i)) })))
 
   const loadCategories = useCallback(() => api<{ categories: Category[] }>('/store-usage/categories').then((r) => setCategories(r.categories)).catch(() => {}), [])
   useEffect(() => {
@@ -258,8 +275,21 @@ export function RecordUsageModal({ locations, onClose, onRecorded }: { locations
     [products, onHand, search],
   )
   const staged = products.filter((p) => Number(lines[p.id]) > 0)
+  const productById = useMemo(() => new Map(products.map((p) => [p.id, p])), [products])
+  // What actually leaves the store per product: loose product lines plus every dish's Send.
+  const issued = useMemo(() => {
+    const total = new Map<string, number>()
+    const add = (productId: string, qty: number) => { if (qty > 0) total.set(productId, (total.get(productId) ?? 0) + qty) }
+    for (const [productId, qty] of Object.entries(lines)) add(productId, Number(qty) || 0)
+    for (const group of menuGroups) for (const i of group.ingredients) add(i.productId, Number(i.send) || 0)
+    return total
+  }, [lines, menuGroups])
+  const short = (productId: string) => {
+    const p = productById.get(productId)
+    return p ? (issued.get(productId) ?? 0) > onHand(p) + 0.0005 : false
+  }
   const activeCategories = categories.filter((c) => c.isActive)
-  const canSave = Boolean(form.categoryId && form.fromLocationId && staged.length > 0 && !saving)
+  const canSave = Boolean(form.categoryId && form.fromLocationId && issued.size > 0 && !saving)
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -271,9 +301,9 @@ export function RecordUsageModal({ locations, onClose, onRecorded }: { locations
         body: JSON.stringify({
           ...form,
           // The dishes it was for stay on the usage, next to whatever note was typed.
-          note: [form.note.trim(), fromMenu.length ? `From menu: ${fromMenu.map((m) => `${m.label} x ${m.quantity}`).join(', ')}` : ''].filter(Boolean).join(' · ').slice(0, 500) || undefined,
+          note: [form.note.trim(), menuGroups.length ? `From menu: ${menuGroups.map((g) => `${g.label} x ${g.quantity}`).join(', ')}` : ''].filter(Boolean).join(' · ').slice(0, 500) || undefined,
           usedAt: form.usedAt || undefined,
-          lines: staged.map((p) => ({ productId: p.id, quantity: Number(lines[p.id]) })),
+          lines: [...issued].map(([productId, quantity]) => ({ productId, quantity: round3(quantity) })),
         }),
       })
       toast.success(`${usage.usageNo} recorded - ${money(usage.totalValue)} used for ${usage.category.name}.`)
@@ -291,7 +321,7 @@ export function RecordUsageModal({ locations, onClose, onRecorded }: { locations
         <>
           <button type="button" onClick={onClose} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted">Cancel</button>
           <button form="store-usage-form" disabled={!canSave} className="inline-flex items-center gap-2 bg-primary px-5 py-2 text-xs font-bold uppercase tracking-wider text-primary-foreground disabled:opacity-60">
-            {saving && <LuLoaderCircle className="animate-spin" />} Record {staged.length > 0 ? `${staged.length} item${staged.length === 1 ? '' : 's'}` : ''}
+            {saving && <LuLoaderCircle className="animate-spin" />} Record {issued.size > 0 ? `${issued.size} product${issued.size === 1 ? '' : 's'}` : ''}
           </button>
         </>
       }>
@@ -307,7 +337,7 @@ export function RecordUsageModal({ locations, onClose, onRecorded }: { locations
             </div>
           </Field>
           <Field label="From (store)" required>
-            <select required className="input" value={form.fromLocationId} onChange={(e) => { set({ fromLocationId: e.target.value }); setLines({}); setFromMenu([]) }}>
+            <select required className="input" value={form.fromLocationId} onChange={(e) => { set({ fromLocationId: e.target.value }); setLines({}); setMenuGroups([]) }}>
               <option value="">Choose the store</option>
               {locations.map((l) => <option key={l.id} value={l.id}>{l.name}{l.type === 'STORE' ? ' (store)' : ''}</option>)}
             </select>
@@ -324,7 +354,7 @@ export function RecordUsageModal({ locations, onClose, onRecorded }: { locations
         </div>
 
         {form.fromLocationId ? (
-          <div className="grid gap-4 lg:grid-cols-[1fr_24rem]">
+          <div className="grid gap-4 lg:grid-cols-[1fr_32rem]">
             <section>
               <div className="mb-2 inline-flex border text-xs font-bold uppercase tracking-wider">
                 {([['PRODUCTS', 'Products'], ['MENU', 'Menu items']] as const).map(([key, label]) => (
@@ -406,15 +436,56 @@ export function RecordUsageModal({ locations, onClose, onRecorded }: { locations
             </section>
             <aside className="border bg-muted/20 p-3 text-sm">
               <p className="font-semibold">Taking out of {locations.find((l) => l.id === form.fromLocationId)?.name}</p>
-              {fromMenu.length > 0 && (
-                <p className="mt-1 text-xs text-muted-foreground">From menu: {fromMenu.map((m) => `${m.label} x ${m.quantity}`).join(', ')}</p>
-              )}
+              {menuGroups.length === 0 && staged.length === 0 && <p className="mt-2 text-muted-foreground">Enter a quantity next to a product, or add a menu item.</p>}
+              {menuGroups.map((group) => {
+                const howMany = Number(group.quantity) || 0
+                return (
+                  <div key={group.key} className="mt-3 border-l-4 border-success bg-card p-2.5 shadow-sm">
+                    <div className="flex items-center gap-2">
+                      <input type="number" min="0" step="1" value={group.quantity} onChange={(e) => changeGroupQty(group.key, e.target.value)} title="How many" className="input w-16 py-1 text-sm font-semibold" />
+                      <span className="min-w-0 flex-1 truncate font-semibold">× {group.label}</span>
+                      <button type="button" onClick={() => setMenuGroups((cur) => cur.filter((g) => g.key !== group.key))} title="Remove this menu item and its whole recipe" className="text-muted-foreground hover:text-destructive"><LuTrash2 className="size-4" /></button>
+                    </div>
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">Menu item recipe</p>
+                    <table className="mt-1 w-full text-xs">
+                      <thead>
+                        <tr className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                          <th className="py-1 text-left font-semibold">Ingredient</th>
+                          <th className="py-1 text-right font-semibold">Asked</th>
+                          <th className="py-1 text-right font-semibold">Available</th>
+                          <th className="py-1 text-right font-semibold">Send</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {group.ingredients.map((i) => {
+                          const p = productById.get(i.productId)
+                          const unit = p ? p.packUnit?.name ?? p.unit : ''
+                          return (
+                            <tr key={i.productId} className="border-t">
+                              <td className="py-1.5 pr-2">
+                                {i.name} <span className="text-muted-foreground">{unit}</span>
+                                {short(i.productId) && <span className="block text-[11px] font-semibold text-destructive">Not enough in this store</span>}
+                              </td>
+                              <td className="py-1.5 text-right tabular-nums">{round3(i.perUnit * howMany)}</td>
+                              <td className="py-1.5 text-right tabular-nums text-muted-foreground">{p ? round3(onHand(p)) : '—'}</td>
+                              <td className="py-1.5 pl-2 text-right">
+                                <input type="number" min="0" step="any" value={i.send} onChange={(e) => setSend(group.key, i.productId, e.target.value)} className={cn('input w-20 py-1 text-right', short(i.productId) && 'border-destructive')} />
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )
+              })}
+              {staged.length > 0 && menuGroups.length > 0 && <p className="mt-3 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Products</p>}
               <div className="mt-2 space-y-1.5">
-                {staged.length === 0 ? <p className="text-muted-foreground">Enter a quantity next to a product, or add a menu item.</p> : staged.map((p) => (
-                  <div key={p.id} className={cn('flex items-center justify-between gap-2 bg-card px-2.5 py-1.5 shadow-sm', Number(lines[p.id]) > onHand(p) + 0.0005 && 'ring-1 ring-destructive')}>
+                {staged.map((p) => (
+                  <div key={p.id} className={cn('flex items-center justify-between gap-2 bg-card px-2.5 py-1.5 shadow-sm', short(p.id) && 'ring-1 ring-destructive')}>
                     <span className="min-w-0">
                       <span className="block truncate">{p.name}</span>
-                      {Number(lines[p.id]) > onHand(p) + 0.0005 && <span className="block text-[11px] font-semibold text-destructive">Only {packAndUnit(onHand(p), Number(p.packSize) || 0, p.packLabel ?? '', p.packUnit?.name ?? p.unit)} in this store</span>}
+                      {short(p.id) && <span className="block text-[11px] font-semibold text-destructive">Only {packAndUnit(onHand(p), Number(p.packSize) || 0, p.packLabel ?? '', p.packUnit?.name ?? p.unit)} in this store</span>}
                     </span>
                     <span className="flex shrink-0 items-center gap-2 whitespace-nowrap font-semibold">
                       {qtyWithUnit(Number(lines[p.id]), Number(p.packSize) || 0, p.packLabel ?? '', p.packUnit?.name ?? p.unit)}
