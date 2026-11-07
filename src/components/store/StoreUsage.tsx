@@ -34,6 +34,7 @@ export type Usage = {
   items: UsageItem[]
 }
 type Product = { id: string; name: string; unit: string; packSize: string | null; packLabel: string | null; packUnit: { id: string; name: string } | null; stockByLocation: { locationId: string; quantity: string }[] }
+type MenuPick = { id: string; name: string; menuCategory: { name: string } | null; variants: { id: string; name: string }[] }
 type Report = {
   totals: { count: number; value: number }
   byCategory: { key: string; name: string; count: number; value: number }[]
@@ -201,6 +202,49 @@ export function RecordUsageModal({ locations, onClose, onRecorded }: { locations
   })
   const [lines, setLines] = useState<Record<string, string>>({})
   const set = (patch: Partial<typeof form>) => setForm((cur) => ({ ...cur, ...patch }))
+  // Picking from the menu: a dish x how many becomes the products its recipe uses.
+  const [pickFrom, setPickFrom] = useState<'PRODUCTS' | 'MENU'>('PRODUCTS')
+  const [menuSearch, setMenuSearch] = useState('')
+  const [menuItems, setMenuItems] = useState<MenuPick[] | null>(null)
+  const [menuQty, setMenuQty] = useState<Record<string, string>>({})
+  const [menuSize, setMenuSize] = useState<Record<string, string>>({})
+  const [addingId, setAddingId] = useState('')
+  const [fromMenu, setFromMenu] = useState<{ label: string; quantity: number }[]>([])
+  useEffect(() => {
+    if (pickFrom !== 'MENU') return
+    const timer = window.setTimeout(() => {
+      api<{ items: MenuPick[] }>(`/store-usage/menu-items${menuSearch.trim() ? `?search=${encodeURIComponent(menuSearch.trim())}` : ''}`).then((r) => setMenuItems(r.items)).catch(() => setMenuItems([]))
+    }, 250)
+    return () => window.clearTimeout(timer)
+  }, [pickFrom, menuSearch])
+
+  async function addFromMenu(item: MenuPick) {
+    const quantity = Number(menuQty[item.id])
+    if (!(quantity > 0)) { toast.error(`Enter how many ${item.name}`); return }
+    const variantId = item.variants.length ? menuSize[item.id] || item.variants[0].id : undefined
+    setAddingId(item.id)
+    try {
+      const { lines: used } = await api<{ lines: { productId: string; name: string; quantity: number }[] }>('/store-usage/menu-lines', {
+        method: 'POST', body: JSON.stringify({ lines: [{ menuItemId: item.id, variantId, quantity }] }),
+      })
+      setLines((cur) => {
+        const next = { ...cur }
+        for (const line of used) next[line.productId] = String(+((Number(cur[line.productId]) || 0) + line.quantity).toFixed(3))
+        return next
+      })
+      // A recipe can still name a product that's been switched off; it can't be issued, so say so.
+      const inactive = used.filter((line) => !products.some((p) => p.id === line.productId))
+      if (inactive.length) toast.error(`${inactive.map((l) => l.name).join(', ')} ${inactive.length === 1 ? 'is' : 'are'} switched off, so not added - switch on or add another product`)
+      const size = item.variants.find((v) => v.id === variantId)
+      setFromMenu((cur) => [...cur, { label: `${item.name}${size ? ` (${size.name})` : ''}`, quantity }])
+      setMenuQty((cur) => ({ ...cur, [item.id]: '' }))
+      toast.success(`${item.name} x ${quantity}: ${used.length} product${used.length === 1 ? '' : 's'} added`)
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : 'Could not add that menu item')
+    } finally {
+      setAddingId('')
+    }
+  }
 
   const loadCategories = useCallback(() => api<{ categories: Category[] }>('/store-usage/categories').then((r) => setCategories(r.categories)).catch(() => {}), [])
   useEffect(() => {
@@ -224,7 +268,13 @@ export function RecordUsageModal({ locations, onClose, onRecorded }: { locations
     try {
       const { usage } = await api<{ usage: Usage }>('/store-usage', {
         method: 'POST',
-        body: JSON.stringify({ ...form, usedAt: form.usedAt || undefined, lines: staged.map((p) => ({ productId: p.id, quantity: Number(lines[p.id]) })) }),
+        body: JSON.stringify({
+          ...form,
+          // The dishes it was for stay on the usage, next to whatever note was typed.
+          note: [form.note.trim(), fromMenu.length ? `From menu: ${fromMenu.map((m) => `${m.label} x ${m.quantity}`).join(', ')}` : ''].filter(Boolean).join(' · ').slice(0, 500) || undefined,
+          usedAt: form.usedAt || undefined,
+          lines: staged.map((p) => ({ productId: p.id, quantity: Number(lines[p.id]) })),
+        }),
       })
       toast.success(`${usage.usageNo} recorded - ${money(usage.totalValue)} used for ${usage.category.name}.`)
       onRecorded(usage)
@@ -257,7 +307,7 @@ export function RecordUsageModal({ locations, onClose, onRecorded }: { locations
             </div>
           </Field>
           <Field label="From (store)" required>
-            <select required className="input" value={form.fromLocationId} onChange={(e) => { set({ fromLocationId: e.target.value }); setLines({}) }}>
+            <select required className="input" value={form.fromLocationId} onChange={(e) => { set({ fromLocationId: e.target.value }); setLines({}); setFromMenu([]) }}>
               <option value="">Choose the store</option>
               {locations.map((l) => <option key={l.id} value={l.id}>{l.name}{l.type === 'STORE' ? ' (store)' : ''}</option>)}
             </select>
@@ -276,6 +326,52 @@ export function RecordUsageModal({ locations, onClose, onRecorded }: { locations
         {form.fromLocationId ? (
           <div className="grid gap-4 lg:grid-cols-[1fr_24rem]">
             <section>
+              <div className="mb-2 inline-flex border text-xs font-bold uppercase tracking-wider">
+                {([['PRODUCTS', 'Products'], ['MENU', 'Menu items']] as const).map(([key, label]) => (
+                  <button key={key} type="button" onClick={() => setPickFrom(key)} className={cn('px-3 py-1.5', pickFrom === key ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted')}>{label}</button>
+                ))}
+              </div>
+              {pickFrom === 'MENU' ? (
+                <>
+                  <label className="relative block">
+                    <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <input value={menuSearch} onChange={(e) => setMenuSearch(e.target.value)} placeholder="Search menu items…" className="input pl-9" />
+                  </label>
+                  <p className="mt-1 text-xs text-muted-foreground">A dish adds every product its recipe uses for that many, to the list on the right. Nothing is sold.</p>
+                  <div className="mt-2 max-h-72 overflow-y-auto border">
+                    {menuItems === null ? (
+                      <div className="p-8 text-center text-muted-foreground"><LuLoaderCircle className="mx-auto animate-spin" /></div>
+                    ) : menuItems.length === 0 ? (
+                      <div className="p-8 text-center text-sm text-muted-foreground">No menu items with a recipe or product match.</div>
+                    ) : (
+                      <table className="w-full text-left text-sm">
+                        <thead className="sticky top-0 bg-primary text-xs uppercase text-primary-foreground"><tr><th className="px-3 py-2">Menu item</th><th className="px-3 py-2">How many</th><th className="px-3 py-2" /></tr></thead>
+                        <tbody>
+                          {menuItems.map((item) => (
+                            <tr key={item.id} className="border-t">
+                              <td className="px-3 py-2">
+                                <p className="font-medium">{item.name}</p>
+                                {item.menuCategory && <p className="text-xs text-muted-foreground">{item.menuCategory.name}</p>}
+                                {item.variants.length > 0 && (
+                                  <select className="input mt-1 py-1 text-xs" value={menuSize[item.id] ?? item.variants[0].id} onChange={(e) => setMenuSize((cur) => ({ ...cur, [item.id]: e.target.value }))}>
+                                    {item.variants.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+                                  </select>
+                                )}
+                              </td>
+                              <td className="px-3 py-2"><input type="number" min="0" step="1" value={menuQty[item.id] ?? ''} onChange={(e) => setMenuQty((cur) => ({ ...cur, [item.id]: e.target.value }))} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void addFromMenu(item) } }} className="input w-20 py-1.5" placeholder="0" /></td>
+                              <td className="px-3 py-2 text-right">
+                                <button type="button" disabled={addingId === item.id} onClick={() => void addFromMenu(item)} className="inline-flex items-center gap-1 border px-2.5 py-1.5 text-xs font-semibold hover:bg-muted disabled:opacity-60">
+                                  {addingId === item.id ? <LuLoaderCircle className="size-3.5 animate-spin" /> : <LuPlus className="size-3.5" />} Add
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                </>
+              ) : (<>
               <label className="relative block">
                 <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search products in this store…" className="input pl-9" />
@@ -306,13 +402,20 @@ export function RecordUsageModal({ locations, onClose, onRecorded }: { locations
                   </table>
                 )}
               </div>
+              </>)}
             </section>
             <aside className="border bg-muted/20 p-3 text-sm">
               <p className="font-semibold">Taking out of {locations.find((l) => l.id === form.fromLocationId)?.name}</p>
+              {fromMenu.length > 0 && (
+                <p className="mt-1 text-xs text-muted-foreground">From menu: {fromMenu.map((m) => `${m.label} x ${m.quantity}`).join(', ')}</p>
+              )}
               <div className="mt-2 space-y-1.5">
-                {staged.length === 0 ? <p className="text-muted-foreground">Enter a quantity next to a product.</p> : staged.map((p) => (
-                  <div key={p.id} className="flex items-center justify-between gap-2 bg-card px-2.5 py-1.5 shadow-sm">
-                    <span className="truncate">{p.name}</span>
+                {staged.length === 0 ? <p className="text-muted-foreground">Enter a quantity next to a product, or add a menu item.</p> : staged.map((p) => (
+                  <div key={p.id} className={cn('flex items-center justify-between gap-2 bg-card px-2.5 py-1.5 shadow-sm', Number(lines[p.id]) > onHand(p) + 0.0005 && 'ring-1 ring-destructive')}>
+                    <span className="min-w-0">
+                      <span className="block truncate">{p.name}</span>
+                      {Number(lines[p.id]) > onHand(p) + 0.0005 && <span className="block text-[11px] font-semibold text-destructive">Only {packAndUnit(onHand(p), Number(p.packSize) || 0, p.packLabel ?? '', p.packUnit?.name ?? p.unit)} in this store</span>}
+                    </span>
                     <span className="flex shrink-0 items-center gap-2 whitespace-nowrap font-semibold">
                       {qtyWithUnit(Number(lines[p.id]), Number(p.packSize) || 0, p.packLabel ?? '', p.packUnit?.name ?? p.unit)}
                       <button type="button" onClick={() => setLines((cur) => ({ ...cur, [p.id]: '' }))} className="text-muted-foreground hover:text-destructive"><LuTrash2 className="size-3.5" /></button>
