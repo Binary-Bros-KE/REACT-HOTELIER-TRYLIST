@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   LuBanknote,
@@ -90,8 +90,9 @@ type LocationBucket = {
   netProfit: number
   profitPercent: number
 }
-type MethodBucket = { name: string; count: number; total: number; percentOfTotal: number; locationName?: string | null }
-type EmployeeBucket = { employeeId: string | null; name: string; branch: string; count: number; total: number; percentOfTotal: number }
+type MethodPlace = { name: string; noLocation: boolean; count: number; total: number; details: string[] }
+type MethodBucket = { name: string; count: number; total: number; percentOfTotal: number; locationName?: string | null; byLocation?: MethodPlace[] }
+type EmployeeBucket = { employeeId: string | null; name: string; branch: string; count: number; total: number; percentOfTotal: number; collected?: number }
 type Debtors = {
   total: number
   customers: { total: number; top: { id: string; name: string; balance: number }[] }
@@ -216,12 +217,18 @@ function buildReportDoc(report: SalesReport, startHour: number): ReportDocData {
       {
         title: 'Sales by Payment Method',
         columns: [{ label: 'Method' }, { label: 'Count', align: 'right' }, { label: '% of Total', align: 'right' }, { label: 'Total', align: 'right' }],
-        rows: report.byPaymentMethod.map((m) => [m.locationName ? `${m.name} (${m.locationName})` : m.name, m.count || '—', `${m.percentOfTotal.toFixed(1)}%`, formatKes(m.total)]),
+        // Each method, then where its money was taken; a no-location line says what it was.
+        rows: report.byPaymentMethod.flatMap((m) => [
+          [m.name, m.count || '—', `${m.percentOfTotal.toFixed(1)}%`, formatKes(m.total)],
+          ...((m.byLocation?.length ?? 0) > 1 || m.byLocation?.some((p) => p.noLocation)
+            ? (m.byLocation ?? []).map((p) => [`   ${p.noLocation ? 'NO LOCATION' : p.name}${p.details.length ? ` - ${p.details.join('; ')}` : ''}`, p.count, '', formatKes(p.total)])
+            : []),
+        ]),
       },
       {
         title: 'Sales by Employee',
-        columns: [{ label: 'Employee' }, { label: 'Branch' }, { label: 'Count', align: 'right' }, { label: '% of Total', align: 'right' }, { label: 'Total', align: 'right' }],
-        rows: report.byEmployee.map((e) => [e.name, e.branch, e.count, `${e.percentOfTotal.toFixed(1)}%`, formatKes(e.total)]),
+        columns: [{ label: 'Employee' }, { label: 'Branch' }, { label: 'Count', align: 'right' }, { label: '% of Total', align: 'right' }, { label: 'Sold', align: 'right' }, { label: 'Collected', align: 'right' }],
+        rows: report.byEmployee.map((e) => [e.name, e.branch, e.count, `${e.percentOfTotal.toFixed(1)}%`, formatKes(e.total), formatKes(e.collected ?? 0)]),
       },
       {
         title: 'Tax Breakdown',
@@ -566,7 +573,21 @@ export default function Reports() {
             <table className="w-full text-left text-sm">
               <thead className="bg-primary text-xs uppercase text-primary-foreground"><tr><th className="px-4 py-2.5">Method</th><th className="px-4 py-2.5 text-right">Payments</th><th className="px-4 py-2.5 text-right">Total</th><th className="px-4 py-2.5 text-right">% of Total</th></tr></thead>
               <tbody>{report.byPaymentMethod.map((m) => (
-                <tr key={m.name} className="border-t"><td className="px-4 py-2.5 font-medium">{m.name}{m.locationName && <span className="ml-2 rounded-sm bg-muted px-1.5 py-0.5 text-[11px] font-normal text-muted-foreground">{m.locationName}</span>}</td><td className="px-4 py-2.5 text-right tabular-nums">{m.count || '—'}</td><td className="px-4 py-2.5 text-right tabular-nums font-semibold">{formatKes(m.total)}</td><td className="px-4 py-2.5 text-right tabular-nums">{m.percentOfTotal.toFixed(1)}%</td></tr>
+                <Fragment key={m.name}>
+                  <tr className="border-t"><td className="px-4 py-2.5 font-medium">{m.name}{!m.byLocation && m.locationName && <span className="ml-2 rounded-sm bg-muted px-1.5 py-0.5 text-[11px] font-normal text-muted-foreground">{m.locationName}</span>}</td><td className="px-4 py-2.5 text-right tabular-nums">{m.count || '—'}</td><td className="px-4 py-2.5 text-right tabular-nums font-semibold">{formatKes(m.total)}</td><td className="px-4 py-2.5 text-right tabular-nums">{m.percentOfTotal.toFixed(1)}%</td></tr>
+                  {/* Where the method's money was taken. Money with no location says what it was and who took it. */}
+                  {(m.byLocation ?? []).map((p) => (
+                    <tr key={`${m.name}:${p.name}`} className={cn('text-xs', p.noLocation ? 'bg-warning/10' : 'text-muted-foreground')}>
+                      <td className="py-1.5 pl-9 pr-4">
+                        <span className={cn(p.noLocation && 'font-bold uppercase tracking-wide text-warning')}>{p.noLocation ? 'No location' : p.name}</span>
+                        {p.details.map((d) => <span key={d} className="block text-[11px] font-normal normal-case tracking-normal text-foreground/80">{d}</span>)}
+                      </td>
+                      <td className="px-4 py-1.5 text-right tabular-nums">{p.count}</td>
+                      <td className={cn('px-4 py-1.5 text-right tabular-nums', p.noLocation && 'font-semibold text-warning')}>{formatKes(p.total)}</td>
+                      <td className="px-4 py-1.5" />
+                    </tr>
+                  ))}
+                </Fragment>
               ))}</tbody>
             </table>
           </BreakdownSection>
@@ -574,11 +595,11 @@ export default function Reports() {
           {/* Sales by Employee */}
           <BreakdownSection
             title="Sales by Employee"
-            note="Sold this period, credited to whoever created the sale. Collecting an older room bill isn't counted here."
+            note="Revenue: sold this period, credited to whoever created the sale (collecting an older room bill isn't counted). Collected: money each person actually took in, whatever it was for - invoices and room deposits too - so everyone holding money is listed, on a shift or not."
             rows={report.byEmployee.map((e) => ({ key: e.name, label: e.name, value: e.total, percent: e.percentOfTotal }))}
           >
             <table className="w-full text-left text-sm">
-              <thead className="bg-primary text-xs uppercase text-primary-foreground"><tr><th className="px-4 py-2.5">Employee</th><th className="px-4 py-2.5">Branch</th><th className="px-4 py-2.5 text-right">Transactions</th><th className="px-4 py-2.5 text-right">Revenue</th><th className="px-4 py-2.5 text-right">Avg Sale</th><th className="px-4 py-2.5 text-right">% of Total</th></tr></thead>
+              <thead className="bg-primary text-xs uppercase text-primary-foreground"><tr><th className="px-4 py-2.5">Employee</th><th className="px-4 py-2.5">Branch</th><th className="px-4 py-2.5 text-right">Transactions</th><th className="px-4 py-2.5 text-right">Revenue</th><th className="px-4 py-2.5 text-right">Avg Sale</th><th className="px-4 py-2.5 text-right">% of Total</th><th className="px-4 py-2.5 text-right">Collected</th></tr></thead>
               <tbody>{report.byEmployee.map((e) => (
                 <tr key={e.name} className={cn('border-t', e.employeeId && 'cursor-pointer hover:bg-muted/40')} onClick={() => void openEmployeeBreakdown(e)}>
                   <td className="px-4 py-2.5 font-medium">{e.name}</td>
@@ -589,6 +610,7 @@ export default function Reports() {
                   </td>
                   <td className="px-4 py-2.5 text-right tabular-nums">{formatKes(e.count ? e.total / e.count : 0)}</td>
                   <td className="px-4 py-2.5 text-right tabular-nums">{e.percentOfTotal.toFixed(1)}%</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums font-semibold">{e.collected !== undefined ? formatKes(e.collected) : '—'}</td>
                 </tr>
               ))}</tbody>
             </table>
