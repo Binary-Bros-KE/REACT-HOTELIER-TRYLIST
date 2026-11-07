@@ -245,7 +245,7 @@ export function RecordUsageModal({ locations, onClose, onRecorded }: { locations
         key,
         label: `${item.name}${size ? ` (${size.name})` : ''}`,
         quantity: String(quantity),
-        ingredients: used.map((line) => ({ productId: line.productId, name: line.name, perUnit: line.quantity / quantity, send: String(round3(line.quantity)) })),
+        ingredients: used.map((line) => ({ productId: line.productId, name: line.name, perUnit: line.quantity / quantity, send: String(sendable(line.productId, line.quantity)) })),
       }])
       setMenuQty((cur) => ({ ...cur, [item.id]: '' }))
     } catch (cause) {
@@ -258,7 +258,13 @@ export function RecordUsageModal({ locations, onClose, onRecorded }: { locations
   /** How many of a dish: every ingredient's Send goes back to the recipe amount for that many. */
   function changeGroupQty(key: string, value: string) {
     const quantity = Number(value) || 0
-    setMenuGroups((cur) => cur.map((g) => (g.key !== key ? g : { ...g, quantity: value, ingredients: g.ingredients.map((i) => ({ ...i, send: String(round3(i.perUnit * quantity)) })) })))
+    setMenuGroups((cur) => cur.map((g) => (g.key !== key ? g : { ...g, quantity: value, ingredients: g.ingredients.map((i) => ({ ...i, send: String(sendable(i.productId, i.perUnit * quantity)) })) })))
+  }
+  // Like a dispatch: Send starts at what the store can give - the asked amount, or what's there if
+  // that's less (0 when it's out) - so the rest of the recipe still goes out.
+  function sendable(productId: string, asked: number) {
+    const p = products.find((x) => x.id === productId)
+    return round3(Math.max(0, Math.min(asked, p ? onHand(p) : 0)))
   }
   const setSend = (key: string, productId: string, value: string) =>
     setMenuGroups((cur) => cur.map((g) => (g.key !== key ? g : { ...g, ingredients: g.ingredients.map((i) => (i.productId === productId ? { ...i, send: value } : i)) })))
@@ -483,7 +489,7 @@ export function RecordUsageModal({ locations, onClose, onRecorded }: { locations
                                 {short(i.productId) && <span className="block text-[11px] font-semibold text-destructive">Not enough in this store</span>}
                               </td>
                               <td className="py-1.5 text-right tabular-nums">{round3(i.perUnit * howMany)}</td>
-                              <td className="py-1.5 text-right tabular-nums text-muted-foreground">{p ? round3(onHand(p)) : '—'}</td>
+                              <td className={cn('py-1.5 text-right tabular-nums', p && onHand(p) > 0 ? 'text-muted-foreground' : 'font-semibold text-destructive')}>{p && onHand(p) > 0 ? round3(onHand(p)) : 'Out'}</td>
                               <td className="py-1.5 pl-2 text-right">
                                 <input type="number" min="0" step="any" value={i.send} onChange={(e) => setSend(group.key, i.productId, e.target.value)} className={cn('input w-20 py-1 text-right', short(i.productId) && 'border-destructive')} />
                               </td>
@@ -492,6 +498,20 @@ export function RecordUsageModal({ locations, onClose, onRecorded }: { locations
                         })}
                       </tbody>
                     </table>
+                    {(() => {
+                      // As on a dispatch: say plainly what goes out short of the recipe.
+                      const less = group.ingredients.filter((i) => (Number(i.send) || 0) < round3(i.perUnit * howMany) - 0.0005)
+                      if (!less.length) return null
+                      return (
+                        <div className="mt-2 border border-warning/40 bg-warning/10 p-2 text-[11px]">
+                          <p className="font-semibold text-warning">Sent less than asked</p>
+                          {less.map((i) => {
+                            const p = productById.get(i.productId)
+                            return <p key={i.productId}>{i.name}: sent {round3(Number(i.send) || 0)} of {round3(i.perUnit * howMany)} {p ? p.packUnit?.name ?? p.unit : ''}</p>
+                          })}
+                        </div>
+                      )
+                    })()}
                   </div>
                 )
               })}
