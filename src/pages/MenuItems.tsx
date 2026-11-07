@@ -232,6 +232,17 @@ export default function MenuItems() {
   )
   const recipeOptions = useMemo(() => recipes.map((r) => ({ value: r.id, label: r.name })), [recipes])
   const addRecipe = (recipe: Recipe) => setRecipes((prev) => [...prev, recipe].sort((a, b) => a.name.localeCompare(b.name)))
+  const [categoryMissing, setCategoryMissing] = useState(false)
+  // The recipe being edited from the item form (loaded in full - ingredients and steps).
+  const [editingRecipe, setEditingRecipe] = useState<RecipeDetail | null>(null)
+  async function openRecipeEditor(recipeId: string) {
+    try {
+      const { recipe } = await api<{ recipe: RecipeDetail }>(`/recipes/${recipeId}`)
+      setEditingRecipe(recipe)
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : 'Could not open the recipe')
+    }
+  }
   const addStockProduct = (product: StockProduct) => setStockProducts((prev) => [...prev, product].sort((a, b) => a.name.localeCompare(b.name)))
   // Products and recipes can be created without leaving the item form (or the
   // Variants modal). The pop-up lives at the page root, outside those forms, and
@@ -269,7 +280,9 @@ export default function MenuItems() {
     setEditing(null)
     setShowCategoryModal(false)
     resetVariantStaging()
-    setForm({ ...emptyForm, menuCategoryId: categoryFilter || categories.find((c) => c.isActive)?.id || '' })
+    // No category picked for them - a preselected one got saved by mistake. They must choose.
+    setForm({ ...emptyForm })
+    setCategoryMissing(false)
     setShowForm(true)
   }
 
@@ -306,7 +319,8 @@ export default function MenuItems() {
 
   async function save(event: FormEvent) {
     event.preventDefault()
-    if (!form.name.trim() || !form.menuCategoryId || form.price === '') return
+    if (!form.menuCategoryId) { setCategoryMissing(true); toast.error('Select a category for this item'); return }
+    if (!form.name.trim() || form.price === '') return
     setSaving(true)
     try {
       const payload = {
@@ -672,12 +686,13 @@ export default function MenuItems() {
                   <SearchableSelect
                     options={categories.map((c) => ({ value: c.id, label: c.name, hint: c.isActive ? undefined : 'inactive' }))}
                     value={form.menuCategoryId}
-                    onChange={(value) => setForm({ ...form, menuCategoryId: value })}
-                    placeholder="Select category"
+                    onChange={(value) => { setForm({ ...form, menuCategoryId: value }); setCategoryMissing(false) }}
+                    placeholder="Select a category"
                     searchPlaceholder="Search categories…"
                     emptyText="No categories match."
                   />
                 </span>
+                {categoryMissing && <span className="mt-1 block text-xs font-semibold text-destructive">Select a category for this item.</span>}
               </div>
               <Field label="Description" className="sm:col-span-2"><textarea rows={2} placeholder="Shown on the menu" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="input" /></Field>
               <Field label="Image URL" className="sm:col-span-2">
@@ -793,6 +808,11 @@ export default function MenuItems() {
                         disabled={recipeOptions.length === 0}
                       />
                     </div>
+                    {form.recipeId && (
+                      <button type="button" onClick={() => void openRecipeEditor(form.recipeId)} title="Edit this recipe's ingredients and steps" className="inline-flex shrink-0 items-center gap-1 border px-3 text-xs font-semibold hover:bg-muted">
+                        <LuPencil className="size-3.5" /> Edit
+                      </button>
+                    )}
                     <QuickNewButton title="Create a new recipe without leaving this form" onClick={() => newRecipe((recipe) => setForm((f) => ({ ...f, recipeId: recipe.id })))} />
                   </div>
                 </Field>
@@ -910,7 +930,7 @@ export default function MenuItems() {
 
             <div className="mt-6 flex justify-end gap-2 border-t pt-5">
               <button type="button" onClick={() => setShowForm(false)} className="rounded-sm border px-4 py-2.5 text-sm font-semibold hover:bg-muted">Cancel</button>
-              <button disabled={saving || !form.name.trim() || !form.menuCategoryId || form.price === ''} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
+              <button disabled={saving || !form.name.trim() || form.price === ''} className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60">
                 {saving && <LuLoaderCircle className="animate-spin" />}
                 {editing ? 'Save changes' : 'Create item'}
               </button>
@@ -950,6 +970,20 @@ export default function MenuItems() {
             addStockProduct(product)
             creating.select(product.id)
             setCreating(null)
+          }}
+        />
+      )}
+      {editingRecipe && (
+        <RecipeEditModal
+          stacked
+          recipe={editingRecipe}
+          products={stockProducts}
+          onProductCreated={addStockProduct}
+          onClose={() => setEditingRecipe(null)}
+          onSaved={(recipe: RecipeDetail) => {
+            // A rename shows in the picker straight away.
+            setRecipes((prev) => prev.map((r) => (r.id === recipe.id ? { ...r, ...recipe } : r)).sort((a, b) => a.name.localeCompare(b.name)))
+            setEditingRecipe(null)
           }}
         />
       )}
