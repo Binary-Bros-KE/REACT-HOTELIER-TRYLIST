@@ -260,11 +260,10 @@ export function RecordUsageModal({ locations, onClose, onRecorded }: { locations
     const quantity = Number(value) || 0
     setMenuGroups((cur) => cur.map((g) => (g.key !== key ? g : { ...g, quantity: value, ingredients: g.ingredients.map((i) => ({ ...i, send: String(sendable(i.productId, i.perUnit * quantity)) })) })))
   }
-  // Like a dispatch: Send starts at what the store can give - the asked amount, or what's there if
-  // that's less (0 when it's out) - so the rest of the recipe still goes out.
-  function sendable(productId: string, asked: number) {
-    const p = products.find((x) => x.id === productId)
-    return round3(Math.max(0, Math.min(asked, p ? onHand(p) : 0)))
+  // Send starts at the recipe amount, never a guess at what the store can manage: a line the store
+  // can't cover is flagged and saving waits until the storekeeper sets it (0 if none goes out).
+  function sendable(_productId: string, asked: number) {
+    return round3(Math.max(0, asked))
   }
   const setSend = (key: string, productId: string, value: string) =>
     setMenuGroups((cur) => cur.map((g) => (g.key !== key ? g : { ...g, ingredients: g.ingredients.map((i) => (i.productId === productId ? { ...i, send: value } : i)) })))
@@ -299,7 +298,8 @@ export function RecordUsageModal({ locations, onClose, onRecorded }: { locations
     return p ? (issued.get(productId) ?? 0) > onHand(p) + 0.0005 : false
   }
   const activeCategories = categories.filter((c) => c.isActive)
-  const canSave = Boolean(form.categoryId && form.fromLocationId && issued.size > 0 && !saving)
+  const shortNames = [...issued.keys()].filter(short).map((id) => productById.get(id)?.name ?? menuGroups.flatMap((g) => g.ingredients).find((i) => i.productId === id)?.name ?? 'a product')
+  const canSave = Boolean(form.categoryId && form.fromLocationId && issued.size > 0 && shortNames.length === 0 && !saving)
 
   async function submit(event: FormEvent) {
     event.preventDefault()
@@ -459,6 +459,11 @@ export function RecordUsageModal({ locations, onClose, onRecorded }: { locations
             <aside className="border bg-muted/20 p-3 text-sm">
               <p className="font-semibold">Taking out of {locations.find((l) => l.id === form.fromLocationId)?.name}</p>
               {menuGroups.length === 0 && staged.length === 0 && <p className="mt-2 text-muted-foreground">Enter a quantity next to a product, or add a menu item.</p>}
+              {shortNames.length > 0 && (
+                <p className="mt-2 border border-destructive/40 bg-destructive/10 p-2 text-xs font-semibold text-destructive">
+                  Not enough in this store for {shortNames.join(', ')}. Set each red line to what you are actually using - 0 if none - before recording.
+                </p>
+              )}
               {menuGroups.map((group) => {
                 const howMany = Number(group.quantity) || 0
                 return (

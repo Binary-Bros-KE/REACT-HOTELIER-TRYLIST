@@ -89,10 +89,10 @@ function buildDishAllocations(dishes: Dish[]) {
     dish.ingredients.forEach((ingredient) => {
       const used = consumed.get(ingredient.productId) ?? 0
       const available = Math.max(ingredient.storeQty - used, 0)
-      // With nothing left to split, don't silently pre-fill zero as if that were already decided —
-      // show what was asked, flagged short, so the storekeeper makes that call themselves. The
-      // server still won't send more than the store actually holds, whatever is left in the box.
-      const defaultSend = available > 0 ? Math.min(ingredient.quantity, available) : ingredient.quantity
+      // Send starts at what was asked, never a guess at what the store can manage. When that's more
+      // than is there, the line is flagged and dispatch waits until the storekeeper sets it
+      // themselves (to what they're really sending, or 0) - the server refuses it too.
+      const defaultSend = ingredient.quantity
       rows.set(dishRowKey(dish, dishIndex, ingredient.productId), {
         available,
         defaultSend,
@@ -119,7 +119,7 @@ function DishList({
 }: {
   dishes: Dish[]
   requesting: boolean
-  sending?: { quantities: Record<string, string>; onChange: (rowKey: string, value: string) => void }
+  sending?: { quantities: Record<string, string>; onChange: (rowKey: string, value: string) => void; over?: Set<string> }
   onEditDishStock?: (dish: Dish) => void
 }) {
   const allocations = useMemo(() => buildDishAllocations(dishes), [dishes])
@@ -161,7 +161,7 @@ function DishList({
                       {requesting && <td className={cn('py-1 text-right tabular-nums', short && 'font-semibold text-destructive')}>{qty(allocation.available)}</td>}
                       {sending && (
                         <td className="py-1 text-right">
-                          <input type="number" min="0" step="any" className="input h-7 w-20 text-right" value={sending.quantities[rowKey] ?? ''} onChange={(e) => sending.onChange(rowKey, e.target.value)} />
+                          <input type="number" min="0" step="any" className={cn('input h-7 w-20 text-right', sending.over?.has(g.productId) && 'border-2 border-destructive text-destructive')} value={sending.quantities[rowKey] ?? ''} onChange={(e) => sending.onChange(rowKey, e.target.value)} />
                         </td>
                       )}
                     </tr>
@@ -438,13 +438,22 @@ function DispatchModal({ request, onClose, onDone, onDishStock }: { request: Req
   const sendTotals = useMemo(() => {
     const totals = new Map<string, number>()
     if (dishLines.length === 0) {
-      for (const item of request.items) totals.set(item.productId, quantities[item.id] !== undefined ? Number(quantities[item.id]) : Math.min(Number(item.requestedQty), item.storeQty ?? Number(item.requestedQty)))
+      for (const item of request.items) totals.set(item.productId, quantities[item.id] !== undefined ? Number(quantities[item.id]) : Number(item.requestedQty))
       return totals
     }
     for (const line of dishLines) totals.set(line.productId, (totals.get(line.productId) ?? 0) + sendForRow(line.rowKey, line.quantity))
     return totals
   }, [allocations, dishLines, quantities, request.items])
   const partial = [...askedByProduct].some(([productId, asked]) => (sendTotals.get(productId) ?? 0) < asked)
+  // What the store holds of each product; sending more than that is refused until the storekeeper sets it.
+  const storeByProduct = useMemo(() => {
+    const held = new Map<string, number>()
+    for (const item of request.items) if (item.storeQty !== undefined) held.set(item.productId, item.storeQty)
+    for (const line of dishLines) held.set(line.productId, line.storeQty)
+    return held
+  }, [dishLines, request.items])
+  const overStock = new Set([...sendTotals].filter(([productId, send]) => send > (storeByProduct.get(productId) ?? Infinity) + STOCK_EPSILON).map(([productId]) => productId))
+  const overNames = [...new Set([...dishLines.filter((l) => overStock.has(l.productId)).map((l) => l.name), ...request.items.filter((i) => overStock.has(i.productId)).map((i) => i.productName)])]
   const anything = [...sendTotals.values()].some((send) => send > 0)
 
   function setSend(rowKey: string, value: string) {
@@ -469,15 +478,21 @@ function DispatchModal({ request, onClose, onDone, onDishStock }: { request: Req
   const sending = {
     quantities: dishLines.length > 0
       ? Object.fromEntries(dishLines.map((line) => [line.rowKey, quantities[line.rowKey] ?? String(defaultSendForRow(line.rowKey, line.quantity))]))
-      : Object.fromEntries(request.items.map((item) => [item.id, quantities[item.id] ?? String(Math.min(Number(item.requestedQty), item.storeQty ?? Number(item.requestedQty)))])),
+      : Object.fromEntries(request.items.map((item) => [item.id, quantities[item.id] ?? String(Number(item.requestedQty))])),
     onChange: setSend,
+    over: overStock,
   }
 
   return (
     <ModalShell kicker={request.requestNo} title={`Dispatch for order #${request.orderNumber}`} subtitle={`${request.fromLocation.name} → ${request.toLocation.name}${request.rungUpBy ? ` · rung up by ${request.rungUpBy}` : ''}`} onClose={onClose} size="md"
-      footer={<Button onClick={() => void save()} disabled={!anything || saving}>{saving ? 'Dispatching…' : 'Dispatch to kitchen'}</Button>}>
+      footer={<Button onClick={() => void save()} disabled={!anything || saving || overStock.size > 0}>{saving ? 'Dispatching…' : 'Dispatch to kitchen'}</Button>}>
       <div className="space-y-3 p-5">
         <DishList dishes={request.dishes} requesting sending={sending} onEditDishStock={onDishStock} />
+        {overStock.size > 0 && (
+          <p className="border border-destructive/40 bg-destructive/10 p-2.5 text-xs font-semibold text-destructive">
+            Not enough in {request.fromLocation.name} for {overNames.join(', ')}. Set each red line to what you are actually sending - 0 if none - before dispatching.
+          </p>
+        )}
         {partial && <p className="text-xs text-warning">You are sending less than was asked. The kitchen may not be able to finish the order.</p>}
         <p className="text-xs text-muted-foreground">This takes the sent items out of {request.fromLocation.name} and is recorded in the stock ledger.</p>
       </div>
