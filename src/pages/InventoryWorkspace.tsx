@@ -496,7 +496,11 @@ function DistributeModal({ locations, onClose, onRecorded }: { locations: Locati
     return (product: Product) => Number(product.stockByLocation.find((s) => s.locationId === fromLocationId)?.quantity ?? 0)
   }, [fromLocationId])
 
-  const visibleProducts = products.filter((p) => availableAt(p) > 0 && (!search.trim() || p.name.toLowerCase().includes(search.trim().toLowerCase())))
+  // Every product, so a search always finds it; one with nothing at the source shows as out of stock
+  // (and can't be entered) rather than missing. In-stock products come first.
+  const visibleProducts = products
+    .filter((p) => !search.trim() || p.name.toLowerCase().includes(search.trim().toLowerCase()))
+    .sort((a, b) => Number(availableAt(b) > 0) - Number(availableAt(a) > 0) || a.name.localeCompare(b.name))
 
   function setBatchQuantity(product: Product, quantity: string) {
     setBatch((current) => {
@@ -582,7 +586,7 @@ function DistributeModal({ locations, onClose, onRecorded }: { locations: Locati
                 ) : visibleProducts.length === 0 ? (
                   <div className="p-8 text-center text-sm text-muted-foreground">
                     <LuWarehouse className="mx-auto mb-2 size-6" />
-                    No products with stock at this source location.
+                    No products match.
                   </div>
                 ) : (
                   <>
@@ -594,12 +598,12 @@ function DistributeModal({ locations, onClose, onRecorded }: { locations: Locati
                         const packSize = Number(product.packSize) || 0
                         const unitLabel = product.packUnit?.name ?? product.unit
                         return (
-                          <div key={product.id} className="bg-card px-4 py-3">
+                          <div key={product.id} className={cn('px-4 py-3', max > 0 ? 'bg-card' : 'bg-destructive/5')}>
                             <div className="min-w-0">
-                              <p className="truncate text-sm font-medium">{product.name}</p>
-                              <p className="text-xs text-muted-foreground">On hand: {packAndUnit(max, packSize, product.packLabel ?? '', unitLabel)}</p>
+                              <p className={cn('truncate text-sm font-medium', max <= 0 && 'text-destructive')}>{product.name}</p>
+                              <p className={cn('text-xs', max > 0 ? 'text-muted-foreground' : 'font-semibold text-destructive')}>{max > 0 ? `On hand: ${packAndUnit(max, packSize, product.packLabel ?? '', unitLabel)}` : 'Out of stock'}</p>
                             </div>
-                            <label className="mt-2 block text-xs font-medium text-muted-foreground">Send
+                            {max > 0 && <label className="mt-2 block text-xs font-medium text-muted-foreground">Send
                               <span className="mt-1 block">
                                 <PackQtyInput
                                   value={staged?.quantity ?? ''}
@@ -611,7 +615,7 @@ function DistributeModal({ locations, onClose, onRecorded }: { locations: Locati
                                   className="w-full rounded-sm border bg-background px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring"
                                 />
                               </span>
-                            </label>
+                            </label>}
                           </div>
                         )
                       })}
@@ -628,11 +632,11 @@ function DistributeModal({ locations, onClose, onRecorded }: { locations: Locati
                           const packSize = Number(product.packSize) || 0
                           const unitLabel = product.packUnit?.name ?? product.unit
                           return (
-                            <tr key={product.id} className="border-t bg-card">
-                              <td className="px-4 py-2.5 font-medium">{product.name}</td>
-                              <td className="px-4 py-2.5 text-muted-foreground">{packAndUnit(max, packSize, product.packLabel ?? '', unitLabel)}</td>
+                            <tr key={product.id} className={cn('border-t', max > 0 ? 'bg-card' : 'bg-destructive/5')}>
+                              <td className={cn('px-4 py-2.5 font-medium', max <= 0 && 'text-destructive')}>{product.name}</td>
+                              <td className={cn('px-4 py-2.5', max > 0 ? 'text-muted-foreground' : 'font-semibold text-destructive')}>{max > 0 ? packAndUnit(max, packSize, product.packLabel ?? '', unitLabel) : 'Out of stock'}</td>
                               <td className="px-4 py-2.5">
-                                <PackQtyInput
+                                {max <= 0 ? <span className="text-xs text-muted-foreground">Nothing here to send</span> : <PackQtyInput
                                   value={staged?.quantity ?? ''}
                                   onChange={(v) => setBatchQuantity(product, v)}
                                   packSize={packSize}
@@ -640,7 +644,7 @@ function DistributeModal({ locations, onClose, onRecorded }: { locations: Locati
                                   unitName={unitLabel}
                                   max={max}
                                   className="w-24 rounded-sm border bg-background px-2 py-1.5 text-sm outline-none focus:ring-2 focus:ring-ring"
-                                />
+                                />}
                               </td>
                             </tr>
                           )
