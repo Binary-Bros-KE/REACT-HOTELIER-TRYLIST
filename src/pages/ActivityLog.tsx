@@ -11,17 +11,16 @@ const PAGE_SIZE = 50
 type DateMode = 'date' | 'range'
 const hourLabel = (h: number) => `${String(h).padStart(2, '0')}:00`
 
-const dayStamp = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-
 /** Who did what, across the property: voids, cancellations, adjustments, setting changes. */
 export default function ActivityLog() {
   const toast = useToast()
   // Date: one business day, run on the property's shift hours (e.g. 10:00 to 10:00). Range: from - to.
+  // Both start empty: the log shows everything, newest first, until someone filters.
   const [mode, setMode] = useState<DateMode>('date')
   const [startHour, setStartHour] = useState(0)
-  const [date, setDate] = useState(() => dayStamp(new Date()))
-  const [from, setFrom] = useState(() => dayStamp(new Date(Date.now() - 6 * 86_400_000)))
-  const [to, setTo] = useState(() => dayStamp(new Date()))
+  const [date, setDate] = useState('')
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
   const [actorId, setActorId] = useState('')
   const [area, setArea] = useState('')
   const [search, setSearch] = useState('')
@@ -33,12 +32,7 @@ export default function ActivityLog() {
 
   useEffect(() => {
     api<{ profile: { businessDayStartHour?: number } | null }>('/business-profile')
-      .then((r) => {
-        const h = r.profile?.businessDayStartHour ?? 0
-        setStartHour(h)
-        // Before the start hour it is still the previous business day.
-        setDate(dayStamp(new Date(Date.now() - h * 3_600_000)))
-      })
+      .then((r) => setStartHour(r.profile?.businessDayStartHour ?? 0))
       .catch(() => {})
     api<{ employees: Employee[] }>('/employees').then((r) => setEmployees(r.employees)).catch(() => {})
   }, [])
@@ -81,24 +75,27 @@ export default function ActivityLog() {
             <p className="text-xs text-muted-foreground">Voids, cancellations, returns, stock changes, stay changes and more, newest first.</p>
           </div>
           <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-            Period
-            <div className="mt-1 flex border">
-              {(['date', 'range'] as const).map((m) => (
-                <button key={m} type="button" onClick={() => setMode(m)} className={`px-3 py-2 text-xs font-bold uppercase tracking-wider ${mode === m ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-muted'}`}>{m === 'date' ? 'Date' : 'Range'}</button>
-              ))}
+            Period{mode === 'date' && <span className="ml-1.5 font-medium normal-case tracking-normal">· {startHour ? `${hourLabel(startHour)} to ${hourLabel(startHour)} next day` : 'whole day'}</span>}
+            {/* The switch and its date fields sit on one line, the same height. */}
+            <div className="mt-1 flex items-stretch gap-2 font-normal normal-case tracking-normal">
+              <div className="flex border">
+                {(['date', 'range'] as const).map((m) => (
+                  <button key={m} type="button" onClick={() => setMode(m)} className={`px-3 text-xs font-bold uppercase tracking-wider ${mode === m ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}>{m === 'date' ? 'Date' : 'Range'}</button>
+                ))}
+              </div>
+              {mode === 'date' ? (
+                <input type="date" aria-label="Date" value={date} onChange={(e) => setDate(e.target.value)} className="input w-auto" />
+              ) : (
+                <>
+                  <input type="date" aria-label="From" title="From" value={from} onChange={(e) => setFrom(e.target.value)} className="input w-auto" />
+                  <input type="date" aria-label="To" title="To" value={to} onChange={(e) => setTo(e.target.value)} className="input w-auto" />
+                </>
+              )}
+              {(mode === 'date' ? date : from || to) && (
+                <button type="button" onClick={() => { setDate(''); setFrom(''); setTo('') }} className="border px-3 text-xs font-bold uppercase tracking-wider text-muted-foreground hover:bg-muted">Clear</button>
+              )}
             </div>
           </div>
-          {mode === 'date' ? (
-            <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Date
-              <input type="date" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} className="input mt-1 block font-normal normal-case tracking-normal" />
-              <span className="mt-0.5 block text-[10px] font-medium normal-case tracking-normal">{startHour ? `${hourLabel(startHour)} to ${hourLabel(startHour)} next day` : 'Whole day'}</span>
-            </label>
-          ) : (
-            <>
-              <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">From<input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="input mt-1 block font-normal normal-case tracking-normal" /></label>
-              <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">To<input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="input mt-1 block font-normal normal-case tracking-normal" /></label>
-            </>
-          )}
           <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Person
             <select value={actorId} onChange={(e) => setActorId(e.target.value)} className="input mt-1 block font-normal normal-case tracking-normal">
               <option value="">Everyone</option>
