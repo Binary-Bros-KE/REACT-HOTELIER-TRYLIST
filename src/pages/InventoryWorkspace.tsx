@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
-import { LuArrowRight, LuCircleAlert, LuEye, LuLoaderCircle, LuPackage, LuPackageMinus, LuPackagePlus, LuPrinter, LuSearch, LuTrash2, LuTruck, LuWarehouse } from 'react-icons/lu'
+import { LuArrowRight, LuBan, LuCircleAlert, LuEye, LuHourglass, LuPackageCheck, LuLoaderCircle, LuPackage, LuPackageMinus, LuPackagePlus, LuPrinter, LuSearch, LuTrash2, LuTruck, LuWarehouse } from 'react-icons/lu'
 import { api, hasApiTenant } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import PageBanner from '@/components/ui/PageBanner'
@@ -9,6 +9,9 @@ import { useToast } from '@/components/ui/Toast'
 import type { DocProfile } from '@/components/documents/pdf'
 import PackQtyInput, { packAndUnit } from '@/components/ui/PackQtyInput'
 import { RecordUsageModal, StoreUsagePanel, UsageDetailModal, type Usage } from '@/components/store/StoreUsage'
+import StatusPill from '@/components/ui/StatusPill'
+import { useAppSelector } from '@/store/hooks'
+import { DispatchModal, RejectModal, RequestDetail, SHOWN, shownStatus, type StockRequest } from '@/pages/StockIssues'
 
 const DocumentViewer = lazy(() => import('@/components/documents/DocumentViewer'))
 
@@ -61,8 +64,15 @@ function SetupMessage() {
 
 export default function InventoryWorkspace() {
   const toast = useToast()
+  const user = useAppSelector((s) => s.auth.user)
+  const canDispatch = user?.role?.name === 'Super Admin' || Boolean(user?.role?.permissions.includes('STORE_DISPATCH'))
+  // Stock requests to the store live here too, so every movement out of the store is in one list.
+  const [requests, setRequests] = useState<StockRequest[]>([])
+  const [requestDetail, setRequestDetail] = useState<StockRequest | null>(null)
+  const [dispatching, setDispatching] = useState<StockRequest | null>(null)
+  const [rejecting, setRejecting] = useState<StockRequest | null>(null)
   const [transfers, setTransfers] = useState<StockTransfer[]>([])
-  const [summary, setSummary] = useState<Summary>({ total: 0, lineItems: 0, unitsTransferred: 0 })
+  const [, setSummary] = useState<Summary>({ total: 0, lineItems: 0, unitsTransferred: 0 })
   const [receipts, setReceipts] = useState<StockReceipt[]>([])
   const [receiptSummary, setReceiptSummary] = useState<ReceiptSummary>({ total: 0, lineItems: 0, unitsReceived: 0 })
   const [locations, setLocations] = useState<Location[]>([])
@@ -70,7 +80,7 @@ export default function InventoryWorkspace() {
   const [locationFilter, setLocationFilter] = useState('')
   // usage: stock used up straight from the store (staff meals, conferences...) - see StoreUsage.
   // all: transfers, goods received and usages together, newest first (the default).
-  const [view, setView] = useState<'all' | 'transfers' | 'receipts' | 'usage'>('all')
+  const [view, setView] = useState<'all' | 'requests' | 'transfers' | 'receipts' | 'usage'>('all')
   const [usages, setUsages] = useState<Usage[]>([])
   const [usageDetail, setUsageDetail] = useState<Usage | null>(null)
   const [showUsage, setShowUsage] = useState(false)
@@ -85,19 +95,25 @@ export default function InventoryWorkspace() {
   const [printing, setPrinting] = useState<StockTransfer | null>(null)
   const [printingReceipt, setPrintingReceipt] = useState<StockReceipt | null>(null)
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) setLoading(true)
     setError('')
     try {
       const query = new URLSearchParams()
       if (search.trim()) query.set('search', search.trim())
       if (locationFilter) query.set('locationId', locationFilter)
-      const [transferResponse, receiptResponse, usageResponse] = await Promise.all([
+      const [transferResponse, receiptResponse, usageResponse, requestList] = await Promise.all([
         api<{ transfers: StockTransfer[]; summary: Summary }>(`/stock-transfers${query.size ? `?${query}` : ''}`),
         api<{ receipts: StockReceipt[]; summary: ReceiptSummary }>(`/stock-receipts${query.size ? `?${query}` : ''}`),
         // Usage is shown in "All" too; a failure there must not hide transfers and receipts.
         api<{ usages: Usage[] }>(`/store-usage${query.size ? `?${query}` : ''}`).catch(() => ({ usages: [] as Usage[] })),
+        // Every waiting request (however old) plus the latest answered ones.
+        Promise.all([
+          api<{ requests: StockRequest[] }>(`/stock-issues/requests?fromStores=1&status=REQUESTED${query.size ? `&${query}` : ''}`),
+          api<{ requests: StockRequest[] }>(`/stock-issues/requests?fromStores=1${query.size ? `&${query}` : ''}`),
+        ]).then(([pending, recent]) => [...new Map([...pending.requests, ...recent.requests].map((r) => [r.id, r])).values()]).catch(() => [] as StockRequest[]),
       ])
+      setRequests(requestList)
       setUsages(usageResponse.usages)
       setTransfers(transferResponse.transfers)
       setSummary(transferResponse.summary)
@@ -105,20 +121,33 @@ export default function InventoryWorkspace() {
       setReceiptSummary(receiptResponse.summary)
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Could not load stock transfers'
-      setError(message)
-      toast.error(message)
+      if (!quiet) { setError(message); toast.error(message) }
     } finally {
       setLoading(false)
     }
   }, [search, locationFilter, toast])
 
   useEffect(() => { const t = window.setTimeout(() => void load(), 250); return () => window.clearTimeout(t) }, [load])
+  // Keep new requests and answers coming in without a reload.
+  useEffect(() => { const id = window.setInterval(() => void load(true), 30000); return () => window.clearInterval(id) }, [load])
 
+  // A dispatched request made its own transfer: it is listed once, as the request.
+  const directTransfers = useMemo(() => {
+    const fromRequests = new Set(requests.map((r) => r.transferId).filter(Boolean))
+    return transfers.filter((t) => !fromRequests.has(t.id))
+  }, [transfers, requests])
+  const waitingRequests = requests.filter((r) => r.status === 'REQUESTED').length
+  // Waiting requests stay on top; once answered they fall in by date with everything else.
   const allRecords = useMemo(() => [
-    ...transfers.map((t) => ({ kind: 'transfer' as const, id: t.id, at: t.createdAt, transfer: t })),
+    ...requests.map((r) => ({ kind: 'request' as const, id: r.id, at: r.respondedAt ?? r.requestedAt, request: r })),
+    ...directTransfers.map((t) => ({ kind: 'transfer' as const, id: t.id, at: t.createdAt, transfer: t })),
     ...receipts.map((r) => ({ kind: 'receipt' as const, id: r.id, at: r.createdAt, receipt: r })),
     ...usages.map((u) => ({ kind: 'usage' as const, id: u.id, at: u.createdAt, usage: u })),
-  ].sort((a, b) => b.at.localeCompare(a.at)), [transfers, receipts, usages])
+  ].sort((a, b) => {
+    const waiting = (row: typeof a) => Number(row.kind === 'request' && row.request.status === 'REQUESTED')
+    return waiting(b) - waiting(a) || b.at.localeCompare(a.at)
+  }), [requests, directTransfers, receipts, usages])
+  const listed = view === 'requests' ? allRecords.filter((row) => row.kind === 'request') : allRecords
   useEffect(() => {
     api<{ locations: Location[] }>('/locations').then((r) => setLocations(r.locations)).catch(() => {})
     api<{ profile: DocProfile }>('/business-profile').then((r) => setProfile(r.profile)).catch(() => {})
@@ -128,12 +157,13 @@ export default function InventoryWorkspace() {
 
   return (
     <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
-      <PageBanner kicker="Inventory" title="Store" />
+      <PageBanner kicker="Inventory" title="Store & Distribute" />
 
-      <section className="mt-7 grid gap-3 sm:grid-cols-3">
+      <section className="mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard index={3} label="Requests waiting" value={waitingRequests} icon={<LuHourglass />} tone={waitingRequests ? 'warn' : undefined} />
         <StatCard index={0} label="Goods receipts" value={receiptSummary.total} icon={<LuPackagePlus />} />
         <StatCard index={1} label="Line items received" value={receiptSummary.lineItems.toLocaleString()} icon={<LuPackage />} />
-        <StatCard index={2} label="Transfers" value={summary.total} icon={<LuTruck />} />
+        <StatCard index={2} label="Distributions" value={directTransfers.length} icon={<LuTruck />} />
       </section>
 
       {error && <div className="mt-5 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert />{error}</div>}
@@ -142,11 +172,12 @@ export default function InventoryWorkspace() {
         <div className="flex flex-col gap-3 border-b p-4 sm:flex-row sm:items-center">
           <label className="relative flex-1">
             <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search transfer #, destination or source…" className="w-full rounded-sm border bg-background py-2.5 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search request #, transfer #, destination or source…" className="w-full rounded-sm border bg-background py-2.5 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
           </label>
           <select value={view} onChange={(e) => setView(e.target.value as typeof view)} className="rounded-sm border bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring">
             <option value="all">All</option>
-            <option value="transfers">Transfers</option>
+            <option value="requests">Requests</option>
+            <option value="transfers">Distributed</option>
             <option value="receipts">Goods received</option>
             <option value="usage">Usage</option>
           </select>
@@ -165,9 +196,9 @@ export default function InventoryWorkspace() {
           <StoreUsagePanel refreshKey={usageRefresh} search={search} locationFilter={locationFilter} />
         ) : loading ? (
           <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><LuLoaderCircle className="animate-spin" /> Loading transfers…</div>
-        ) : view === 'all' ? (
-          allRecords.length === 0 ? (
-            <div className="min-h-64 p-16 text-center text-sm text-muted-foreground">No transfers, goods received or usage yet.</div>
+        ) : view === 'all' || view === 'requests' ? (
+          listed.length === 0 ? (
+            <div className="min-h-64 p-16 text-center text-sm text-muted-foreground">{view === 'requests' ? 'No stock requests yet.' : 'No requests, distributions, goods received or usage yet.'}</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
@@ -182,25 +213,41 @@ export default function InventoryWorkspace() {
                   </tr>
                 </thead>
                 <tbody>
-                  {allRecords.map((row) => {
-                    const open = () => (row.kind === 'transfer' ? setDetail(row.transfer) : row.kind === 'receipt' ? setReceiptDetail(row.receipt) : setUsageDetail(row.usage))
-                    const number = row.kind === 'transfer' ? row.transfer.transferNo : row.kind === 'receipt' ? row.receipt.receiptNo : row.usage.usageNo
-                    const itemCount = row.kind === 'transfer' ? row.transfer.items.length : row.kind === 'receipt' ? row.receipt.items.length : row.usage.items.length
+                  {listed.map((row) => {
+                    const open = () => (row.kind === 'request' ? setRequestDetail(row.request) : row.kind === 'transfer' ? setDetail(row.transfer) : row.kind === 'receipt' ? setReceiptDetail(row.receipt) : setUsageDetail(row.usage))
+                    const number = row.kind === 'request' ? row.request.requestNo : row.kind === 'transfer' ? row.transfer.transferNo : row.kind === 'receipt' ? row.receipt.receiptNo : row.usage.usageNo
+                    const itemCount = row.kind === 'request' ? row.request.items.length : row.kind === 'transfer' ? row.transfer.items.length : row.kind === 'receipt' ? row.receipt.items.length : row.usage.items.length
                     const by = row.kind === 'transfer' ? row.transfer.createdByEmployee : row.kind === 'receipt' ? row.receipt.createdByEmployee : null
-                    const type = row.kind === 'transfer'
-                      ? { label: 'Transfer', cls: 'border-secondary/40 bg-secondary/5 text-secondary' }
+                    const byName = row.kind === 'request'
+                      ? [row.request.requestedByName, row.request.respondedByName && row.request.status !== 'REQUESTED' ? `${SHOWN[shownStatus(row.request)].label.toLowerCase()} by ${row.request.respondedByName}` : null].filter(Boolean).join(' · ') || '—'
+                      : by ? `${by.firstName} ${by.lastName}` : '—'
+                    const type = row.kind === 'request'
+                      ? { label: 'Requested', cls: 'border-violet-500/40 bg-violet-500/5 text-violet-700 dark:text-violet-300' }
+                      : row.kind === 'transfer'
+                      ? { label: 'Distributed', cls: 'border-secondary/40 bg-secondary/5 text-secondary' }
                       : row.kind === 'receipt'
                         ? { label: 'Goods received', cls: 'border-success/40 bg-success/5 text-success' }
                         : { label: row.usage.status === 'VOIDED' ? 'Usage (voided)' : 'Usage', cls: 'border-warning/50 bg-warning/5 text-warning' }
                     return (
-                      <tr key={`${row.kind}:${row.id}`} className="border-t transition hover:bg-muted/30">
+                      <tr key={`${row.kind}:${row.id}`} className={cn('border-t transition hover:bg-muted/30', row.kind === 'request' && row.request.status === 'REQUESTED' && 'bg-amber-400/5')}>
                         <td className="px-5 py-4">
                           <button onClick={open} className="font-semibold text-secondary hover:underline">{number}</button>
                           <p className="text-xs text-muted-foreground">{new Date(row.at).toLocaleString('en-KE')}</p>
                         </td>
-                        <td className="px-5 py-4"><span className={`whitespace-nowrap border px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide ${type.cls}`}>{type.label}</span></td>
                         <td className="px-5 py-4">
-                          {row.kind === 'transfer' ? (
+                          <div className="flex flex-col items-start gap-1">
+                            <span className={`whitespace-nowrap border px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide ${type.cls}`}>{type.label}</span>
+                            {row.kind === 'request' && <StatusPill tone={SHOWN[shownStatus(row.request)].tone}>{SHOWN[shownStatus(row.request)].label}</StatusPill>}
+                          </div>
+                        </td>
+                        <td className="px-5 py-4">
+                          {row.kind === 'request' ? (
+                            <span className="flex items-center gap-1.5 text-xs">
+                              <span className="rounded-sm border px-2 py-0.5 font-medium">{row.request.fromLocation.name}</span>
+                              <LuArrowRight className="size-3 text-muted-foreground" />
+                              <span className="rounded-sm border border-violet-500/40 bg-violet-500/5 px-2 py-0.5 font-medium text-violet-700 dark:text-violet-300">{row.request.toLocation.name}</span>
+                            </span>
+                          ) : row.kind === 'transfer' ? (
                             <span className="flex items-center gap-1.5 text-xs">
                               <span className="rounded-sm border px-2 py-0.5 font-medium">{row.transfer.fromLocation.name}</span>
                               <LuArrowRight className="size-3 text-muted-foreground" />
@@ -216,9 +263,15 @@ export default function InventoryWorkspace() {
                           )}
                         </td>
                         <td className="px-5 py-4 text-muted-foreground">{itemCount} item{itemCount === 1 ? '' : 's'}</td>
-                        <td className="px-5 py-4 text-muted-foreground">{by ? `${by.firstName} ${by.lastName}` : '—'}</td>
+                        <td className="px-5 py-4 text-muted-foreground">{byName}</td>
                         <td className="px-5 py-4 text-right">
-                          <button onClick={open} title="View" className="rounded-sm p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuEye className="size-4" /></button>
+                          <div className="flex items-center justify-end gap-2">
+                            {row.kind === 'request' && row.request.status === 'REQUESTED' && canDispatch && <>
+                              <ActionButton tone="success" icon={<LuPackageCheck />} onClick={() => setDispatching(row.request)}>Dispatch</ActionButton>
+                              <ActionButton tone="danger" icon={<LuBan />} onClick={() => setRejecting(row.request)}>Reject</ActionButton>
+                            </>}
+                            <button onClick={open} title="View" className="rounded-sm p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuEye className="size-4" /></button>
+                          </div>
                         </td>
                       </tr>
                     )
@@ -261,8 +314,8 @@ export default function InventoryWorkspace() {
               </table>
             </div>
           )
-        ) : transfers.length === 0 ? (
-          <div className="min-h-64 p-16 text-center text-sm text-muted-foreground">No stock transfers yet.</div>
+        ) : directTransfers.length === 0 ? (
+          <div className="min-h-64 p-16 text-center text-sm text-muted-foreground">No direct distributions yet.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
@@ -276,7 +329,7 @@ export default function InventoryWorkspace() {
                 </tr>
               </thead>
               <tbody>
-                {transfers.map((t) => (
+                {directTransfers.map((t) => (
                     <tr key={t.id} className="border-t transition hover:bg-muted/30">
                       <td className="px-5 py-4">
                         <button onClick={() => setDetail(t)} className="font-semibold text-secondary hover:underline">{t.transferNo}</button>
@@ -301,6 +354,10 @@ export default function InventoryWorkspace() {
           </div>
         )}
       </section>
+
+      {requestDetail && <RequestDetail request={requestDetail} onClose={() => setRequestDetail(null)} />}
+      {dispatching && <DispatchModal request={dispatching} onClose={() => setDispatching(null)} onDone={(partial) => { setDispatching(null); toast.success(partial ? 'Partly dispatched.' : 'Dispatched in full.'); void load(true) }} />}
+      {rejecting && <RejectModal request={rejecting} onClose={() => setRejecting(null)} onDone={() => { setRejecting(null); toast.success('Request rejected.'); void load(true) }} />}
 
       {usageDetail && <UsageDetailModal usage={usageDetail} onClose={() => setUsageDetail(null)} />}
 

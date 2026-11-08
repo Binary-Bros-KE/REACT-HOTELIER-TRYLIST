@@ -156,7 +156,7 @@ export const navigation: NavGroup[] = [
     items: [
       { label: 'Point of Sale', href: '/pos', icon: LuShoppingCart, moduleKey: 'POS' },
       { label: 'Products POS', href: '/sales/products-pos', icon: LuPackage },
-      { label: 'Approvals', href: '/sales/approvals', icon: LuBadgeCheck, permission: 'POS_APPROVE_CANCELLATION' },
+      { label: 'Approvals & Returns', href: '/sales/approvals', icon: LuBadgeCheck, permission: 'POS_APPROVE_CANCELLATION' },
       { label: 'Receipts', href: '/sales/receipts', icon: LuReceiptText },
       { label: 'Stock Requests', href: '/sales/stock-requests', icon: LuClipboardList },
       { label: 'Tables', href: '/sales/tables', icon: LuTable2 },
@@ -201,7 +201,7 @@ export const navigation: NavGroup[] = [
       { label: 'Categories', href: '/inventory/categories', icon: LuTags, moduleKey: 'STORE' },
       { label: 'Units of Measure', href: '/inventory/units-of-measure', icon: LuRuler },
       { label: 'Products', href: '/products', icon: LuPackage, moduleKey: 'PRODUCTS' },
-      { label: 'Store', href: '/store', icon: LuWarehouse, moduleKey: 'STORE' },
+      { label: 'Store & Distribute', href: '/store', icon: LuWarehouse, moduleKey: 'STORE' },
       { label: 'Stock Requests', href: '/inventory/stock-requests', icon: LuClipboardList },
       { label: 'Dispatch Requests', href: '/inventory/dispatch-requests', icon: LuPackageCheck, permission: 'STORE_DISPATCH' },
       { label: 'Assets', href: '/inventory/assets', icon: LuBox },
@@ -232,7 +232,7 @@ export const navigation: NavGroup[] = [
       { label: 'Quotations', href: '/finance/quotations', icon: LuSignature },
       { label: 'Salaries', href: '/finance/salaries', icon: LuBanknote },
       { label: 'Transactions', href: '/finance/transactions', icon: LuArrowLeftRight },
-      { label: 'Approvals', href: '/sales/approvals', icon: LuCircleCheck, permission: 'POS_APPROVE_CANCELLATION' },
+      { label: 'Approvals & Returns', href: '/sales/approvals', icon: LuCircleCheck, permission: 'POS_APPROVE_CANCELLATION' },
     ],
   },
   {

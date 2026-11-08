@@ -180,7 +180,7 @@ export default function Approvals() {
   if (!canApprove) {
     return (
       <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
-        <PageBanner kicker="Sales" title="Approvals" />
+        <PageBanner kicker="Sales" title="Approvals & Returns" />
         <div className="mt-6 flex min-h-40 flex-col items-center justify-center gap-2 border border-dashed bg-card p-12 text-center text-sm text-muted-foreground">
           <LuLock className="size-5" />
           You don't have permission to approve cancellations. Ask a manager to grant "Approve order cancellations" on your role.
@@ -191,7 +191,7 @@ export default function Approvals() {
 
   return (
     <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
-      <PageBanner kicker="Sales" title="Approvals" />
+      <PageBanner kicker="Sales" title="Approvals & Returns" />
 
       {error && <div className="mt-5 flex items-center gap-2 border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert />{error}</div>}
 
