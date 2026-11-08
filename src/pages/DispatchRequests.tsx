@@ -490,7 +490,7 @@ function DispatchModal({ request, onClose, onDone, onDishStock }: { request: Req
         <DishList dishes={request.dishes} requesting sending={sending} onEditDishStock={onDishStock} />
         {overStock.size > 0 && (
           <p className="border border-destructive/40 bg-destructive/10 p-2.5 text-xs font-semibold text-destructive">
-            Not enough in {request.fromLocation.name} for {overNames.join(', ')}. Set each red line to what you are actually sending - 0 if none - before dispatching.
+            Not enough in {request.fromLocation.name} for {overNames.join(', ')} to dispatch
           </p>
         )}
         {partial && <p className="text-xs text-warning">You are sending less than was asked. The kitchen may not be able to finish the order.</p>}
