@@ -80,20 +80,24 @@ export default function StockIssues() {
     if (!tabs.includes(tab)) setTab('requests')
   }, [tab, tabs])
 
+  // The tabs lead each panel's filter row, below the cards.
+  const tabBar = (
+    <div className="flex w-fit shrink-0 flex-wrap gap-1 self-start border bg-background p-1 sm:self-auto">
+      {tabs.map((t) => (
+        <button key={t} onClick={() => setTab(t)} className={cn('px-4 py-2 text-xs font-bold uppercase tracking-wider', tab === t ? 'bg-black text-white' : 'text-muted-foreground hover:bg-muted')}>
+          {t === 'requests' ? (isSuperAdmin ? 'All requests' : 'My requests') : t === 'store' ? 'Store inbox' : 'Counts'}
+        </button>
+      ))}
+    </div>
+  )
+
   return (
     <div className="dashboard-square mx-auto max-w-6xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
       <PageBanner kicker="Inventory" title="Stock Requests" />
 
-      <div className="mt-6 flex w-fit flex-wrap gap-1 border bg-card p-1 shadow-sm">
-        {tabs.map((t) => (
-          <button key={t} onClick={() => setTab(t)} className={cn('px-4 py-2 text-xs font-bold uppercase tracking-wider', tab === t ? 'bg-black text-white' : 'text-muted-foreground hover:bg-muted')}>
-            {t === 'requests' ? (isSuperAdmin ? 'All requests' : 'My requests') : t === 'store' ? 'Store inbox' : 'Counts'}
-          </button>
-        ))}
-      </div>
-
       {tab === 'requests' && (
         <RequestsPanel
+          tabBar={tabBar}
           locations={locations}
           employees={employees}
           storeId={storeId}
@@ -105,8 +109,8 @@ export default function StockIssues() {
           onLocationChange={setLocation}
         />
       )}
-      {tab === 'store' && <StoreInbox employees={employees} />}
-      {tab === 'count' && <CountPanel locations={locations} />}
+      {tab === 'store' && <StoreInbox tabBar={tabBar} employees={employees} />}
+      {tab === 'count' && <CountPanel tabBar={tabBar} locations={locations} />}
     </div>
   )
 }
@@ -236,8 +240,9 @@ function ListState({ loading, empty, children }: { loading: boolean; empty: stri
 /** The requester's history (every location's for Super Admin), a card per
  * request, and the "New request" button that opens the split-pane form. */
 function RequestsPanel({
-  locations, employees, storeId, seeAll, departmentId, fixedLocation, locationOptions, selectedLocationId, onLocationChange,
+  tabBar, locations, employees, storeId, seeAll, departmentId, fixedLocation, locationOptions, selectedLocationId, onLocationChange,
 }: {
+  tabBar: ReactNode
   locations: Location[]
   employees: Employee[]
   storeId: string
@@ -291,7 +296,8 @@ function RequestsPanel({
         <StatCard index={2} label="Rejected" value={counts.REJECTED} icon={<LuBan />} tone="danger" />
       </section>
 
-      <div className="mt-5 flex flex-col gap-3 border bg-card p-4 shadow-sm sm:flex-row sm:items-center">
+      <div className="mt-5 flex flex-col gap-3 border bg-card p-4 shadow-sm sm:flex-row sm:flex-wrap sm:items-center">
+        {tabBar}
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as 'all' | Shown)} className={SELECT}>
           <option value="all">All statuses</option>
           {FILTERS.map((s) => <option key={s} value={s}>{SHOWN[s].label}</option>)}
@@ -505,7 +511,7 @@ function RequestModal({
 
 /** Every request made to a store: pending ones first, answered ones stay below
  * (newest first) so the storekeeper can still see what went out. */
-function StoreInbox({ employees }: { employees: Employee[] }) {
+function StoreInbox({ tabBar, employees }: { tabBar: ReactNode; employees: Employee[] }) {
   const toast = useToast()
   const [employeeId, setEmployeeId] = useState('')
   const [requests, setRequests] = useState<StockRequest[]>([])
@@ -536,7 +542,8 @@ function StoreInbox({ employees }: { employees: Employee[] }) {
 
   return (
     <>
-      <div className="mt-5 flex flex-wrap items-center gap-2 border bg-card p-4 shadow-sm">
+      <div className="mt-5 flex flex-wrap items-center gap-3 border bg-card p-4 shadow-sm">
+        {tabBar}
         <StatusPill tone={waiting ? 'warning' : 'muted'}>{waiting} waiting</StatusPill>
         <span className="text-xs text-muted-foreground">Answered requests stay listed below the waiting ones.</span>
         <div className="w-full sm:ml-auto sm:w-auto"><EmployeeFilter employees={employees} value={employeeId} onChange={setEmployeeId} /></div>
@@ -684,7 +691,7 @@ function RejectModal({ request, onClose, onDone }: { request: StockRequest; onCl
 
 /** Closing count for products set to "Counted at close" (oil, sugar, salt…):
  * the location says what is left and the difference is booked as used. */
-function CountPanel({ locations }: { locations: Location[] }) {
+function CountPanel({ tabBar, locations }: { tabBar: ReactNode; locations: Location[] }) {
   const toast = useToast()
   const [locationId, setLocationId] = useState('')
   const [rows, setRows] = useState<CountRow[]>([])
@@ -727,18 +734,19 @@ function CountPanel({ locations }: { locations: Location[] }) {
 
   return (
     <>
-      <div className="mt-5 border border-l-4 border-l-secondary bg-card p-4 text-sm shadow-sm">
-        <p className="font-semibold">What is this?</p>
-        <p className="mt-1 text-muted-foreground">
-          Some stock isn't taken off per sale, like cooking oil, sugar or salt. Those products are set to <b className="text-foreground">Counted at close</b> (in each product's tracking setting).
-          At the end of a batch or shift, pick the location, enter what is left on the shelf, and the difference from the books is recorded as used.
-          Only those products appear here.
-        </p>
-      </div>
-      <section className="mt-4 overflow-hidden border bg-card shadow-sm">
+      <section className="mt-5 overflow-hidden border bg-card shadow-sm">
         <div className="flex flex-wrap items-end gap-4 border-b p-4">
+          <div className="self-end">{tabBar}</div>
           <LocationPicker label="Location" value={locationId} onChange={setLocationId} locations={locations} />
           <label className="flex min-w-56 flex-1 flex-col gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">Note<input value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Oil finished, discarded" className="input font-normal normal-case tracking-normal" /></label>
+        </div>
+        <div className="border-b border-l-4 border-l-secondary bg-muted/30 p-4 text-sm">
+          <p className="font-semibold">What is this?</p>
+          <p className="mt-1 text-muted-foreground">
+            Some stock isn't taken off per sale, like cooking oil, sugar or salt. Those products are set to <b className="text-foreground">Counted at close</b> (in each product's tracking setting).
+            At the end of a batch or shift, pick the location, enter what is left on the shelf, and the difference from the books is recorded as used.
+            Only those products appear here.
+          </p>
         </div>
         {!locationId ? (
           <p className="p-10 text-center text-sm text-muted-foreground">Choose a location to count.</p>
