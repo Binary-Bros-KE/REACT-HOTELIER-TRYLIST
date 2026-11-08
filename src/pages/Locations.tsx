@@ -76,6 +76,7 @@ type LocationRow = {
   skipKitchenAfterDispatch: boolean
   allowOutOfStockOrders: boolean
   dispatchAutoPrint: boolean
+  dispatchSlipCopies: number
   orderTicketAutoPrint: boolean
   dispatchFromLocationId: string | null
   receiptHeader: string | null
@@ -107,6 +108,7 @@ type LocationForm = {
   skipKitchenAfterDispatch: boolean
   allowOutOfStockOrders: boolean
   dispatchAutoPrint: boolean
+  dispatchSlipCopies: number
   orderTicketAutoPrint: boolean
   dispatchFromLocationId: string
   receiptHeader: string
@@ -126,6 +128,7 @@ const emptyLocationForm: LocationForm = {
   skipKitchenAfterDispatch: false,
   allowOutOfStockOrders: false,
   dispatchAutoPrint: true,
+  dispatchSlipCopies: 1,
   orderTicketAutoPrint: false,
   dispatchFromLocationId: '',
   receiptHeader: '', receiptFooter: '', invoiceHeader: '', invoiceFooter: '', quotationHeader: '', quotationFooter: '',
@@ -196,6 +199,7 @@ export default function Locations() {
       skipKitchenAfterDispatch: location.skipKitchenAfterDispatch ?? false,
       allowOutOfStockOrders: location.allowOutOfStockOrders,
       dispatchAutoPrint: location.dispatchAutoPrint,
+      dispatchSlipCopies: location.dispatchSlipCopies ?? 1,
       orderTicketAutoPrint: location.orderTicketAutoPrint ?? false,
       dispatchFromLocationId: location.dispatchFromLocationId ?? '',
       receiptHeader: location.receiptHeader ?? '',
@@ -496,6 +500,17 @@ export default function Locations() {
                           <span className="block text-sm font-semibold">Print the dispatch slip automatically at the store</span>
                           <span className="block text-xs text-muted-foreground">The store&apos;s printer prints what to dispatch as soon as an order is posted. Off = the storekeeper prints it with the Print button. Needs a printer set up on the store computer.</span>
                         </span>
+                      </label>
+                    )}
+                    {form.requireStoreDispatch && form.dispatchAutoPrint && (
+                      <label className="mt-3 flex items-center justify-between gap-3 border bg-card p-3">
+                        <span>
+                          <span className="block text-sm font-semibold">Copies of each slip</span>
+                          <span className="block text-xs text-muted-foreground">How many slips the store prints per request - e.g. 2: one stays with the storekeeper, one goes to the kitchen.</span>
+                        </span>
+                        <select value={form.dispatchSlipCopies} onChange={(e) => setForm({ ...form, dispatchSlipCopies: Number(e.target.value) })} className="input w-20">
+                          {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n}</option>)}
+                        </select>
                       </label>
                     )}
                     {form.requireStoreDispatch && (
