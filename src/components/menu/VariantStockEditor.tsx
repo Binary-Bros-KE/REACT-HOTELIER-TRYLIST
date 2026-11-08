@@ -86,7 +86,7 @@ function mergedIngredients(recipe: RecipeInfo, overrides: Override[]) {
  * editable from Kitchen > Recipes, reusable on any other item) instead of
  * leaving them as an easily-lost, one-off override set.
  */
-export default function VariantStockEditor({ value, onChange, productOptions, recipes, allowOverrides = true, label = 'Stock this variant uses', onRecipeCreated, onNewRecipe, onNewProduct }: {
+export default function VariantStockEditor({ value, onChange, productOptions, recipes, allowOverrides = true, label = 'Stock this variant uses', onRecipeCreated, onNewRecipe, onEditRecipe, onNewProduct }: {
   value: VariantStock
   onChange: (next: VariantStock) => void
   productOptions: { value: string; label: string; hint?: string }[]
@@ -98,6 +98,8 @@ export default function VariantStockEditor({ value, onChange, productOptions, re
   onRecipeCreated?: (recipe: RecipeInfo) => void
   /** Opens the parent's full recipe editor; `select` picks the saved recipe here. Replaces the name-only "+ New". */
   onNewRecipe?: (select: (recipe: RecipeInfo) => void) => void
+  /** Opens the parent's recipe editor on the chosen recipe. Omit to hide the Edit button. */
+  onEditRecipe?: (recipeId: string) => void
   /** Opens the parent's quick product form; `select` picks the created product here. */
   onNewProduct?: (select: (productId: string) => void) => void
 }) {
@@ -176,6 +178,9 @@ export default function VariantStockEditor({ value, onChange, productOptions, re
                 <SearchableSelect options={recipeOptions} value={value.recipeId} onChange={(v) => onChange({ ...value, recipeId: v, overrides: [] })} placeholder={recipeOptions.length ? 'Select a recipe' : 'No recipes yet - add one under Kitchen > Recipes'} searchPlaceholder="Search recipes…" emptyText="No recipes match." />
               </span>
             </label>
+            {onEditRecipe && value.recipeId && (
+              <button type="button" onClick={() => onEditRecipe(value.recipeId)} title="Edit this recipe's ingredients and steps" className="shrink-0 whitespace-nowrap border px-2.5 py-2 text-xs font-semibold hover:bg-muted">Edit</button>
+            )}
             {onNewRecipe ? (
               <button type="button" onClick={() => onNewRecipe((created) => onChange({ ...value, recipeId: created.id, overrides: [] }))} title="Create a new recipe with its ingredients" className="shrink-0 whitespace-nowrap border px-2.5 py-2 text-xs font-semibold hover:bg-muted">+ New</button>
             ) : onRecipeCreated && (

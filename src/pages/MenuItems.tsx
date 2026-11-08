@@ -903,7 +903,7 @@ export default function MenuItems() {
                     </label>
                     <button type="button" onClick={addStagedVariant} disabled={!variantDraft.name.trim() || variantDraft.price === ''} className="rounded-sm bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-60">Add</button>
                   </div>
-                  <VariantStockEditor value={variantDraft.stock} onChange={(stock) => setVariantDraft({ ...variantDraft, stock })} productOptions={stockProductOptions} recipes={recipes} onRecipeCreated={addRecipe} onNewRecipe={newRecipe} onNewProduct={newProduct} />
+                  <VariantStockEditor value={variantDraft.stock} onChange={(stock) => setVariantDraft({ ...variantDraft, stock })} productOptions={stockProductOptions} recipes={recipes} onRecipeCreated={addRecipe} onNewRecipe={newRecipe} onEditRecipe={(id) => void openRecipeEditor(id)} onNewProduct={newProduct} />
                 </div>
               </div>
             )}
@@ -959,6 +959,7 @@ export default function MenuItems() {
           onChanged={load}
           onRecipeCreated={addRecipe}
           onNewRecipe={newRecipe}
+          onEditRecipe={(id) => void openRecipeEditor(id)}
           onNewProduct={newProduct}
         />
       )}
@@ -1067,10 +1068,11 @@ type VariantsModalProps = {
   onChanged: () => Promise<void>
   onRecipeCreated: (recipe: Recipe) => void
   onNewRecipe: (select: (recipe: Recipe) => void) => void
+  onEditRecipe: (recipeId: string) => void
   onNewProduct: (select: (productId: string) => void) => void
 }
 
-function VariantsModal({ item, recipes, stockProductOptions, onClose, onChanged, onRecipeCreated, onNewRecipe, onNewProduct }: VariantsModalProps) {
+function VariantsModal({ item, recipes, stockProductOptions, onClose, onChanged, onRecipeCreated, onNewRecipe, onEditRecipe, onNewProduct }: VariantsModalProps) {
   const toast = useToast()
   const [variants, setVariants] = useState<Variant[]>([])
   const [loading, setLoading] = useState(true)
@@ -1203,7 +1205,7 @@ function VariantsModal({ item, recipes, stockProductOptions, onClose, onChanged,
             <label className="text-xs font-medium">SKU<input value={draft.sku} onChange={(e) => setDraft({ ...draft, sku: e.target.value })} placeholder="opt." className="input mt-1" /></label>
             <button disabled={busy || !draft.name.trim() || draft.price === ''} className="rounded-sm bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground disabled:opacity-60">Add</button>
           </div>
-          <VariantStockEditor value={draft.stock} onChange={(stock) => setDraft({ ...draft, stock })} productOptions={stockProductOptions} recipes={recipes} onRecipeCreated={onRecipeCreated} onNewRecipe={onNewRecipe} onNewProduct={onNewProduct} />
+          <VariantStockEditor value={draft.stock} onChange={(stock) => setDraft({ ...draft, stock })} productOptions={stockProductOptions} recipes={recipes} onRecipeCreated={onRecipeCreated} onNewRecipe={onNewRecipe} onEditRecipe={onEditRecipe} onNewProduct={onNewProduct} />
         </form>
 
         <div className="mt-5 space-y-2">
@@ -1224,7 +1226,7 @@ function VariantsModal({ item, recipes, stockProductOptions, onClose, onChanged,
                       <button onClick={() => setEditingId(null)} className="rounded-sm border px-2.5 py-2 text-xs font-semibold hover:bg-muted">Cancel</button>
                     </div>
                   </div>
-                  <VariantStockEditor value={editDraft.stock} onChange={(stock) => setEditDraft({ ...editDraft, stock })} productOptions={stockProductOptions} recipes={recipes} onRecipeCreated={onRecipeCreated} onNewRecipe={onNewRecipe} onNewProduct={onNewProduct} />
+                  <VariantStockEditor value={editDraft.stock} onChange={(stock) => setEditDraft({ ...editDraft, stock })} productOptions={stockProductOptions} recipes={recipes} onRecipeCreated={onRecipeCreated} onNewRecipe={onNewRecipe} onEditRecipe={onEditRecipe} onNewProduct={onNewProduct} />
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
