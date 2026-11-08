@@ -60,6 +60,8 @@ type RevenueBreakdown = {
   totalSoldValue?: number
   grossPosSales?: number
   roomGross?: number
+  invoiceGross?: number
+  invoiceCount?: number
   cashCollected?: number
   cogs: number
   unresolvedCostLines: number
@@ -89,6 +91,8 @@ type LocationBucket = {
   expenses: number
   netProfit: number
   profitPercent: number
+  noLocation?: boolean
+  details?: string[]
 }
 type MethodPlace = { name: string; noLocation: boolean; count: number; total: number; details: string[] }
 type MethodBucket = { name: string; count: number; total: number; percentOfTotal: number; locationName?: string | null; byLocation?: MethodPlace[] }
@@ -212,7 +216,7 @@ function buildReportDoc(report: SalesReport, startHour: number): ReportDocData {
       {
         title: 'Sales by Location',
         columns: [{ label: 'Location' }, { label: 'Transactions', align: 'right' }, { label: '% of Total', align: 'right' }, { label: 'Revenue', align: 'right' }, { label: 'Expenses', align: 'right' }, { label: 'Net Profit', align: 'right' }],
-        rows: report.salesByLocation.map((l) => [l.name, l.transactions, `${l.percentOfTotal.toFixed(1)}%`, formatKes(l.revenue), formatKes(l.expenses), formatKes(l.netProfit)]),
+        rows: report.salesByLocation.map((l) => [l.noLocation ? `NO LOCATION${l.details?.length ? ` - ${l.details.join('; ')}` : ''}` : l.name,l.transactions, `${l.percentOfTotal.toFixed(1)}%`, formatKes(l.revenue), formatKes(l.expenses), formatKes(l.netProfit)]),
       },
       {
         title: 'Sales by Payment Method',
@@ -407,9 +411,10 @@ export default function Reports() {
                   <span className="font-semibold">{formatKes(report.revenueBreakdown.grossPosSales ?? 0)}</span> POS and services sold
                   {' + '}<span className="font-semibold">{formatKes(report.revenueBreakdown.roomGross ?? 0)}</span> room charges
                   {' + '}<span className="font-semibold">{formatKes(report.revenueBreakdown.serviceCenterCash)}</span> memberships
+                  {' + '}<span className="font-semibold">{formatKes(report.revenueBreakdown.invoiceGross ?? 0)}</span> invoices
                   {' = '}<span className="font-semibold text-secondary">{formatKes(report.revenueBreakdown.totalSoldValue ?? 0)}</span>
                 </p>
-                <p className="mt-1 text-xs text-muted-foreground">Gross, before discounts. Paid or not. Complimentary rooms and complimentary orders are left out. Cash actually collected in this period: {formatKes(report.revenueBreakdown.cashCollected ?? 0)}.</p>
+                <p className="mt-1 text-xs text-muted-foreground">Gross, before discounts. Paid or not. Complimentary rooms and complimentary orders are left out. Invoices count on the day they're issued; invoices raised from a stay or an order are left out, because that stay or order is already counted. Cash actually collected in this period: {formatKes(report.revenueBreakdown.cashCollected ?? 0)}.</p>
                 <div className="mt-3 grid gap-2 sm:grid-cols-2">
                   <div className="rounded-sm border bg-card p-2.5">
                     <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tax Collected</p>
@@ -552,8 +557,11 @@ export default function Reports() {
             <table className="w-full text-left text-sm">
               <thead className="bg-primary text-xs uppercase text-primary-foreground"><tr><th className="px-4 py-2.5">Location</th><th className="px-4 py-2.5 text-right">Transactions</th><th className="px-4 py-2.5 text-right">Revenue</th><th className="px-4 py-2.5 text-right">Avg Sale</th><th className="px-4 py-2.5 text-right">Net Profit</th><th className="px-4 py-2.5 text-right">Profit %</th><th className="px-4 py-2.5 text-right">% of Total</th></tr></thead>
               <tbody>{report.salesByLocation.map((l) => (
-                <tr key={l.locationId ?? 'unassigned'} className="border-t">
-                  <td className="px-4 py-2.5 font-medium">{l.name}</td>
+                <tr key={l.locationId ?? 'unassigned'} className={cn('border-t', l.noLocation && 'bg-warning/10')}>
+                  <td className="px-4 py-2.5 font-medium">
+                    <span className={cn(l.noLocation && 'font-bold uppercase tracking-wide text-warning')}>{l.name}</span>
+                    {(l.details ?? []).map((d) => <span key={d} className="block text-[11px] font-normal text-foreground/80">{d}</span>)}
+                  </td>
                   <td className="px-4 py-2.5 text-right tabular-nums">{l.transactions}</td>
                   <td className="px-4 py-2.5 text-right tabular-nums font-semibold">{formatKes(l.revenue)}</td>
                   <td className="px-4 py-2.5 text-right tabular-nums">{formatKes(l.avgSale)}</td>
