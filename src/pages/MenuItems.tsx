@@ -140,7 +140,7 @@ function describeItemTax(item: MenuItem, biz: BizTax | null): string {
 
 // How selling this item affects stock: nothing tracked, one direct product
 // (a whole-bottle beer), or a recipe (multi-ingredient / cocktails).
-type StockMode = 'none' | 'product' | 'recipe'
+type StockMode = '' | 'none' | 'product' | 'recipe'
 
 type Form = {
   name: string
@@ -166,7 +166,7 @@ type Form = {
 const emptyForm: Form = {
   name: '', shortName: '', menuCategoryId: '', description: '', sku: '', price: '', taxChoice: 'INHERIT', taxRate: '',
   photoUrl: '', temperature: 'OTHER', isVegetarian: false, allowsAddons: false, isActive: true, isAvailable: true, locationIds: [],
-  stockMode: 'none', stockProductId: '', stockQtyPerUnit: '', recipeId: '',
+  stockMode: '', stockProductId: '', stockQtyPerUnit: '', recipeId: '',
 }
 
 const money = (v: string | number) => `KSh ${Number(v).toLocaleString('en-KE', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`
@@ -321,6 +321,8 @@ export default function MenuItems() {
     event.preventDefault()
     if (!form.menuCategoryId) { setCategoryMissing(true); toast.error('Select a category for this item'); return }
     if (!form.name.trim() || form.price === '') return
+    // No default: whoever adds the item has to decide whether it takes stock.
+    if (!form.stockMode) { toast.error('Choose how this item deducts stock'); return }
     setSaving(true)
     try {
       const payload = {
@@ -746,12 +748,13 @@ export default function MenuItems() {
             </FieldGroup>
 
             <FieldGroup title="Stock deduction">
-              <Field label="On sale, this item" className="sm:col-span-2">
+              <Field label="On sale, this item" required className="sm:col-span-2">
                 <select
-                  className="input"
+                  required className="input"
                   value={form.stockMode}
                   onChange={(e) => setForm({ ...form, stockMode: e.target.value as StockMode })}
                 >
+                  <option value="" disabled>Please select</option>
                   <option value="none">Doesn't track stock</option>
                   <option value="product">Consumes a set amount of one product</option>
                   <option value="recipe">Uses a recipe (multiple ingredients)</option>
@@ -817,7 +820,7 @@ export default function MenuItems() {
                   </div>
                 </Field>
               )}
-              {!!editing?._count.variants && form.stockMode !== 'none' && (
+              {!!editing?._count.variants && (form.stockMode === 'product' || form.stockMode === 'recipe') && (
                 <p className="text-xs text-muted-foreground sm:col-span-2">
                   This item has variants — any variant with its own product set (in Variants) overrides this for that size.
                 </p>
