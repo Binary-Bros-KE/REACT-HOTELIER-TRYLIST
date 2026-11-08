@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { LuArrowRight, LuBan, LuCircleAlert, LuEye, LuHourglass, LuLoaderCircle, LuMapPin, LuMessageSquare, LuPackage, LuPackageCheck, LuPackageMinus, LuPencil, LuPlus, LuSearch, LuX } from 'react-icons/lu'
+import { LuArrowLeft, LuArrowRight, LuLock, LuBan, LuCircleAlert, LuEye, LuHourglass, LuLoaderCircle, LuMapPin, LuMessageSquare, LuPackage, LuPackageCheck, LuPackageMinus, LuPencil, LuPlus, LuSearch, LuX } from 'react-icons/lu'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useWorkingLocation } from '@/lib/useWorkingLocation'
@@ -72,7 +72,7 @@ export default function StockIssues() {
     api<{ employees: Employee[] }>('/employees').then((r) => setEmployees(r.employees)).catch(() => {})
   }, [])
 
-  const storeId = useMemo(() => locations.find((l) => l.type === 'STORE')?.id ?? '', [locations])
+  const storeId = useMemo(() => locations.find((l) => l.type === 'STORE' && l.isActive !== false)?.id ?? '', [locations])
   const departmentId = effectiveId || locations.find((l) => l.type !== 'STORE' && l.isActive !== false)?.id || ''
   const tabs: readonly ('requests' | 'store' | 'count')[] = canDispatch ? ['requests', 'store', 'count'] : ['requests', 'count']
 
@@ -164,19 +164,20 @@ function RequestCard({ request, actions }: { request: StockRequest; actions: Rea
   )
 }
 
-function ModalShell({ kicker, title, wide, onClose, children, footer }: { kicker: string; title: string; wide?: boolean; onClose: () => void; children: ReactNode; footer: ReactNode }) {
+function ModalShell({ kicker, title, wide, fill, onClose, children, footer }: { kicker: string; title: string; wide?: boolean; fill?: boolean; onClose: () => void; children: ReactNode; footer: ReactNode }) {
+  // `fill`: takes the whole screen on a phone, a centred box from sm up.
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className={cn('flex max-h-[92vh] w-full flex-col overflow-hidden border-2 border-foreground/25 bg-card shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]', wide ? 'max-w-4xl' : 'max-w-2xl')}>
-        <div className="flex shrink-0 items-start justify-between gap-4 border-b-4 border-accent bg-muted/60 px-6 py-4">
-          <div>
+    <div className={cn('fixed inset-0 z-50 flex items-center justify-center bg-black/60', fill ? 'sm:p-4' : 'p-4')}>
+      <div className={cn('flex w-full flex-col overflow-hidden bg-card sm:max-h-[92vh] sm:border-2 sm:border-foreground/25 sm:shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]', fill ? 'h-[100dvh] sm:h-auto' : 'max-h-[92vh] border-2 border-foreground/25', wide ? 'max-w-4xl' : 'max-w-2xl')}>
+        <div className="flex shrink-0 items-start justify-between gap-4 border-b-4 border-accent bg-muted/60 px-4 py-3 sm:px-6 sm:py-4">
+          <div className="min-w-0">
             <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">{kicker}</p>
-            <h2 className="mt-1 font-display text-xl font-semibold sm:text-2xl">{title}</h2>
+            <h2 className="mt-1 font-display text-lg font-semibold leading-tight sm:text-2xl">{title}</h2>
           </div>
           <button type="button" onClick={onClose} className="shrink-0 bg-black p-2 text-white transition hover:bg-black/80"><LuX className="size-5" /></button>
         </div>
         {children}
-        <div className="flex shrink-0 items-center justify-between gap-3 border-t-2 border-foreground/15 bg-muted/40 px-6 py-4">{footer}</div>
+        <div className="flex shrink-0 items-center justify-between gap-3 border-t-2 border-foreground/15 bg-muted/40 px-4 py-3 sm:px-6 sm:py-4">{footer}</div>
       </div>
     </div>
   )
@@ -379,8 +380,14 @@ function RequestModal({
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  // Phones walk through it: locations, then products, then a review before sending.
+  const [step, setStep] = useState(0)
+  // A property with a single store always requests from it.
+  const stores = locations.filter((l) => l.type === 'STORE' && l.isActive !== false)
+  const onlyStore = stores.length === 1 ? stores[0] : null
 
   useEffect(() => { if (!fromId && storeId) setFromId(storeId) }, [fromId, storeId])
+  useEffect(() => { if (onlyStore && mode === 'create') setFromId(onlyStore.id) }, [onlyStore?.id, mode])
 
   const load = useCallback(async () => {
     if (!fromId) { setRows([]); return }
@@ -408,11 +415,22 @@ function RequestModal({
   }, new Map<string, SheetProduct[]>()), [visible])
   const lines = useMemo(() => rows.map((r) => ({ productId: r.id, quantity: Number(quantities[r.id]) })).filter((l) => l.quantity > 0), [rows, quantities])
 
+  const locationProblem = !fromId ? 'Choose the store supplying this request'
+    : !toId ? 'Choose the department/location that needs the stock'
+    : fromId === toId ? 'Store and destination must be different' : null
+  const productProblem = lines.length === 0 ? 'Enter a quantity for at least one product' : null
+  const rowById = useMemo(() => new Map(rows.map((r) => [r.id, r])), [rows])
+  const nameOf = (id: string) => locations.find((l) => l.id === id)?.name ?? '—'
+
+  function next() {
+    const problem = step === 0 ? locationProblem : productProblem
+    if (problem) { toast.error(problem); return }
+    setStep((s) => s + 1)
+  }
+
   async function submit() {
-    if (!fromId) { toast.error('Choose the store supplying this request'); return }
-    if (!toId) { toast.error('Choose the department/location that needs the stock'); return }
-    if (fromId === toId) { toast.error('Store and destination must be different'); return }
-    if (lines.length === 0) { toast.error('Enter a quantity for at least one product'); return }
+    const problem = locationProblem ?? productProblem
+    if (problem) { toast.error(problem); return }
     setSaving(true)
     try {
       const payload = { fromLocationId: fromId, toLocationId: toId, note: note.trim() || undefined, lines }
@@ -427,29 +445,49 @@ function RequestModal({
   }
 
   const COLS = 'sm:grid-cols-[1fr_9rem_5.5rem_6.5rem]'
+  const STEPS = ['Locations', 'Products', 'Review'] as const
   return (
     <ModalShell
       wide
+      fill
       kicker={mode === 'edit' ? 'Edit request' : 'New request'}
       title={mode === 'edit' && request ? request.requestNo : 'Request stock from the store'}
       onClose={onClose}
       footer={<>
         <p className="text-xs text-muted-foreground">{plural(lines.length, 'product')} requested</p>
-        <div className="flex gap-2">
+        {/* Phone: back / next through the steps, send on the last one. */}
+        <div className="flex gap-2 sm:hidden">
+          {step === 0
+            ? <CancelButton onClick={onClose} />
+            : <button type="button" onClick={() => setStep((s) => s - 1)} className="flex items-center gap-1.5 border-2 border-foreground/20 bg-card px-3 py-2 text-xs font-bold uppercase tracking-wider"><LuArrowLeft className="size-4" />Back</button>}
+          {step < 2
+            ? <Button onClick={next}>Next <LuArrowRight className="ml-1.5 size-4" /></Button>
+            : <Button onClick={() => void submit()} disabled={saving}>{saving ? 'Saving…' : mode === 'edit' ? 'Save changes' : 'Send request'}</Button>}
+        </div>
+        <div className="hidden gap-2 sm:flex">
           <CancelButton onClick={onClose} />
           <Button onClick={() => void submit()} disabled={saving || lines.length === 0 || !fromId || !toId}>{saving ? 'Saving…' : mode === 'edit' ? 'Save changes' : 'Send request to store'}</Button>
         </div>
       </>}
     >
-      <div className="grid min-h-0 flex-1 grid-cols-1 sm:grid-cols-[18rem_1fr]">
-        <div className="min-h-0 overflow-y-auto border-b p-6 sm:border-b-0 sm:border-r">
-          <div className="space-y-4">
-            <LocationPicker label="Request from" value={fromId} onChange={setFromId} locations={locations} exclude={toId} />
+      <ol className="flex shrink-0 border-b bg-card sm:hidden">
+        {STEPS.map((label, i) => (
+          <li key={label} className={cn('flex flex-1 items-center justify-center gap-1.5 border-b-2 py-2.5 text-[11px] font-bold uppercase tracking-wider', i === step ? 'border-primary text-primary' : i < step ? 'border-primary/40 text-foreground' : 'border-transparent text-muted-foreground')}>
+            <span className={cn('keep-round flex size-5 items-center justify-center rounded-full text-[10px]', i <= step ? 'bg-primary text-primary-foreground' : 'bg-muted')}>{i + 1}</span>{label}
+          </li>
+        ))}
+      </ol>
+
+      <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)] sm:grid-cols-[18rem_1fr]">
+        <div className={cn(step === 0 ? 'block' : 'hidden', 'min-h-0 overflow-y-auto p-4 sm:block sm:border-r sm:p-6')}>
+          <div className="space-y-5">
+            {onlyStore ? (
+              <LockedLocation label="Request from" name={onlyStore.name} />
+            ) : (
+              <LocationPicker label="Request from" value={fromId} onChange={setFromId} locations={locations} exclude={toId} />
+            )}
             {fixedLocation ? (
-              <div>
-                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Needed at</p>
-                <p className="mt-1 border bg-muted px-3 py-2 text-sm font-semibold">{fixedLocation.name}</p>
-              </div>
+              <LockedLocation label="Needed at" name={fixedLocation.name} />
             ) : (
               <LocationPicker label="Needed at" value={toId} onChange={(id) => { setToId(id); onLocationChange(id) }} locations={locationOptions} exclude={fromId} />
             )}
@@ -460,10 +498,11 @@ function RequestModal({
           </div>
         </div>
 
-        <div className="flex min-h-0 flex-col bg-muted/30 p-6">
+        <div className={cn(step === 1 ? 'flex' : 'hidden', 'min-h-0 flex-col bg-muted/30 p-4 sm:flex sm:p-6')}>
+          <p className="mb-2 flex shrink-0 items-center gap-1.5 text-xs font-semibold text-muted-foreground sm:hidden">{nameOf(fromId)} <LuArrowRight className="size-3.5" /> {nameOf(toId)}</p>
           <div className="relative shrink-0">
             <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search products…" className="w-full rounded-sm border bg-background py-2.5 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search products…" className="w-full rounded-sm border bg-background py-2.5 pl-10 pr-3 text-base outline-none focus:ring-2 focus:ring-ring sm:text-sm" />
           </div>
           {/* One header for the whole sheet; the cards below carry only the values. */}
           <div className={cn('mt-3 hidden shrink-0 gap-3 px-3 text-[11px] font-bold uppercase tracking-wider text-muted-foreground sm:grid', COLS)}>
@@ -487,9 +526,9 @@ function RequestModal({
                           <div key={r.id} className={cn('grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1 rounded-sm border bg-card p-3 shadow-sm transition', COLS, asked && 'border-primary/60 ring-1 ring-primary/30')}>
                             <p className="min-w-0 truncate text-sm font-medium" title={r.name}>{r.name} <span className="text-xs text-muted-foreground">{r.unit}</span></p>
                             <p className="order-3 text-xs text-muted-foreground sm:order-none">{MODE_LABEL[r.trackingMode]}</p>
-                            <p className={cn('order-4 text-right text-sm tabular-nums sm:order-none', r.onHand <= 0 ? 'font-semibold text-destructive' : 'text-muted-foreground')}>{qty(r.onHand)}</p>
+                            <p className={cn('order-4 text-right text-sm tabular-nums sm:order-none', r.onHand <= 0 ? 'font-semibold text-destructive' : 'text-muted-foreground')}><span className="text-xs font-normal text-muted-foreground sm:hidden">Store has </span>{qty(r.onHand)}</p>
                             <input
-                              type="number" min="0" step="0.001" placeholder="Qty" aria-label={`Quantity of ${r.name}`}
+                              type="number" inputMode="decimal" min="0" step="0.001" placeholder="Qty" aria-label={`Quantity of ${r.name}`}
                               value={quantities[r.id] ?? ''}
                               onChange={(e) => setQuantities((q) => ({ ...q, [r.id]: e.target.value }))}
                               className="input order-2 w-24 text-right sm:order-none sm:w-full"
@@ -504,8 +543,44 @@ function RequestModal({
             )}
           </div>
         </div>
+
+        {/* Phone only: what is about to be sent, checked before sending. */}
+        <div className={cn(step === 2 ? 'block' : 'hidden', 'min-h-0 overflow-y-auto bg-muted/30 p-4 sm:hidden')}>
+          <div className="rounded-sm border bg-card p-3 shadow-sm">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">From → to</p>
+            <p className="mt-1 flex flex-wrap items-center gap-1.5 font-display font-semibold">{nameOf(fromId)} <LuArrowRight className="size-4 text-muted-foreground" /> {nameOf(toId)}</p>
+            {note.trim() && <p className="mt-2 flex items-start gap-1.5 text-xs"><LuMessageSquare className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />{note.trim()}</p>}
+          </div>
+          <div className="mt-4 flex items-center justify-between">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{plural(lines.length, 'product')}</p>
+            <button type="button" onClick={() => setStep(1)} className="text-xs font-bold uppercase tracking-wider text-primary">Change</button>
+          </div>
+          <div className="mt-2 space-y-2">
+            {lines.map((line) => {
+              const r = rowById.get(line.productId)
+              return (
+                <div key={line.productId} className="flex items-center justify-between gap-3 rounded-sm border bg-card p-3 shadow-sm">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{r?.name} <span className="text-xs text-muted-foreground">{r?.unit}</span></p>
+                    <p className={cn('text-xs', r && r.onHand < line.quantity ? 'font-semibold text-destructive' : 'text-muted-foreground')}>Store has {qty(r?.onHand ?? 0)}</p>
+                  </div>
+                  <p className="shrink-0 font-display text-lg font-semibold tabular-nums">{qty(line.quantity)}</p>
+                </div>
+              )
+            })}
+          </div>
+        </div>
       </div>
     </ModalShell>
+  )
+}
+
+function LockedLocation({ label, name }: { label: string; name: string }) {
+  return (
+    <div>
+      <p className="flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground"><LuMapPin className="size-3.5" /> {label}</p>
+      <p className="mt-1 flex items-center justify-between gap-2 border bg-muted px-3 py-2.5 text-sm font-semibold">{name}<LuLock className="size-3.5 text-muted-foreground" /></p>
+    </div>
   )
 }
 
@@ -606,6 +681,7 @@ function DispatchModal({ request, onClose, onDone }: { request: StockRequest; on
   const COLS = 'sm:grid-cols-[1fr_5.5rem_5.5rem_7rem]'
   return (
     <ModalShell
+      fill
       kicker={request.requestNo}
       title={`Dispatch to ${request.toLocation.name}`}
       onClose={onClose}
