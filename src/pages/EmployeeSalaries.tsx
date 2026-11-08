@@ -459,6 +459,23 @@ export default function EmployeeSalaries({ tabs }: { tabs?: ReactNode } = {}) {
     }
   }
 
+  // A draft with nothing on it - no basic pay, no allowance or deduction lines - can be
+  // deleted, so a mistaken one doesn't block that person's month. Mirrors DELETE /employee-salaries/:id.
+  const isEmptyDraft = (salary: Salary) => salary.status === 'DRAFT' && salary.items.length === 0
+    && [salary.basicSalary, salary.grossPay, salary.netPay, salary.totalAllowances, salary.totalDeductions, salary.carriedOverAmount ?? 0].every((amount) => Math.abs(Number(amount)) < 0.005)
+
+  async function deleteDraft(salary: Salary) {
+    if (!window.confirm(`Delete the empty draft ${salary.payslipNo} for ${salary.employee.firstName}?`)) return
+    try {
+      await api(`/employee-salaries/${salary.id}`, { method: 'DELETE' })
+      toast.success('Empty draft deleted.')
+      setDetail(null)
+      await loadSalaries()
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : 'Could not delete the draft')
+    }
+  }
+
   async function voidSalary(salary: Salary) {
     const reason = window.prompt(`Void ${salary.payslipNo}? Enter the reason.`)
     if (!reason?.trim()) return
@@ -573,6 +590,7 @@ export default function EmployeeSalaries({ tabs }: { tabs?: ReactNode } = {}) {
                         <button onClick={() => setPrinting(salary)} title="Print payslip" className="rounded-sm p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuPrinter /></button>
                         {salary.status === 'VOIDED' && <button onClick={() => void unvoidSalary(salary)} title="Return payslip" className="rounded-sm p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuUndo2 /></button>}
                         {salary.status === 'DRAFT' && <button onClick={() => openProcess(salary.employee, salary)} title="Process draft" className="rounded-sm p-2 text-muted-foreground hover:bg-secondary/10 hover:text-secondary"><LuBanknote /></button>}
+                        {isEmptyDraft(salary) && <button onClick={() => void deleteDraft(salary)} title="Delete this empty draft" className="rounded-sm p-2 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><LuTrash2 /></button>}
                       </div>
                     </td>
                   </tr>
