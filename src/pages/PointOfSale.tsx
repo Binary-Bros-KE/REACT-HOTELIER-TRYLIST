@@ -313,7 +313,8 @@ export default function PointOfSale() {
     if (!silent) setActiveOrdersLoading(true)
     try {
       const query = effectiveLocationId ? `&locationId=${effectiveLocationId}` : ''
-      const response = await api<{ orders: ActiveOrder[] }>(`/pos/orders?channel=FOOD${query}`)
+      // linkedParts: the other open parts of a linked bill come too, so the bill shows whole.
+      const response = await api<{ orders: ActiveOrder[] }>(`/pos/orders?channel=FOOD&linkedParts=true${query}`)
       setActiveOrders((response.orders ?? []).filter((o) => NON_FINAL_STATUSES.includes(o.status)))
     } catch (cause) {
       if (!silent) setError(cause instanceof Error ? cause.message : 'Could not load active orders')
