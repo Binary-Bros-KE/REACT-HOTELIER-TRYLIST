@@ -5,6 +5,7 @@ const TONES = {
   warning: 'border-warning/70 text-warning',
   secondary: 'border-secondary/70 text-secondary',
   success: 'border-success/70 text-success',
+  orange: 'border-orange-500/70 text-orange-600 dark:text-orange-400',
   muted: 'border-muted-foreground/50 text-muted-foreground',
   danger: 'border-destructive/70 text-destructive',
 } as const

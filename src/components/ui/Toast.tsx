@@ -43,6 +43,8 @@ export function ToastProvider({ children }: { children?: ReactNode }) {
         offset={20}
         gap={10}
         visibleToasts={4}
+        // Above every modal and overlay, so an error is never hidden behind one.
+        style={{ zIndex: 2147483647 }}
         closeButton
         toastOptions={{
           classNames: {

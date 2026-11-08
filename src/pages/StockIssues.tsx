@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { LuBan, LuCircleAlert, LuHourglass, LuLoaderCircle, LuMapPin, LuPackageCheck, LuPencil, LuPlus, LuSearch, LuX } from 'react-icons/lu'
+import type { ReactNode } from 'react'
+import { LuArrowRight, LuBan, LuCircleAlert, LuEye, LuHourglass, LuLoaderCircle, LuMapPin, LuMessageSquare, LuPackage, LuPackageCheck, LuPackageMinus, LuPencil, LuPlus, LuSearch, LuX } from 'react-icons/lu'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { useWorkingLocation } from '@/lib/useWorkingLocation'
@@ -9,7 +10,7 @@ import ActionButton from '@/components/ui/ActionButton'
 import Button from '@/components/ui/Button'
 import PageBanner from '@/components/ui/PageBanner'
 import StatCard from '@/components/ui/StatCard'
-import StatusPill from '@/components/ui/StatusPill'
+import StatusPill, { type PillTone } from '@/components/ui/StatusPill'
 
 type Location = { id: string; name: string; type?: string; isActive?: boolean }
 type SheetProduct = { id: string; name: string; unit: string; trackingMode: 'PER_SALE' | 'ISSUE_ONLY' | 'PERIODIC_COUNT'; categoryName: string; onHand: number }
@@ -25,6 +26,7 @@ type StockRequest = {
   requestedByName: string | null
   requestedAt: string
   respondedByName: string | null
+  respondedAt: string | null
   rejectReason: string | null
   fromLocation: Location
   toLocation: Location
@@ -36,18 +38,30 @@ const MODE_LABEL: Record<SheetProduct['trackingMode'], string> = {
   ISSUE_ONLY: 'Used when issued',
   PERIODIC_COUNT: 'Counted at close',
 }
-const STATUS_TONE: Record<Status, 'warning' | 'success' | 'danger' | 'muted'> = { REQUESTED: 'warning', DISPATCHED: 'success', REJECTED: 'danger', CANCELLED: 'muted' }
-const STATUS_LABEL: Record<Status, string> = { REQUESTED: 'Waiting', DISPATCHED: 'Dispatched', REJECTED: 'Rejected', CANCELLED: 'Cancelled' }
+
+// What a request card shows: a dispatch that sent less than was asked is "Partial", not "Dispatched".
+type Shown = Status | 'PARTIAL'
+const shownStatus = (r: StockRequest): Shown =>
+  r.status === 'DISPATCHED' && r.items.some((i) => (i.dispatchedQty ?? 0) < i.requestedQty) ? 'PARTIAL' : r.status
+const SHOWN: Record<Shown, { label: string; tone: PillTone; edge: string }> = {
+  REQUESTED: { label: 'Waiting', tone: 'warning', edge: 'border-l-amber-400' },
+  DISPATCHED: { label: 'Dispatched', tone: 'success', edge: 'border-l-emerald-500' },
+  PARTIAL: { label: 'Partial', tone: 'orange', edge: 'border-l-orange-500' },
+  REJECTED: { label: 'Rejected', tone: 'danger', edge: 'border-l-rose-500' },
+  CANCELLED: { label: 'Cancelled', tone: 'muted', edge: 'border-l-slate-400' },
+}
+const FILTERS: Shown[] = ['REQUESTED', 'DISPATCHED', 'PARTIAL', 'REJECTED', 'CANCELLED']
 const when = (iso: string) => new Date(iso).toLocaleString('en-KE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+const qty = (n: number) => n.toLocaleString('en-KE', { maximumFractionDigits: 3 })
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
+const message = (cause: unknown, fallback: string) => (cause instanceof Error ? cause.message : fallback)
 
 export default function StockIssues() {
-  const toast = useToast()
   const user = useAppSelector((s) => s.auth.user)
   const isSuperAdmin = user?.role?.name === 'Super Admin'
   const canDispatch = isSuperAdmin || Boolean(user?.role?.permissions.includes('STORE_DISPATCH'))
   const [tab, setTab] = useState<'requests' | 'store' | 'count'>('requests')
   const [locations, setLocations] = useState<Location[]>([])
-  const [error, setError] = useState('')
   const { fixed, options, selectedId, setLocation, effectiveId } = useWorkingLocation(locations, { persist: false })
 
   useEffect(() => {
@@ -65,8 +79,6 @@ export default function StockIssues() {
   return (
     <div className="dashboard-square mx-auto max-w-6xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
       <PageBanner kicker="Inventory" title="Stock Requests" />
-
-      {error && <div className="mt-5 flex items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert />{error}</div>}
 
       <div className="mt-6 flex w-fit flex-wrap gap-1 border bg-card p-1 shadow-sm">
         {tabs.map((t) => (
@@ -86,12 +98,10 @@ export default function StockIssues() {
           locationOptions={options}
           selectedLocationId={selectedId}
           onLocationChange={setLocation}
-          onError={setError}
-          toast={toast}
         />
       )}
-      {tab === 'store' && <StoreInbox storeId={storeId} onError={setError} onDone={() => toast.success('Request answered.')} />}
-      {tab === 'count' && <CountPanel locations={locations} onError={setError} onDone={() => toast.success('Count saved.')} />}
+      {tab === 'store' && <StoreInbox />}
+      {tab === 'count' && <CountPanel locations={locations} />}
     </div>
   )
 }
@@ -108,11 +118,107 @@ function LocationPicker({ label, value, onChange, locations, exclude }: { label:
   )
 }
 
-/** The requester's own history: filters, a card per request (items shown
- * inline — no need to drill in), an edit action while still pending, and
- * the "New request" button that opens the split-pane form. */
+/** One request as its own card: where from and to, who asked, how much, the
+ * note. The products themselves open in a modal, so the list stays short. */
+function RequestCard({ request, actions }: { request: StockRequest; actions: ReactNode }) {
+  const shown = SHOWN[shownStatus(request)]
+  const units = request.items.reduce((sum, i) => sum + i.requestedQty, 0)
+  const sentLines = request.items.filter((i) => (i.dispatchedQty ?? 0) > 0).length
+  return (
+    <article className={cn('rounded-sm border border-l-4 bg-card p-4 shadow-sm transition hover:shadow-md', shown.edge)}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{request.requestNo}</span>
+            <StatusPill tone={shown.tone}>{shown.label}</StatusPill>
+          </div>
+          <h3 className="mt-1 flex flex-wrap items-center gap-1.5 font-display text-base font-semibold">
+            {request.fromLocation.name} <LuArrowRight className="size-4 text-muted-foreground" /> {request.toLocation.name}
+          </h3>
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">{actions}</div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5 text-xs text-muted-foreground">
+        <span className="flex items-center gap-1.5"><LuPackage className="size-3.5" /><b className="font-semibold text-foreground">{plural(request.items.length, 'product')}</b> · {qty(units)} units asked</span>
+        {request.status === 'DISPATCHED' && (
+          <span className="flex items-center gap-1.5"><LuPackageCheck className="size-3.5" />Sent {sentLines} of {request.items.length}</span>
+        )}
+        <span>Requested {when(request.requestedAt)}{request.requestedByName ? ` by ${request.requestedByName}` : ''}</span>
+        {request.respondedByName && request.status !== 'REQUESTED' && (
+          <span>{shown.label} {request.respondedAt ? when(request.respondedAt) : ''} by {request.respondedByName}</span>
+        )}
+      </div>
+      {request.note && <p className="mt-2 flex items-start gap-1.5 text-xs"><LuMessageSquare className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" /><span className="line-clamp-2">{request.note}</span></p>}
+      {request.rejectReason && <p className="mt-2 flex items-start gap-1.5 text-xs font-medium text-destructive"><LuBan className="mt-0.5 size-3.5 shrink-0" />{request.rejectReason}</p>}
+    </article>
+  )
+}
+
+function ModalShell({ kicker, title, wide, onClose, children, footer }: { kicker: string; title: string; wide?: boolean; onClose: () => void; children: ReactNode; footer: ReactNode }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className={cn('flex max-h-[92vh] w-full flex-col overflow-hidden border-2 border-foreground/25 bg-card shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]', wide ? 'max-w-4xl' : 'max-w-2xl')}>
+        <div className="flex shrink-0 items-start justify-between gap-4 border-b-4 border-accent bg-muted/60 px-6 py-4">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">{kicker}</p>
+            <h2 className="mt-1 font-display text-xl font-semibold sm:text-2xl">{title}</h2>
+          </div>
+          <button type="button" onClick={onClose} className="shrink-0 bg-black p-2 text-white transition hover:bg-black/80"><LuX className="size-5" /></button>
+        </div>
+        {children}
+        <div className="flex shrink-0 items-center justify-between gap-3 border-t-2 border-foreground/15 bg-muted/40 px-6 py-4">{footer}</div>
+      </div>
+    </div>
+  )
+}
+
+const CancelButton = ({ onClick, label = 'Cancel' }: { onClick: () => void; label?: string }) => (
+  <button type="button" onClick={onClick} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted">{label}</button>
+)
+
+/** The products on a request: what was asked and, once answered, what was sent. */
+function RequestDetail({ request, onClose }: { request: StockRequest; onClose: () => void }) {
+  const shown = SHOWN[shownStatus(request)]
+  const answered = request.status === 'DISPATCHED'
+  return (
+    <ModalShell kicker={request.requestNo} title={`${request.fromLocation.name} → ${request.toLocation.name}`} onClose={onClose} footer={<><StatusPill tone={shown.tone}>{shown.label}</StatusPill><CancelButton onClick={onClose} label="Close" /></>}>
+      <div className="min-h-0 flex-1 overflow-y-auto p-6">
+        <p className="text-xs text-muted-foreground">Requested {when(request.requestedAt)}{request.requestedByName ? ` by ${request.requestedByName}` : ''}{request.respondedByName && request.status !== 'REQUESTED' ? ` · ${shown.label.toLowerCase()} by ${request.respondedByName}` : ''}</p>
+        {request.note && <p className="mt-2 rounded-sm border bg-muted/40 p-3 text-sm"><span className="font-semibold">Note:</span> {request.note}</p>}
+        {request.rejectReason && <p className="mt-2 rounded-sm border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"><span className="font-semibold">Rejected:</span> {request.rejectReason}</p>}
+        <div className={cn('mt-4 hidden gap-3 px-3 text-xs font-bold uppercase tracking-wider text-muted-foreground sm:grid', answered ? 'sm:grid-cols-[1fr_6rem_6rem]' : 'sm:grid-cols-[1fr_6rem]')}>
+          <span>Product</span><span className="text-right">Asked</span>{answered && <span className="text-right">Sent</span>}
+        </div>
+        <div className="mt-2 space-y-2">
+          {request.items.map((item) => {
+            const short = answered && (item.dispatchedQty ?? 0) < item.requestedQty
+            return (
+              <div key={item.id} className={cn('grid gap-3 rounded-sm border bg-background p-3 shadow-sm', answered ? 'grid-cols-[1fr_auto_auto] sm:grid-cols-[1fr_6rem_6rem]' : 'grid-cols-[1fr_auto] sm:grid-cols-[1fr_6rem]', short && 'border-orange-400/60')}>
+                <p className="min-w-0 truncate text-sm font-medium">{item.productName} <span className="text-xs text-muted-foreground">{item.unit}</span></p>
+                <p className="text-right text-sm tabular-nums">{qty(item.requestedQty)}</p>
+                {answered && <p className={cn('text-right text-sm font-semibold tabular-nums', short ? 'text-orange-600' : 'text-success')}>{qty(item.dispatchedQty ?? 0)}</p>}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </ModalShell>
+  )
+}
+
+const SELECT = 'rounded-sm border bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring'
+
+function ListState({ loading, empty, children }: { loading: boolean; empty: string | null; children: ReactNode }) {
+  if (loading) return <div className="flex min-h-40 items-center justify-center gap-2 border bg-card p-10 text-sm text-muted-foreground shadow-sm"><LuLoaderCircle className="animate-spin" /> Loading…</div>
+  if (empty) return <p className="border border-dashed bg-card p-10 text-center text-sm text-muted-foreground">{empty}</p>
+  return <div className="space-y-3">{children}</div>
+}
+
+/** The requester's history (every location's for Super Admin), a card per
+ * request, and the "New request" button that opens the split-pane form. */
 function RequestsPanel({
-  locations, storeId, seeAll, departmentId, fixedLocation, locationOptions, selectedLocationId, onLocationChange, onError, toast,
+  locations, storeId, seeAll, departmentId, fixedLocation, locationOptions, selectedLocationId, onLocationChange,
 }: {
   locations: Location[]
   storeId: string
@@ -122,99 +228,78 @@ function RequestsPanel({
   locationOptions: Location[]
   selectedLocationId: string
   onLocationChange: (id: string) => void
-  onError: (m: string) => void
-  toast: ReturnType<typeof useToast>
 }) {
+  const toast = useToast()
   const [requests, setRequests] = useState<StockRequest[]>([])
   const [loading, setLoading] = useState(true)
-  const [statusFilter, setStatusFilter] = useState<'all' | Status>('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | Shown>('all')
   // Super Admin sees every location's requests; they can narrow it to one.
   const [locationFilter, setLocationFilter] = useState('')
   const listLocationId = seeAll ? locationFilter : departmentId
   const [modal, setModal] = useState<{ mode: 'create' | 'edit'; request?: StockRequest } | null>(null)
+  const [viewing, setViewing] = useState<StockRequest | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
       const params = new URLSearchParams()
       if (listLocationId) params.set('toLocationId', listLocationId)
-      if (statusFilter !== 'all') params.set('status', statusFilter)
       const r = await api<{ requests: StockRequest[] }>(`/stock-issues/requests?${params.toString()}`)
       setRequests(r.requests)
-      onError('')
     } catch (cause) {
-      onError(cause instanceof Error ? cause.message : 'Could not load stock requests')
+      toast.error(message(cause, 'Could not load stock requests'))
     } finally {
       setLoading(false)
     }
-  }, [listLocationId, statusFilter, onError])
+  }, [listLocationId, toast])
   useEffect(() => { void load() }, [load])
 
   const counts = useMemo(() => {
-    const out: Record<Status, number> = { REQUESTED: 0, DISPATCHED: 0, REJECTED: 0, CANCELLED: 0 }
-    for (const r of requests) out[r.status] += 1
+    const out: Record<Shown, number> = { REQUESTED: 0, DISPATCHED: 0, PARTIAL: 0, REJECTED: 0, CANCELLED: 0 }
+    for (const r of requests) out[shownStatus(r)] += 1
     return out
   }, [requests])
+  const shown = statusFilter === 'all' ? requests : requests.filter((r) => shownStatus(r) === statusFilter)
 
   return (
     <>
-      <section className="mt-5 grid gap-3 sm:grid-cols-3">
+      <section className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard index={0} label="Waiting" value={counts.REQUESTED} icon={<LuHourglass />} tone={counts.REQUESTED ? 'warn' : undefined} />
         <StatCard index={1} label="Dispatched" value={counts.DISPATCHED} icon={<LuPackageCheck />} tone="success" />
+        <StatCard index={8} label="Partial" value={counts.PARTIAL} icon={<LuPackageMinus />} />
         <StatCard index={2} label="Rejected" value={counts.REJECTED} icon={<LuBan />} tone="danger" />
       </section>
 
-      <section className="mt-5 overflow-hidden border bg-card shadow-sm">
-        <div className="flex flex-col gap-3 border-b p-4 sm:flex-row sm:items-center sm:justify-between">
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as 'all' | Status)} className="rounded-sm border bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring">
-            <option value="all">All statuses</option>
-            {(Object.keys(STATUS_LABEL) as Status[]).map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
+      <div className="mt-5 flex flex-col gap-3 border bg-card p-4 shadow-sm sm:flex-row sm:items-center">
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as 'all' | Shown)} className={SELECT}>
+          <option value="all">All statuses</option>
+          {FILTERS.map((s) => <option key={s} value={s}>{SHOWN[s].label}</option>)}
+        </select>
+        {seeAll && (
+          <select value={locationFilter} onChange={(e) => setLocationFilter(e.target.value)} className={SELECT}>
+            <option value="">All locations</option>
+            {locations.filter((l) => l.type !== 'STORE' && l.isActive !== false).map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
-          {seeAll && (
-            <select value={locationFilter} onChange={(e) => setLocationFilter(e.target.value)} className="rounded-sm border bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring sm:mr-auto">
-              <option value="">All locations</option>
-              {locations.filter((l) => l.type !== 'STORE' && l.isActive !== false).map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-            </select>
-          )}
-          <ActionButton tone="primary" icon={<LuPlus />} onClick={() => setModal({ mode: 'create' })}>New request</ActionButton>
-        </div>
-
-        {loading ? (
-          <div className="flex min-h-40 items-center justify-center gap-2 p-10 text-sm text-muted-foreground"><LuLoaderCircle className="animate-spin" /> Loading…</div>
-        ) : requests.length === 0 ? (
-          <p className="p-10 text-center text-sm text-muted-foreground">No stock requests yet.</p>
-        ) : (
-          <div className="divide-y">
-            {requests.map((request) => (
-              <article key={request.id} className="p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{request.requestNo}</p>
-                    <h3 className="font-display text-base font-semibold">{request.fromLocation.name} → {request.toLocation.name}</h3>
-                    <p className="text-xs text-muted-foreground">Requested {when(request.requestedAt)}{request.requestedByName ? ` by ${request.requestedByName}` : ''}</p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <StatusPill tone={STATUS_TONE[request.status]}>{STATUS_LABEL[request.status]}</StatusPill>
-                    {request.status === 'REQUESTED' && <ActionButton tone="neutral" icon={<LuPencil />} title="Edit" onClick={() => setModal({ mode: 'edit', request })} />}
-                  </div>
-                </div>
-                <ul className="mt-3 divide-y text-sm">
-                  {request.items.map((item) => (
-                    <li key={item.id} className="flex items-center justify-between gap-3 py-1.5">
-                      <span className="truncate">{item.productName} <span className="text-xs text-muted-foreground">{item.unit}</span></span>
-                      <span className="shrink-0 tabular-nums text-muted-foreground">{item.requestedQty}{item.dispatchedQty != null ? ` · sent ${item.dispatchedQty}` : ''}</span>
-                    </li>
-                  ))}
-                </ul>
-                {request.note && <p className="mt-2 text-xs text-muted-foreground">Note: {request.note}</p>}
-                {request.respondedByName && request.status !== 'REQUESTED' && <p className="mt-1 text-xs text-muted-foreground">{STATUS_LABEL[request.status]} by {request.respondedByName}</p>}
-                {request.rejectReason && <p className="mt-1 text-xs text-destructive">Reason: {request.rejectReason}</p>}
-              </article>
-            ))}
-          </div>
         )}
-      </section>
+        <div className="sm:ml-auto"><ActionButton tone="primary" icon={<LuPlus />} onClick={() => setModal({ mode: 'create' })}>New request</ActionButton></div>
+      </div>
 
+      <div className="mt-4">
+        <ListState loading={loading} empty={shown.length === 0 ? (requests.length === 0 ? 'No stock requests yet.' : 'No requests match this filter.') : null}>
+          {shown.map((request) => (
+            <RequestCard
+              key={request.id}
+              request={request}
+              actions={<>
+                <ActionButton tone="neutral" icon={<LuEye />} onClick={() => setViewing(request)}>View</ActionButton>
+                {request.status === 'REQUESTED' && <ActionButton tone="neutral" icon={<LuPencil />} onClick={() => setModal({ mode: 'edit', request })}>Edit</ActionButton>}
+              </>}
+            />
+          ))}
+        </ListState>
+      </div>
+
+      {viewing && <RequestDetail request={viewing} onClose={() => setViewing(null)} />}
       {modal && (
         <RequestModal
           mode={modal.mode}
@@ -239,9 +324,9 @@ function RequestsPanel({
   )
 }
 
-/** Create/edit, split in two like the Requisition form: location + note on
- * the left, the store's product sheet (search, grouped by category, a
- * quantity per line) on the right. Each pane scrolls on its own. */
+/** Create/edit, split in two: location + note on the left, the store's
+ * product sheet (search, grouped by category, a card per product with a
+ * quantity) on the right. Each pane scrolls on its own. */
 function RequestModal({
   mode, request, locations, storeId, departmentId, fixedLocation, locationOptions, selectedLocationId, onLocationChange, onClose, onDone,
 }: {
@@ -257,6 +342,7 @@ function RequestModal({
   onClose: () => void
   onDone: () => void
 }) {
+  const toast = useToast()
   const [fromId, setFromId] = useState(request?.fromLocation.id ?? storeId)
   const [toId, setToId] = useState(request?.toLocation.id ?? (fixedLocation ? fixedLocation.id : (selectedLocationId || departmentId)))
   const [note, setNote] = useState(request?.note ?? '')
@@ -265,7 +351,6 @@ function RequestModal({
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState('')
 
   useEffect(() => { if (!fromId && storeId) setFromId(storeId) }, [fromId, storeId])
 
@@ -276,11 +361,11 @@ function RequestModal({
       const r = await api<{ products: SheetProduct[] }>(`/stock-issues/request-sheet?fromLocationId=${fromId}`)
       setRows(r.products)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not load products from store')
+      toast.error(message(cause, 'Could not load products from store'))
     } finally {
       setLoading(false)
     }
-  }, [fromId])
+  }, [fromId, toast])
   useEffect(() => { void load() }, [load])
 
   const visible = useMemo(() => {
@@ -296,225 +381,247 @@ function RequestModal({
   const lines = useMemo(() => rows.map((r) => ({ productId: r.id, quantity: Number(quantities[r.id]) })).filter((l) => l.quantity > 0), [rows, quantities])
 
   async function submit() {
-    if (!fromId) { setError('Choose the store supplying this request'); return }
-    if (!toId) { setError('Choose the department/location that needs the stock'); return }
-    if (fromId === toId) { setError('Store and destination must be different'); return }
-    if (lines.length === 0) { setError('Enter a quantity for at least one product'); return }
+    if (!fromId) { toast.error('Choose the store supplying this request'); return }
+    if (!toId) { toast.error('Choose the department/location that needs the stock'); return }
+    if (fromId === toId) { toast.error('Store and destination must be different'); return }
+    if (lines.length === 0) { toast.error('Enter a quantity for at least one product'); return }
     setSaving(true)
-    setError('')
     try {
       const payload = { fromLocationId: fromId, toLocationId: toId, note: note.trim() || undefined, lines }
       if (mode === 'edit' && request) await api(`/stock-issues/requests/${request.id}`, { method: 'PATCH', body: JSON.stringify(payload) })
       else await api('/stock-issues/requests', { method: 'POST', body: JSON.stringify(payload) })
       onDone()
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not save this request')
+      toast.error(message(cause, 'Could not save this request'))
     } finally {
       setSaving(false)
     }
   }
 
+  const COLS = 'sm:grid-cols-[1fr_9rem_5.5rem_6.5rem]'
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden border-2 border-foreground/25 bg-card shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
-        <div className="flex shrink-0 items-start justify-between gap-4 border-b-4 border-accent bg-muted/60 px-6 py-4">
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">{mode === 'edit' ? 'Edit request' : 'New request'}</p>
-            <h2 className="mt-1 font-display text-2xl font-semibold">{mode === 'edit' && request ? request.requestNo : 'Request stock from the store'}</h2>
+    <ModalShell
+      wide
+      kicker={mode === 'edit' ? 'Edit request' : 'New request'}
+      title={mode === 'edit' && request ? request.requestNo : 'Request stock from the store'}
+      onClose={onClose}
+      footer={<>
+        <p className="text-xs text-muted-foreground">{plural(lines.length, 'product')} requested</p>
+        <div className="flex gap-2">
+          <CancelButton onClick={onClose} />
+          <Button onClick={() => void submit()} disabled={saving || lines.length === 0 || !fromId || !toId}>{saving ? 'Saving…' : mode === 'edit' ? 'Save changes' : 'Send request to store'}</Button>
+        </div>
+      </>}
+    >
+      <div className="grid min-h-0 flex-1 grid-cols-1 sm:grid-cols-[18rem_1fr]">
+        <div className="min-h-0 overflow-y-auto border-b p-6 sm:border-b-0 sm:border-r">
+          <div className="space-y-4">
+            <LocationPicker label="Request from" value={fromId} onChange={setFromId} locations={locations} exclude={toId} />
+            {fixedLocation ? (
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Needed at</p>
+                <p className="mt-1 border bg-muted px-3 py-2 text-sm font-semibold">{fixedLocation.name}</p>
+              </div>
+            ) : (
+              <LocationPicker label="Needed at" value={toId} onChange={(id) => { setToId(id); onLocationChange(id) }} locations={locationOptions} exclude={fromId} />
+            )}
+            <label className="flex flex-col gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              Note
+              <textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Afternoon room replenishment" className="input font-normal normal-case tracking-normal" />
+            </label>
           </div>
-          <button type="button" onClick={onClose} className="shrink-0 bg-black p-2 text-white transition hover:bg-black/80"><LuX className="size-5" /></button>
         </div>
 
-        <div className="grid min-h-0 flex-1 grid-cols-1 sm:grid-cols-[18rem_1fr]">
-          <div className="min-h-0 overflow-y-auto border-b p-6 sm:border-b-0 sm:border-r">
-            <div className="space-y-4">
-              <LocationPicker label="Request from" value={fromId} onChange={setFromId} locations={locations} exclude={toId} />
-              {fixedLocation ? (
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Needed at</p>
-                  <p className="mt-1 border bg-muted px-3 py-2 text-sm font-semibold">{fixedLocation.name}</p>
-                </div>
-              ) : (
-                <LocationPicker label="Needed at" value={toId} onChange={(id) => { setToId(id); onLocationChange(id) }} locations={locationOptions} exclude={fromId} />
-              )}
-              <label className="flex flex-col gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Note
-                <textarea rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Afternoon room replenishment" className="input font-normal normal-case tracking-normal" />
-              </label>
-            </div>
+        <div className="flex min-h-0 flex-col bg-muted/30 p-6">
+          <div className="relative shrink-0">
+            <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search products…" className="w-full rounded-sm border bg-background py-2.5 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
+          </div>
+          {/* One header for the whole sheet; the cards below carry only the values. */}
+          <div className={cn('mt-3 hidden shrink-0 gap-3 px-3 text-[11px] font-bold uppercase tracking-wider text-muted-foreground sm:grid', COLS)}>
+            <span>Product</span><span>Tracking</span><span className="text-right">Store has</span><span className="text-right">Request</span>
           </div>
 
-          <div className="flex min-h-0 flex-col p-6">
-            <div className="relative shrink-0">
-              <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search products…" className="w-full rounded-sm border bg-background py-2.5 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-ring" />
-            </div>
-
-            <div className="mt-3 min-h-0 flex-1 overflow-y-auto">
-              {loading ? (
-                <div className="flex min-h-32 items-center justify-center gap-2 text-sm text-muted-foreground"><LuLoaderCircle className="animate-spin" /> Loading…</div>
-              ) : rows.length === 0 ? (
-                <p className="p-6 text-center text-sm text-muted-foreground">No stock products are set up for this store yet.</p>
-              ) : (
-                <div className="space-y-4">
-                  {[...grouped.entries()].map(([category, products]) => (
-                    <div key={category}>
-                      <h3 className="mb-2 font-display text-xs font-bold uppercase tracking-wider text-primary">{category}</h3>
-                      <div className="hidden gap-2 px-1 text-xs font-medium text-muted-foreground sm:grid sm:grid-cols-[1fr_8rem_7rem_7rem]">
-                        <span>Product</span><span>Tracking</span><span className="text-right">Store has</span><span className="text-right">Request</span>
-                      </div>
-                      <div className="space-y-1.5">
-                        {products.map((r) => (
-                          <div key={r.id} className="rounded-sm border p-2.5 sm:grid sm:grid-cols-[1fr_8rem_7rem_7rem] sm:items-center sm:gap-2 sm:border-0 sm:p-0">
-                            <p className="truncate text-sm font-medium">{r.name} <span className="text-xs text-muted-foreground">{r.unit}</span></p>
-                            <p className="mt-0.5 text-xs text-muted-foreground sm:mt-0">{MODE_LABEL[r.trackingMode]}</p>
-                            <p className="mt-0.5 text-xs text-muted-foreground sm:mt-0 sm:text-right sm:tabular-nums">Store has {r.onHand}</p>
+          <div className="mt-2 min-h-0 flex-1 overflow-y-auto pr-1">
+            {loading ? (
+              <div className="flex min-h-32 items-center justify-center gap-2 text-sm text-muted-foreground"><LuLoaderCircle className="animate-spin" /> Loading…</div>
+            ) : rows.length === 0 ? (
+              <p className="p-6 text-center text-sm text-muted-foreground">No stock products are set up for this store yet.</p>
+            ) : (
+              <div className="space-y-5">
+                {[...grouped.entries()].map(([category, products]) => (
+                  <div key={category}>
+                    <h3 className="mb-2 font-display text-xs font-bold uppercase tracking-wider text-primary">{category}</h3>
+                    <div className="space-y-2">
+                      {products.map((r) => {
+                        const asked = Number(quantities[r.id]) > 0
+                        return (
+                          <div key={r.id} className={cn('grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1 rounded-sm border bg-card p-3 shadow-sm transition', COLS, asked && 'border-primary/60 ring-1 ring-primary/30')}>
+                            <p className="min-w-0 truncate text-sm font-medium" title={r.name}>{r.name} <span className="text-xs text-muted-foreground">{r.unit}</span></p>
+                            <p className="order-3 text-xs text-muted-foreground sm:order-none">{MODE_LABEL[r.trackingMode]}</p>
+                            <p className={cn('order-4 text-right text-sm tabular-nums sm:order-none', r.onHand <= 0 ? 'font-semibold text-destructive' : 'text-muted-foreground')}>{qty(r.onHand)}</p>
                             <input
-                              type="number" min="0" step="0.001" placeholder="Qty"
+                              type="number" min="0" step="0.001" placeholder="Qty" aria-label={`Quantity of ${r.name}`}
                               value={quantities[r.id] ?? ''}
                               onChange={(e) => setQuantities((q) => ({ ...q, [r.id]: e.target.value }))}
-                              className="input mt-2 w-full sm:mt-0 sm:text-right"
+                              className="input order-2 w-24 text-right sm:order-none sm:w-full"
                             />
                           </div>
-                        ))}
-                      </div>
+                        )
+                      })}
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {error && <div className="mx-6 mb-3 flex shrink-0 items-center gap-2 rounded-sm border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert />{error}</div>}
-
-        <div className="flex shrink-0 items-center justify-between gap-3 border-t-2 border-foreground/15 bg-muted/40 px-6 py-4">
-          <p className="text-xs text-muted-foreground">{lines.length} product{lines.length === 1 ? '' : 's'} requested</p>
-          <div className="flex gap-2">
-            <button type="button" onClick={onClose} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted">Cancel</button>
-            <Button onClick={() => void submit()} disabled={saving || lines.length === 0 || !fromId || !toId}>{saving ? 'Saving…' : mode === 'edit' ? 'Save changes' : 'Send request to store'}</Button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
-    </div>
+    </ModalShell>
   )
 }
 
-function StoreInbox({ storeId, onError, onDone }: { storeId: string; onError: (m: string) => void; onDone: () => void }) {
+/** Every request made to a store: pending ones first, answered ones stay below
+ * (newest first) so the storekeeper can still see what went out. */
+function StoreInbox() {
+  const toast = useToast()
   const [requests, setRequests] = useState<StockRequest[]>([])
   const [dispatching, setDispatching] = useState<StockRequest | null>(null)
   const [rejecting, setRejecting] = useState<StockRequest | null>(null)
-  const [loading, setLoading] = useState(false)
-  const load = useCallback(async () => {
-    if (!storeId) return
-    setLoading(true)
+  const [viewing, setViewing] = useState<StockRequest | null>(null)
+  const [loading, setLoading] = useState(true)
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) setLoading(true)
     try {
-      const params = new URLSearchParams({ status: 'REQUESTED', fromLocationId: storeId })
-      const r = await api<{ requests: StockRequest[] }>(`/stock-issues/requests?${params.toString()}`)
-      setRequests(r.requests)
-      onError('')
+      // All pending ones (however old) plus the latest answered ones.
+      const [pending, recent] = await Promise.all([
+        api<{ requests: StockRequest[] }>('/stock-issues/requests?fromStores=1&status=REQUESTED'),
+        api<{ requests: StockRequest[] }>('/stock-issues/requests?fromStores=1'),
+      ])
+      const byId = new Map([...pending.requests, ...recent.requests].map((r) => [r.id, r]))
+      setRequests([...byId.values()].sort((a, b) =>
+        Number(b.status === 'REQUESTED') - Number(a.status === 'REQUESTED') || b.requestedAt.localeCompare(a.requestedAt)))
     } catch (cause) {
-      onError(cause instanceof Error ? cause.message : 'Could not load store inbox')
+      if (!quiet) toast.error(message(cause, 'Could not load store inbox'))
     } finally {
       setLoading(false)
     }
-  }, [onError, storeId])
-  useEffect(() => { void load(); const id = window.setInterval(() => void load(), 15000); return () => window.clearInterval(id) }, [load])
+  }, [toast])
+  useEffect(() => { void load(); const id = window.setInterval(() => void load(true), 15000); return () => window.clearInterval(id) }, [load])
+  const waiting = requests.filter((r) => r.status === 'REQUESTED').length
 
   return (
     <>
-      <section className="mt-5 overflow-hidden border bg-card shadow-sm">
-        <div className="flex items-center gap-2 border-b p-4">
-          <StatusPill tone="warning">{requests.length} waiting</StatusPill>
-        </div>
-        {loading ? (
-          <div className="flex min-h-32 items-center justify-center gap-2 p-10 text-sm text-muted-foreground"><LuLoaderCircle className="animate-spin" /> Loading…</div>
-        ) : requests.length === 0 ? (
-          <p className="p-10 text-center text-sm text-muted-foreground">No pending stock requests.</p>
-        ) : (
-          <div className="divide-y">
-            {requests.map((request) => (
-              <article key={request.id} className="p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{request.requestNo}</p>
-                    <h3 className="font-display text-base font-semibold">{request.fromLocation.name} → {request.toLocation.name}</h3>
-                    <p className="text-xs text-muted-foreground">Requested {when(request.requestedAt)}{request.requestedByName ? ` by ${request.requestedByName}` : ''}</p>
-                  </div>
-                  <div className="flex shrink-0 gap-2">
-                    <ActionButton tone="success" icon={<LuPackageCheck />} onClick={() => setDispatching(request)}>Dispatch</ActionButton>
-                    <ActionButton tone="danger" icon={<LuBan />} onClick={() => setRejecting(request)}>Reject</ActionButton>
-                  </div>
-                </div>
-                <ul className="mt-3 divide-y text-sm">
-                  {request.items.map((item) => (
-                    <li key={item.id} className="flex items-center justify-between gap-3 py-1.5">
-                      <span className="truncate">{item.productName} <span className="text-xs text-muted-foreground">{item.unit}</span></span>
-                      <span className={cn('shrink-0 tabular-nums', item.available < item.requestedQty && 'font-semibold text-destructive')}>{item.requestedQty} <span className="text-xs text-muted-foreground">(store has {item.available})</span></span>
-                    </li>
-                  ))}
-                </ul>
-                {request.note && <p className="mt-2 text-xs text-muted-foreground">Note: {request.note}</p>}
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
-      {dispatching && <DispatchModal request={dispatching} onClose={() => setDispatching(null)} onDone={() => { setDispatching(null); onDone(); void load() }} onError={onError} />}
-      {rejecting && <RejectModal request={rejecting} onClose={() => setRejecting(null)} onDone={() => { setRejecting(null); onDone(); void load() }} onError={onError} />}
+      <div className="mt-5 flex flex-wrap items-center gap-2 border bg-card p-4 shadow-sm">
+        <StatusPill tone={waiting ? 'warning' : 'muted'}>{waiting} waiting</StatusPill>
+        <span className="text-xs text-muted-foreground">Answered requests stay listed below the waiting ones.</span>
+      </div>
+      <div className="mt-4">
+        <ListState loading={loading} empty={requests.length === 0 ? 'No stock requests have been made to the store yet.' : null}>
+          {requests.map((request) => (
+            <RequestCard
+              key={request.id}
+              request={request}
+              actions={<>
+                <ActionButton tone="neutral" icon={<LuEye />} onClick={() => setViewing(request)}>View</ActionButton>
+                {request.status === 'REQUESTED' && <>
+                  <ActionButton tone="success" icon={<LuPackageCheck />} onClick={() => setDispatching(request)}>Dispatch</ActionButton>
+                  <ActionButton tone="danger" icon={<LuBan />} onClick={() => setRejecting(request)}>Reject</ActionButton>
+                </>}
+              </>}
+            />
+          ))}
+        </ListState>
+      </div>
+      {viewing && <RequestDetail request={viewing} onClose={() => setViewing(null)} />}
+      {dispatching && <DispatchModal request={dispatching} onClose={() => setDispatching(null)} onDone={(partial) => { setDispatching(null); toast.success(partial ? 'Partly dispatched.' : 'Dispatched in full.'); void load() }} />}
+      {rejecting && <RejectModal request={rejecting} onClose={() => setRejecting(null)} onDone={() => { setRejecting(null); toast.success('Request rejected.'); void load() }} />}
     </>
   )
 }
 
-function DispatchModal({ request, onClose, onDone, onError }: { request: StockRequest; onClose: () => void; onDone: () => void; onError: (m: string) => void }) {
-  const [quantities, setQuantities] = useState<Record<string, string>>(() => Object.fromEntries(request.items.map((i) => [i.id, String(Math.min(i.requestedQty, Math.max(i.available, 0)))])))
+/** Each line starts at what was asked. A line the store can't cover blocks the
+ * dispatch until the storekeeper sets what they're really sending, or 0. */
+function DispatchModal({ request, onClose, onDone }: { request: StockRequest; onClose: () => void; onDone: (partial: boolean) => void }) {
+  const toast = useToast()
+  const [quantities, setQuantities] = useState<Record<string, string>>(() => Object.fromEntries(request.items.map((i) => [i.id, String(i.requestedQty)])))
   const [saving, setSaving] = useState(false)
+  const problems = request.items.map((item) => {
+    const raw = quantities[item.id] ?? ''
+    const value = Number(raw)
+    if (raw.trim() === '' || !Number.isFinite(value) || value < 0) return 'blank'
+    if (value > Math.max(item.available, 0)) return 'short'
+    if (value > item.requestedQty) return 'over'
+    return null
+  })
+  const blocked = problems.filter(Boolean).length
+  const sending = request.items.filter((i) => Number(quantities[i.id]) > 0).length
+  const partial = request.items.some((i) => Number(quantities[i.id] ?? 0) < i.requestedQty)
+
   async function submit() {
+    if (blocked) { toast.error(`Fix ${plural(blocked, 'line')} first: set what you're really sending, or 0.`); return }
+    if (!sending) { toast.error('Nothing is being sent. Reject the request instead.'); return }
     setSaving(true)
     try {
-      await api(`/stock-issues/requests/${request.id}/dispatch`, { method: 'POST', body: JSON.stringify({ lines: request.items.map((item) => ({ itemId: item.id, quantity: Number(quantities[item.id] ?? 0) })) }) })
-      onDone()
+      await api(`/stock-issues/requests/${request.id}/dispatch`, { method: 'POST', body: JSON.stringify({ lines: request.items.map((item) => ({ itemId: item.id, quantity: Number(quantities[item.id]) })) }) })
+      onDone(partial)
     } catch (cause) {
-      onError(cause instanceof Error ? cause.message : 'Could not dispatch this request')
+      toast.error(message(cause, 'Could not dispatch this request'))
     } finally {
       setSaving(false)
     }
   }
+  const COLS = 'sm:grid-cols-[1fr_5.5rem_5.5rem_7rem]'
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden border-2 border-foreground/25 bg-card shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
-        <div className="flex shrink-0 items-start justify-between gap-4 border-b-4 border-accent bg-muted/60 px-6 py-4">
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">{request.requestNo}</p>
-            <h2 className="mt-1 font-display text-xl font-semibold">Dispatch to {request.toLocation.name}</h2>
-          </div>
-          <button type="button" onClick={onClose} className="shrink-0 bg-black p-2 text-white transition hover:bg-black/80"><LuX className="size-5" /></button>
+    <ModalShell
+      kicker={request.requestNo}
+      title={`Dispatch to ${request.toLocation.name}`}
+      onClose={onClose}
+      footer={<>
+        <p className={cn('text-xs', blocked ? 'font-semibold text-destructive' : 'text-muted-foreground')}>
+          {blocked ? `${plural(blocked, 'line')} to fix before dispatching` : `Sending ${sending} of ${request.items.length}${partial ? ' · partial' : ''}`}
+        </p>
+        <div className="flex gap-2">
+          <CancelButton onClick={onClose} />
+          <Button onClick={() => void submit()} disabled={saving || blocked > 0 || sending === 0}>{saving ? 'Dispatching…' : 'Dispatch goods'}</Button>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-6">
-          <div className="hidden gap-2 px-1 text-xs font-medium text-muted-foreground sm:grid sm:grid-cols-[1fr_6rem_6rem_7rem]">
-            <span>Item</span><span className="text-right">Requested</span><span className="text-right">Available</span><span className="text-right">Send</span>
-          </div>
-          <div className="mt-1 space-y-2">
-            {request.items.map((item) => (
-              <div key={item.id} className="rounded-sm border p-2.5 sm:grid sm:grid-cols-[1fr_6rem_6rem_7rem] sm:items-center sm:gap-2 sm:border-0 sm:p-0">
-                <p className="truncate text-sm font-medium">{item.productName} <span className="text-xs text-muted-foreground">{item.unit}</span></p>
-                <p className="mt-0.5 text-xs text-muted-foreground sm:mt-0 sm:text-right sm:tabular-nums sm:text-sm">Asked {item.requestedQty}</p>
-                <p className={cn('mt-0.5 text-xs sm:mt-0 sm:text-right sm:tabular-nums sm:text-sm', item.available < item.requestedQty ? 'font-semibold text-destructive' : 'text-muted-foreground')}>Has {item.available}</p>
-                <input type="number" min="0" step="0.001" className="input mt-2 w-full sm:mt-0 sm:text-right" value={quantities[item.id] ?? ''} onChange={(e) => setQuantities((q) => ({ ...q, [item.id]: e.target.value }))} />
+      </>}
+    >
+      <div className="min-h-0 flex-1 overflow-y-auto bg-muted/30 p-6">
+        {request.note && <p className="mb-3 rounded-sm border bg-card p-3 text-sm"><span className="font-semibold">Note:</span> {request.note}</p>}
+        <div className={cn('hidden gap-3 px-3 text-[11px] font-bold uppercase tracking-wider text-muted-foreground sm:grid', COLS)}>
+          <span>Product</span><span className="text-right">Asked</span><span className="text-right">Store has</span><span className="text-right">Send</span>
+        </div>
+        <div className="mt-2 space-y-2">
+          {request.items.map((item, index) => {
+            const problem = problems[index]
+            return (
+              <div key={item.id} className={cn('rounded-sm border bg-card p-3 shadow-sm', problem && 'border-destructive/60 ring-1 ring-destructive/30')}>
+                <div className={cn('grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1', COLS)}>
+                  <p className="min-w-0 truncate text-sm font-medium">{item.productName} <span className="text-xs text-muted-foreground">{item.unit}</span></p>
+                  <p className="order-3 text-sm tabular-nums text-muted-foreground sm:order-none sm:text-right"><span className="sm:hidden">Asked </span>{qty(item.requestedQty)}</p>
+                  <p className={cn('order-4 text-right text-sm tabular-nums sm:order-none', item.available < item.requestedQty ? 'font-semibold text-destructive' : 'text-muted-foreground')}><span className="sm:hidden">Store has </span>{qty(item.available)}</p>
+                  <input type="number" min="0" step="0.001" aria-label={`Send ${item.productName}`} className="input order-2 w-24 text-right sm:order-none sm:w-full" value={quantities[item.id] ?? ''} onChange={(e) => setQuantities((q) => ({ ...q, [item.id]: e.target.value }))} />
+                </div>
+                {problem && (
+                  <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-destructive">
+                    <LuCircleAlert className="size-3.5 shrink-0" />
+                    {problem === 'blank' ? 'Enter how much you are sending (0 if none).'
+                      : problem === 'over' ? `More than the ${qty(item.requestedQty)} asked.`
+                      : `The store only has ${qty(Math.max(item.available, 0))}. Set what you're really sending, or 0.`}
+                  </p>
+                )}
               </div>
-            ))}
-          </div>
-        </div>
-        <div className="flex shrink-0 justify-end gap-2 border-t-2 border-foreground/15 bg-muted/40 px-6 py-4">
-          <button type="button" onClick={onClose} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted">Cancel</button>
-          <Button onClick={() => void submit()} disabled={saving}>{saving ? 'Dispatching…' : 'Dispatch goods'}</Button>
+            )
+          })}
         </div>
       </div>
-    </div>
+    </ModalShell>
   )
 }
 
-function RejectModal({ request, onClose, onDone, onError }: { request: StockRequest; onClose: () => void; onDone: () => void; onError: (m: string) => void }) {
+function RejectModal({ request, onClose, onDone }: { request: StockRequest; onClose: () => void; onDone: () => void }) {
+  const toast = useToast()
   const [reason, setReason] = useState('')
   const [saving, setSaving] = useState(false)
   async function submit() {
@@ -523,33 +630,37 @@ function RejectModal({ request, onClose, onDone, onError }: { request: StockRequ
       await api(`/stock-issues/requests/${request.id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) })
       onDone()
     } catch (cause) {
-      onError(cause instanceof Error ? cause.message : 'Could not reject this request')
+      toast.error(message(cause, 'Could not reject this request'))
       setSaving(false)
     }
   }
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-md border-2 border-foreground/25 bg-card shadow-[8px_8px_0_0_rgba(0,0,0,0.25)]">
-        <div className="border-b-4 border-accent bg-muted/60 px-6 py-4">
-          <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-secondary">{request.requestNo}</p>
-          <h2 className="mt-1 font-display text-xl font-semibold">Reject this request</h2>
-        </div>
-        <div className="p-6">
-          <label className="block text-sm font-medium">Reason
-            <textarea rows={3} className="input mt-1.5" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Out of stock, expected tomorrow" />
-          </label>
-          <p className="mt-2 text-xs text-muted-foreground">The requester sees this reason and can raise a new request.</p>
-        </div>
-        <div className="flex justify-end gap-2 border-t-2 border-foreground/15 bg-muted/40 px-6 py-4">
-          <button type="button" onClick={onClose} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted">Cancel</button>
+    <ModalShell
+      kicker={request.requestNo}
+      title="Reject this request"
+      onClose={onClose}
+      footer={<>
+        <span />
+        <div className="flex gap-2">
+          <CancelButton onClick={onClose} />
           <Button variant="danger" onClick={() => void submit()} disabled={!reason.trim() || saving}>{saving ? 'Rejecting…' : 'Reject request'}</Button>
         </div>
+      </>}
+    >
+      <div className="p-6">
+        <label className="block text-sm font-medium">Reason
+          <textarea rows={3} className="input mt-1.5" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Out of stock, expected tomorrow" />
+        </label>
+        <p className="mt-2 text-xs text-muted-foreground">The requester sees this reason and can raise a new request.</p>
       </div>
-    </div>
+    </ModalShell>
   )
 }
 
-function CountPanel({ locations, onError, onDone }: { locations: Location[]; onError: (m: string) => void; onDone: () => void }) {
+/** Closing count for products set to "Counted at close" (oil, sugar, salt…):
+ * the location says what is left and the difference is booked as used. */
+function CountPanel({ locations }: { locations: Location[] }) {
+  const toast = useToast()
   const [locationId, setLocationId] = useState('')
   const [rows, setRows] = useState<CountRow[]>([])
   const [counts, setCounts] = useState<Record<string, string>>({})
@@ -566,60 +677,69 @@ function CountPanel({ locations, onError, onDone }: { locations: Location[]; onE
       setRows(r.products)
       setCounts({})
       setResults(null)
-      onError('')
     } catch (cause) {
-      onError(cause instanceof Error ? cause.message : 'Could not load the count list')
+      toast.error(message(cause, 'Could not load the count list'))
     } finally {
       setLoading(false)
     }
-  }, [locationId, onError])
+  }, [locationId, toast])
 
   useEffect(() => { void load() }, [load])
   const lines = useMemo(() => rows.filter((r) => counts[r.id] !== undefined && counts[r.id] !== '').map((r) => ({ productId: r.id, counted: Number(counts[r.id]) })), [rows, counts])
 
   async function submit() {
     setSaving(true)
-    onError('')
     try {
       const r = await api<{ lines: CountResult[] }>('/stock-issues/count', { method: 'POST', body: JSON.stringify({ locationId, note: note.trim() || undefined, lines }) })
-      setResults(r.lines)
-      onDone()
+      toast.success('Count saved.')
       void load().then(() => setResults(r.lines))
     } catch (cause) {
-      onError(cause instanceof Error ? cause.message : 'Could not save the count')
+      toast.error(message(cause, 'Could not save the count'))
     } finally {
       setSaving(false)
     }
   }
 
   return (
-    <section className="mt-6 overflow-hidden border bg-card shadow-sm">
-      <div className="flex flex-wrap items-end gap-4 border-b p-4">
-        <LocationPicker label="Location" value={locationId} onChange={setLocationId} locations={locations} />
-        <label className="flex min-w-56 flex-1 flex-col gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">Note<input value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Oil finished, discarded" className="input font-normal normal-case tracking-normal" /></label>
+    <>
+      <div className="mt-5 border border-l-4 border-l-secondary bg-card p-4 text-sm shadow-sm">
+        <p className="font-semibold">What is this?</p>
+        <p className="mt-1 text-muted-foreground">
+          Some stock isn't taken off per sale, like cooking oil, sugar or salt. Those products are set to <b className="text-foreground">Counted at close</b> (in each product's tracking setting).
+          At the end of a batch or shift, pick the location, enter what is left on the shelf, and the difference from the books is recorded as used.
+          Only those products appear here.
+        </p>
       </div>
-      {loading ? (
-        <div className="flex min-h-40 items-center justify-center gap-2 text-sm text-muted-foreground"><LuLoaderCircle className="animate-spin" /> Loading...</div>
-      ) : rows.length === 0 ? (
-        <p className="p-10 text-center text-sm text-muted-foreground">No products are counted at this location.</p>
-      ) : (
-        <div className="p-4">
-          <div className="hidden gap-2 px-1 text-xs font-medium text-muted-foreground sm:grid sm:grid-cols-[1fr_7rem_10rem]">
-            <span>Product</span><span className="text-right">Expected</span><span className="text-right">Counted now</span>
-          </div>
-          <div className="mt-1 space-y-1.5">
-            {rows.map((r) => (
-              <div key={r.id} className="rounded-sm border p-2.5 sm:grid sm:grid-cols-[1fr_7rem_10rem] sm:items-center sm:gap-2 sm:border-0 sm:p-0">
-                <p className="truncate text-sm font-medium">{r.name} <span className="text-xs text-muted-foreground">{r.unit}</span></p>
-                <p className="mt-0.5 text-xs text-muted-foreground sm:mt-0 sm:text-right sm:tabular-nums sm:text-sm">Expected {r.onHand}</p>
-                <input type="number" min="0" step="0.001" placeholder="Leave blank to skip" value={counts[r.id] ?? ''} onChange={(e) => setCounts((c) => ({ ...c, [r.id]: e.target.value }))} className="input mt-2 w-full sm:mt-0 sm:text-right" />
-              </div>
-            ))}
-          </div>
+      <section className="mt-4 overflow-hidden border bg-card shadow-sm">
+        <div className="flex flex-wrap items-end gap-4 border-b p-4">
+          <LocationPicker label="Location" value={locationId} onChange={setLocationId} locations={locations} />
+          <label className="flex min-w-56 flex-1 flex-col gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">Note<input value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. Oil finished, discarded" className="input font-normal normal-case tracking-normal" /></label>
         </div>
-      )}
-      {results && <div className="border-t p-4"><p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">Last count</p><ul className="space-y-1 text-sm">{results.map((r) => <li key={r.productId} className="flex justify-between gap-3"><span>{r.name}</span><span className="tabular-nums text-muted-foreground">{r.used > 0 ? `used ${r.used}` : r.found > 0 ? `found ${r.found} more` : 'matches the books'}</span></li>)}</ul></div>}
-      <div className="flex items-center justify-between gap-3 border-t p-4"><p className="text-xs text-muted-foreground">{lines.length} product{lines.length === 1 ? '' : 's'} counted</p><Button onClick={() => void submit()} disabled={saving || lines.length === 0 || !locationId}>{saving ? 'Saving...' : 'Save count'}</Button></div>
-    </section>
+        {!locationId ? (
+          <p className="p-10 text-center text-sm text-muted-foreground">Choose a location to count.</p>
+        ) : loading ? (
+          <div className="flex min-h-40 items-center justify-center gap-2 text-sm text-muted-foreground"><LuLoaderCircle className="animate-spin" /> Loading...</div>
+        ) : rows.length === 0 ? (
+          <p className="p-10 text-center text-sm text-muted-foreground">No products are set to "Counted at close" yet, so there is nothing to count. Change a product's tracking to "Counted at close" in Products to count it here.</p>
+        ) : (
+          <div className="bg-muted/30 p-4">
+            <div className="hidden gap-3 px-3 text-[11px] font-bold uppercase tracking-wider text-muted-foreground sm:grid sm:grid-cols-[1fr_7rem_10rem]">
+              <span>Product</span><span className="text-right">Books say</span><span className="text-right">Counted now</span>
+            </div>
+            <div className="mt-2 space-y-2">
+              {rows.map((r) => (
+                <div key={r.id} className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1 rounded-sm border bg-card p-3 shadow-sm sm:grid-cols-[1fr_7rem_10rem]">
+                  <p className="min-w-0 truncate text-sm font-medium">{r.name} <span className="text-xs text-muted-foreground">{r.unit}</span></p>
+                  <p className="order-3 text-sm tabular-nums text-muted-foreground sm:order-none sm:text-right">{qty(r.onHand)}</p>
+                  <input type="number" min="0" step="0.001" placeholder="Leave blank to skip" value={counts[r.id] ?? ''} onChange={(e) => setCounts((c) => ({ ...c, [r.id]: e.target.value }))} className="input order-2 w-32 text-right sm:order-none sm:w-full" />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {results && <div className="border-t p-4"><p className="mb-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">Last count</p><ul className="space-y-1 text-sm">{results.map((r) => <li key={r.productId} className="flex justify-between gap-3"><span>{r.name}</span><span className="tabular-nums text-muted-foreground">{r.used > 0 ? `used ${r.used}` : r.found > 0 ? `found ${r.found} more` : 'matches the books'}</span></li>)}</ul></div>}
+        {rows.length > 0 && <div className="flex items-center justify-between gap-3 border-t p-4"><p className="text-xs text-muted-foreground">{plural(lines.length, 'product')} counted</p><Button onClick={() => void submit()} disabled={saving || lines.length === 0 || !locationId}>{saving ? 'Saving...' : 'Save count'}</Button></div>}
+      </section>
+    </>
   )
 }
