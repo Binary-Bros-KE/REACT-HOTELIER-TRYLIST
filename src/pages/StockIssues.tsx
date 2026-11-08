@@ -11,7 +11,9 @@ import Button from '@/components/ui/Button'
 import PageBanner from '@/components/ui/PageBanner'
 import StatCard from '@/components/ui/StatCard'
 import StatusPill, { type PillTone } from '@/components/ui/StatusPill'
+import SearchableSelect from '@/components/ui/SearchableSelect'
 
+type Employee = { id: string; firstName: string; lastName: string | null }
 type Location = { id: string; name: string; type?: string; isActive?: boolean }
 type SheetProduct = { id: string; name: string; unit: string; trackingMode: 'PER_SALE' | 'ISSUE_ONLY' | 'PERIODIC_COUNT'; categoryName: string; onHand: number }
 type CountRow = { id: string; name: string; unit: string; onHand: number }
@@ -62,10 +64,12 @@ export default function StockIssues() {
   const canDispatch = isSuperAdmin || Boolean(user?.role?.permissions.includes('STORE_DISPATCH'))
   const [tab, setTab] = useState<'requests' | 'store' | 'count'>('requests')
   const [locations, setLocations] = useState<Location[]>([])
+  const [employees, setEmployees] = useState<Employee[]>([])
   const { fixed, options, selectedId, setLocation, effectiveId } = useWorkingLocation(locations, { persist: false })
 
   useEffect(() => {
     api<{ locations: Location[] }>('/locations').then((r) => setLocations(r.locations)).catch(() => {})
+    api<{ employees: Employee[] }>('/employees').then((r) => setEmployees(r.employees)).catch(() => {})
   }, [])
 
   const storeId = useMemo(() => locations.find((l) => l.type === 'STORE')?.id ?? '', [locations])
@@ -91,6 +95,7 @@ export default function StockIssues() {
       {tab === 'requests' && (
         <RequestsPanel
           locations={locations}
+          employees={employees}
           storeId={storeId}
           seeAll={isSuperAdmin}
           departmentId={departmentId}
@@ -100,7 +105,7 @@ export default function StockIssues() {
           onLocationChange={setLocation}
         />
       )}
-      {tab === 'store' && <StoreInbox />}
+      {tab === 'store' && <StoreInbox employees={employees} />}
       {tab === 'count' && <CountPanel locations={locations} />}
     </div>
   )
@@ -207,6 +212,19 @@ function RequestDetail({ request, onClose }: { request: StockRequest; onClose: (
   )
 }
 
+/** Searchable: a property can have dozens of staff. Matches requests they made or answered. */
+function EmployeeFilter({ employees, value, onChange }: { employees: Employee[]; value: string; onChange: (id: string) => void }) {
+  const options = useMemo(() => [
+    { value: '', label: 'All employees' },
+    ...employees.map((e) => ({ value: e.id, label: `${e.firstName} ${e.lastName ?? ''}`.trim() })),
+  ], [employees])
+  return (
+    <div className="sm:w-60">
+      <SearchableSelect options={options} value={value} onChange={onChange} placeholder="All employees" searchPlaceholder="Search employees…" emptyText="No employee matches." />
+    </div>
+  )
+}
+
 const SELECT = 'rounded-sm border bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring'
 
 function ListState({ loading, empty, children }: { loading: boolean; empty: string | null; children: ReactNode }) {
@@ -218,9 +236,10 @@ function ListState({ loading, empty, children }: { loading: boolean; empty: stri
 /** The requester's history (every location's for Super Admin), a card per
  * request, and the "New request" button that opens the split-pane form. */
 function RequestsPanel({
-  locations, storeId, seeAll, departmentId, fixedLocation, locationOptions, selectedLocationId, onLocationChange,
+  locations, employees, storeId, seeAll, departmentId, fixedLocation, locationOptions, selectedLocationId, onLocationChange,
 }: {
   locations: Location[]
+  employees: Employee[]
   storeId: string
   seeAll: boolean
   departmentId: string
@@ -236,6 +255,7 @@ function RequestsPanel({
   // Super Admin sees every location's requests; they can narrow it to one.
   const [locationFilter, setLocationFilter] = useState('')
   const listLocationId = seeAll ? locationFilter : departmentId
+  const [employeeId, setEmployeeId] = useState('')
   const [modal, setModal] = useState<{ mode: 'create' | 'edit'; request?: StockRequest } | null>(null)
   const [viewing, setViewing] = useState<StockRequest | null>(null)
 
@@ -244,6 +264,7 @@ function RequestsPanel({
     try {
       const params = new URLSearchParams()
       if (listLocationId) params.set('toLocationId', listLocationId)
+      if (employeeId) params.set('employeeId', employeeId)
       const r = await api<{ requests: StockRequest[] }>(`/stock-issues/requests?${params.toString()}`)
       setRequests(r.requests)
     } catch (cause) {
@@ -251,7 +272,7 @@ function RequestsPanel({
     } finally {
       setLoading(false)
     }
-  }, [listLocationId, toast])
+  }, [listLocationId, employeeId, toast])
   useEffect(() => { void load() }, [load])
 
   const counts = useMemo(() => {
@@ -281,6 +302,7 @@ function RequestsPanel({
             {locations.filter((l) => l.type !== 'STORE' && l.isActive !== false).map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
         )}
+        <EmployeeFilter employees={employees} value={employeeId} onChange={setEmployeeId} />
         <div className="sm:ml-auto"><ActionButton tone="primary" icon={<LuPlus />} onClick={() => setModal({ mode: 'create' })}>New request</ActionButton></div>
       </div>
 
@@ -483,8 +505,9 @@ function RequestModal({
 
 /** Every request made to a store: pending ones first, answered ones stay below
  * (newest first) so the storekeeper can still see what went out. */
-function StoreInbox() {
+function StoreInbox({ employees }: { employees: Employee[] }) {
   const toast = useToast()
+  const [employeeId, setEmployeeId] = useState('')
   const [requests, setRequests] = useState<StockRequest[]>([])
   const [dispatching, setDispatching] = useState<StockRequest | null>(null)
   const [rejecting, setRejecting] = useState<StockRequest | null>(null)
@@ -494,9 +517,10 @@ function StoreInbox() {
     if (!quiet) setLoading(true)
     try {
       // All pending ones (however old) plus the latest answered ones.
+      const who = employeeId ? `&employeeId=${employeeId}` : ''
       const [pending, recent] = await Promise.all([
-        api<{ requests: StockRequest[] }>('/stock-issues/requests?fromStores=1&status=REQUESTED'),
-        api<{ requests: StockRequest[] }>('/stock-issues/requests?fromStores=1'),
+        api<{ requests: StockRequest[] }>(`/stock-issues/requests?fromStores=1&status=REQUESTED${who}`),
+        api<{ requests: StockRequest[] }>(`/stock-issues/requests?fromStores=1${who}`),
       ])
       const byId = new Map([...pending.requests, ...recent.requests].map((r) => [r.id, r]))
       setRequests([...byId.values()].sort((a, b) =>
@@ -506,7 +530,7 @@ function StoreInbox() {
     } finally {
       setLoading(false)
     }
-  }, [toast])
+  }, [employeeId, toast])
   useEffect(() => { void load(); const id = window.setInterval(() => void load(true), 15000); return () => window.clearInterval(id) }, [load])
   const waiting = requests.filter((r) => r.status === 'REQUESTED').length
 
@@ -515,6 +539,7 @@ function StoreInbox() {
       <div className="mt-5 flex flex-wrap items-center gap-2 border bg-card p-4 shadow-sm">
         <StatusPill tone={waiting ? 'warning' : 'muted'}>{waiting} waiting</StatusPill>
         <span className="text-xs text-muted-foreground">Answered requests stay listed below the waiting ones.</span>
+        <div className="w-full sm:ml-auto sm:w-auto"><EmployeeFilter employees={employees} value={employeeId} onChange={setEmployeeId} /></div>
       </div>
       <div className="mt-4">
         <ListState loading={loading} empty={requests.length === 0 ? 'No stock requests have been made to the store yet.' : null}>
