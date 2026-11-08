@@ -28,6 +28,7 @@ import { useToast } from "@/components/ui/Toast";
 import { useAppSelector } from "@/store/hooks";
 import { useWorkingLocation } from "@/lib/useWorkingLocation";
 import { folioPots, ROOM_POT } from "@/lib/folioAllocation";
+import { useCustomerPhoneRequired } from "@/lib/useCustomerPhoneRequired";
 import SharedStatCard from "@/components/ui/StatCard";
 import ActionButton from "@/components/ui/ActionButton";
 import ConfirmModal from "@/components/ui/ConfirmModal";
@@ -626,6 +627,7 @@ function NewGuestModal({ customers, rooms, at, onClose, onDone, onCustomerCreate
   const toast = useToast();
   const [step, setStep] = useState(0);
   const [mode, setMode] = useState<"existing" | "new">("existing");
+  const phoneRequired = useCustomerPhoneRequired();
   const [customerId, setCustomerId] = useState("");
   const [guest, setGuest] = useState({
     firstName: "", lastName: "", phone: "", email: "", customerType: "PERSONAL" as (typeof CUSTOMER_TYPES)[number],
@@ -657,7 +659,7 @@ function NewGuestModal({ customers, rooms, at, onClose, onDone, onCustomerCreate
   const roomOff = termsDiscount(terms, roomGross, qty);
   const guestValid = mode === "existing"
     ? Boolean(customerId)
-    : (guest.customerType === "BUSINESS" ? Boolean(guest.businessName.trim()) : Boolean(guest.firstName.trim())) && guest.phone.trim().length >= 5;
+    : (guest.customerType === "BUSINESS" ? Boolean(guest.businessName.trim()) : Boolean(guest.firstName.trim())) && (!phoneRequired || guest.phone.trim().length >= 9);
   const stayValid = Boolean(roomId) && !needsRate && new Date(checkOut) > new Date(checkIn) && Number(adults) >= 1 && !termsInvalid(terms);
   const valid = [guestValid, stayValid, true];
   const guestName = mode === "existing"
@@ -812,7 +814,7 @@ function NewGuestModal({ customers, rooms, at, onClose, onDone, onCustomerCreate
                     <label className="text-sm font-medium">Contact person
                       <input className="input mt-1.5" placeholder="e.g. Jane Doe" value={guest.contactPerson} onChange={(e) => setGuest({ ...guest, contactPerson: e.target.value })} />
                     </label>
-                    <label className="text-sm font-medium">Phone *<input className="input mt-1.5" value={guest.phone} onChange={(e) => setGuest({ ...guest, phone: e.target.value })} /></label>
+                    <label className="text-sm font-medium">{phoneRequired ? "Phone *" : "Phone (optional)"}<input className="input mt-1.5" value={guest.phone} onChange={(e) => setGuest({ ...guest, phone: e.target.value })} /></label>
                     <label className="text-sm font-medium">Email<input type="email" className="input mt-1.5" value={guest.email} onChange={(e) => setGuest({ ...guest, email: e.target.value })} /></label>
                     <label className="text-sm font-medium">Billing phone <span className="font-normal text-muted-foreground">(if different)</span>
                       <input className="input mt-1.5" value={guest.billingPhone} onChange={(e) => setGuest({ ...guest, billingPhone: e.target.value })} />
@@ -831,7 +833,7 @@ function NewGuestModal({ customers, rooms, at, onClose, onDone, onCustomerCreate
                   <>
                     <label className="text-sm font-medium">First name *<input className="input mt-1.5" value={guest.firstName} onChange={(e) => setGuest({ ...guest, firstName: e.target.value })} /></label>
                     <label className="text-sm font-medium">Last name<input className="input mt-1.5" value={guest.lastName} onChange={(e) => setGuest({ ...guest, lastName: e.target.value })} /></label>
-                    <label className="text-sm font-medium">Phone *<input className="input mt-1.5" value={guest.phone} onChange={(e) => setGuest({ ...guest, phone: e.target.value })} /></label>
+                    <label className="text-sm font-medium">{phoneRequired ? "Phone *" : "Phone (optional)"}<input className="input mt-1.5" value={guest.phone} onChange={(e) => setGuest({ ...guest, phone: e.target.value })} /></label>
                     <label className="text-sm font-medium">Email<input type="email" className="input mt-1.5" value={guest.email} onChange={(e) => setGuest({ ...guest, email: e.target.value })} /></label>
                     <label className="text-sm font-medium sm:col-span-2">National ID / Passport
                       <input className="input mt-1.5" placeholder="e.g. 30112233" value={guest.idNumber} onChange={(e) => setGuest({ ...guest, idNumber: e.target.value })} />

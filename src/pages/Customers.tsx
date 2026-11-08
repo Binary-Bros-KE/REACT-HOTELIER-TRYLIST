@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useCustomerPhoneRequired } from '@/lib/useCustomerPhoneRequired'
 import type { FormEvent, ReactNode } from 'react'
 import { useLocation } from 'react-router-dom'
 import {
@@ -196,6 +197,7 @@ export default function Customers() {
   const [statusFilter, setStatusFilter] = useState('')
   const [groupFilter, setGroupFilter] = useState('')
   const [form, setForm] = useState<CustomerForm>(emptyForm)
+  const phoneRequired = useCustomerPhoneRequired()
   const [editing, setEditing] = useState<Customer | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [creditFor, setCreditFor] = useState<Customer | null>(null)
@@ -435,7 +437,7 @@ export default function Customers() {
                   <Field label="Last Name"><TouchInput placeholder="e.g. Wanjiru" value={form.lastName} onValueChange={(value) => setForm({ ...form, lastName: value })} className="input" /></Field>
                 </>
               )}
-              <Field label="Phone" required><TouchInput required type="tel" keyboardMode="number" placeholder="e.g. 0712 345 678" value={form.phone} onValueChange={(value) => setForm({ ...form, phone: value })} className="input" /></Field>
+              <Field label={phoneRequired ? 'Phone' : 'Phone (optional)'} required={phoneRequired}><TouchInput required={phoneRequired} type="tel" keyboardMode="number" placeholder="e.g. 0712 345 678" value={form.phone} onValueChange={(value) => setForm({ ...form, phone: value })} className="input" /></Field>
               <Field label="Email"><TouchInput type="email" placeholder="e.g. faith@example.com" value={form.email} onValueChange={(value) => setForm({ ...form, email: value })} className="input" /></Field>
               <Field label="Address" className="sm:col-span-2"><TouchInput placeholder="Physical address" value={form.address} onValueChange={(value) => setForm({ ...form, address: value })} className="input" /></Field>
               {isServiceCenter && (

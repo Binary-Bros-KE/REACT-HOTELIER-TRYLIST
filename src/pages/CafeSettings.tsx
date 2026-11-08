@@ -5,6 +5,8 @@ import { api } from '@/lib/api'
 import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/utils'
 import PageBanner from '@/components/ui/PageBanner'
+import { useAppSelector } from '@/store/hooks'
+import { resetCustomerPhoneRequired } from '@/lib/useCustomerPhoneRequired'
 
 type LicenseStatus = 'TRIAL' | 'ACTIVE' | 'EXPIRED' | 'SUSPENDED'
 type License = {
@@ -30,6 +32,63 @@ const licenseStatusStyles: Record<LicenseStatus, string> = {
 }
 const formatDate = (value: string | null) => value ? new Date(value).toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
 const formatDateTime = (value: string | null) => value ? new Date(value).toLocaleString('en-KE', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Never'
+
+/** Customer rules - every user sees them, only a Super Admin changes them. */
+function CustomerRules() {
+  const toast = useToast()
+  const isSuperAdmin = useAppSelector((s) => s.auth.user?.role?.name === 'Super Admin')
+  const [requirePhone, setRequirePhone] = useState<boolean | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    api<{ profile: { requireCustomerPhone?: boolean } | null }>('/business-profile')
+      .then((r) => setRequirePhone(Boolean(r.profile?.requireCustomerPhone)))
+      .catch(() => setRequirePhone(false))
+  }, [])
+
+  async function toggle(next: boolean) {
+    setSaving(true)
+    try {
+      await api('/business-profile/customer-rules', { method: 'PATCH', body: JSON.stringify({ requireCustomerPhone: next }) })
+      setRequirePhone(next)
+      resetCustomerPhoneRequired()
+      toast.success(next ? 'A phone number is now required for customers.' : 'The customer phone number is now optional.')
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : 'Could not change the setting')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <section className="mt-6 border bg-card p-5 shadow-sm">
+      <div className="border-l-4 border-accent pl-3">
+        <h2 className="font-display text-lg font-semibold leading-tight">Customers</h2>
+        <p className="text-xs text-muted-foreground">Rules for every new or edited customer, wherever they're created - Customers, Reception, or the POS.</p>
+      </div>
+      <label className={cn('mt-4 flex items-start gap-3 border bg-muted/30 p-3', isSuperAdmin && 'cursor-pointer')}>
+        <input
+          type="checkbox"
+          className="mt-0.5 size-4 accent-secondary"
+          checked={Boolean(requirePhone)}
+          disabled={!isSuperAdmin || saving || requirePhone === null}
+          onChange={(e) => void toggle(e.target.checked)}
+        />
+        <span className="text-sm">
+          <span className="font-semibold">Require a phone number</span>
+          {saving && <LuLoaderCircle className="ml-2 inline size-3.5 animate-spin" />}
+          <span className="block text-xs text-muted-foreground">
+            On: every customer needs a real phone number (at least 9 digits - "0000" is refused). Off: the phone can be left blank.
+          </span>
+        </span>
+      </label>
+      <p className="mt-3 text-xs text-muted-foreground">
+        Always on: an ID / passport number can belong to one customer only, and placeholder IDs like "000000" are refused.
+        {!isSuperAdmin && ' Only a Super Admin can change these settings.'}
+      </p>
+    </section>
+  )
+}
 
 function LicenseAndSubscription() {
   const toast = useToast()
@@ -115,6 +174,7 @@ export default function CafeSettings() {
       <p className="mb-6 mt-5 max-w-2xl text-sm text-muted-foreground">License and subscription details for this workspace. Looking for the receipt printer? That moved to Sales ▸ Printer Settings — every device sets its own, so it's no longer tucked away here.</p>
 
       <LicenseAndSubscription />
+      <CustomerRules />
     </div>
   )
 }

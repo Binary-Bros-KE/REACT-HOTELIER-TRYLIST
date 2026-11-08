@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { LuBedDouble, LuLoaderCircle, LuPlus, LuSearch, LuUserRound, LuX } from 'react-icons/lu'
+import { useCustomerPhoneRequired } from '@/lib/useCustomerPhoneRequired'
 import { api } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { TouchInput } from '@/components/ui/TouchInput'
@@ -41,6 +42,7 @@ export default function CustomerSelectModal({ party, onChange, onClose }: {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [saving, setSaving] = useState(false)
+  const phoneRequired = useCustomerPhoneRequired()
   const [error, setError] = useState('')
 
   // Checked-in stays — refetched as the search term changes (empty term =
@@ -70,7 +72,7 @@ export default function CustomerSelectModal({ party, onChange, onClose }: {
 
   async function createCustomer(event: FormEvent) {
     event.preventDefault()
-    if (!name.trim() || !phone.trim()) return
+    if (!name.trim() || (phoneRequired && !phone.trim())) return
     setSaving(true)
     setError('')
     try {
@@ -113,10 +115,10 @@ export default function CustomerSelectModal({ party, onChange, onClose }: {
             <form onSubmit={createCustomer} className="space-y-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">New customer</p>
               <TouchInput autoFocus placeholder="Full name" className="input" value={name} onValueChange={setName} />
-              <TouchInput placeholder="Phone" keyboardMode="number" className="input" value={phone} onValueChange={setPhone} />
+              <TouchInput placeholder={phoneRequired ? 'Phone' : 'Phone (optional)'} keyboardMode="number" className="input" value={phone} onValueChange={setPhone} />
               <div className="flex gap-2">
                 <button type="button" onClick={() => setCreating(false)} className="flex-1 rounded-sm border py-2 text-sm font-semibold hover:bg-muted">Back</button>
-                <button disabled={saving || !name.trim() || !phone.trim()} className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-sm bg-secondary py-2 text-sm font-semibold text-secondary-foreground disabled:opacity-60">
+                <button disabled={saving || !name.trim() || (phoneRequired && !phone.trim())} className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-sm bg-secondary py-2 text-sm font-semibold text-secondary-foreground disabled:opacity-60">
                   {saving && <LuLoaderCircle className="size-3.5 animate-spin" />} Add &amp; select
                 </button>
               </div>
