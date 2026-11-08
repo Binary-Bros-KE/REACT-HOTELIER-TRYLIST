@@ -43,7 +43,8 @@ const when = (iso: string) => new Date(iso).toLocaleString('en-KE', { day: 'nume
 export default function StockIssues() {
   const toast = useToast()
   const user = useAppSelector((s) => s.auth.user)
-  const canDispatch = user?.role?.name === 'Super Admin' || Boolean(user?.role?.permissions.includes('STORE_DISPATCH'))
+  const isSuperAdmin = user?.role?.name === 'Super Admin'
+  const canDispatch = isSuperAdmin || Boolean(user?.role?.permissions.includes('STORE_DISPATCH'))
   const [tab, setTab] = useState<'requests' | 'store' | 'count'>('requests')
   const [locations, setLocations] = useState<Location[]>([])
   const [error, setError] = useState('')
@@ -70,7 +71,7 @@ export default function StockIssues() {
       <div className="mt-6 flex w-fit flex-wrap gap-1 border bg-card p-1 shadow-sm">
         {tabs.map((t) => (
           <button key={t} onClick={() => setTab(t)} className={cn('px-4 py-2 text-xs font-bold uppercase tracking-wider', tab === t ? 'bg-black text-white' : 'text-muted-foreground hover:bg-muted')}>
-            {t === 'requests' ? 'My requests' : t === 'store' ? 'Store inbox' : 'Counts'}
+            {t === 'requests' ? (isSuperAdmin ? 'All requests' : 'My requests') : t === 'store' ? 'Store inbox' : 'Counts'}
           </button>
         ))}
       </div>
@@ -79,6 +80,7 @@ export default function StockIssues() {
         <RequestsPanel
           locations={locations}
           storeId={storeId}
+          seeAll={isSuperAdmin}
           departmentId={departmentId}
           fixedLocation={fixed}
           locationOptions={options}
@@ -110,10 +112,11 @@ function LocationPicker({ label, value, onChange, locations, exclude }: { label:
  * inline — no need to drill in), an edit action while still pending, and
  * the "New request" button that opens the split-pane form. */
 function RequestsPanel({
-  locations, storeId, departmentId, fixedLocation, locationOptions, selectedLocationId, onLocationChange, onError, toast,
+  locations, storeId, seeAll, departmentId, fixedLocation, locationOptions, selectedLocationId, onLocationChange, onError, toast,
 }: {
   locations: Location[]
   storeId: string
+  seeAll: boolean
   departmentId: string
   fixedLocation: Location | null
   locationOptions: Location[]
@@ -125,13 +128,16 @@ function RequestsPanel({
   const [requests, setRequests] = useState<StockRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState<'all' | Status>('all')
+  // Super Admin sees every location's requests; they can narrow it to one.
+  const [locationFilter, setLocationFilter] = useState('')
+  const listLocationId = seeAll ? locationFilter : departmentId
   const [modal, setModal] = useState<{ mode: 'create' | 'edit'; request?: StockRequest } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
       const params = new URLSearchParams()
-      if (departmentId) params.set('toLocationId', departmentId)
+      if (listLocationId) params.set('toLocationId', listLocationId)
       if (statusFilter !== 'all') params.set('status', statusFilter)
       const r = await api<{ requests: StockRequest[] }>(`/stock-issues/requests?${params.toString()}`)
       setRequests(r.requests)
@@ -141,7 +147,7 @@ function RequestsPanel({
     } finally {
       setLoading(false)
     }
-  }, [departmentId, statusFilter, onError])
+  }, [listLocationId, statusFilter, onError])
   useEffect(() => { void load() }, [load])
 
   const counts = useMemo(() => {
@@ -164,6 +170,12 @@ function RequestsPanel({
             <option value="all">All statuses</option>
             {(Object.keys(STATUS_LABEL) as Status[]).map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
           </select>
+          {seeAll && (
+            <select value={locationFilter} onChange={(e) => setLocationFilter(e.target.value)} className="rounded-sm border bg-background px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring sm:mr-auto">
+              <option value="">All locations</option>
+              {locations.filter((l) => l.type !== 'STORE' && l.isActive !== false).map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </select>
+          )}
           <ActionButton tone="primary" icon={<LuPlus />} onClick={() => setModal({ mode: 'create' })}>New request</ActionButton>
         </div>
 
