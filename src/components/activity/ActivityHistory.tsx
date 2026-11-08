@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { LuArrowRight, LuLoaderCircle, LuScrollText } from 'react-icons/lu'
 import { api } from '@/lib/api'
 import ModalShell from '@/components/ui/ModalShell'
-import StatusPill, { type PillTone } from '@/components/ui/StatusPill'
+import { activityKind, KIND_COLORS } from '@/components/activity/activityKinds'
 import { useAppSelector } from '@/store/hooks'
 import { cn } from '@/lib/utils'
 
@@ -27,7 +27,6 @@ export const AREA_LABELS: Record<string, string> = {
   POS: 'Sales', STAYS: 'Stays', STOCK: 'Stock', MENU: 'Menu', DOCUMENTS: 'Invoices & quotations', FINANCE: 'Finance',
   PAYROLL: 'Salaries', PEOPLE: 'Staff & roles', SETTINGS: 'Settings', SHIFTS: 'Shifts', SERVICE_CENTER: 'Service center', AUTH: 'Sign-in',
 }
-const AREA_TONES: Record<string, PillTone> = { POS: 'warning', STAYS: 'secondary', STOCK: 'success', DOCUMENTS: 'danger', PAYROLL: 'danger', PEOPLE: 'danger', SETTINGS: 'danger' }
 
 /** The Super Admin always sees the activity log; anyone else needs ACTIVITY_VIEW (the server checks it too). */
 export function useCanViewActivity() {
@@ -38,6 +37,7 @@ const shown = (value: unknown) => (value == null || value === '' ? '—' : typeo
 
 /** One activity row: when, who, what, why, and what changed. Shared by the log page and a record's history. */
 export function ActivityRow({ entry, showArea = true }: { entry: ActivityEntry; showArea?: boolean }) {
+  const kind = activityKind(entry.action)
   return (
     <div className="flex flex-col gap-1.5 border-b px-4 py-3 text-sm last:border-b-0 sm:flex-row sm:gap-4">
       <div className="shrink-0 sm:w-40">
@@ -46,7 +46,8 @@ export function ActivityRow({ entry, showArea = true }: { entry: ActivityEntry; 
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-1.5">
-          {showArea && <StatusPill tone={AREA_TONES[entry.area] ?? 'muted'}>{AREA_LABELS[entry.area] ?? entry.area}</StatusPill>}
+          <span className={cn('keep-round inline-block rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ring-1 ring-inset', KIND_COLORS[kind.color])}>{kind.label}</span>
+          {showArea && <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{AREA_LABELS[entry.area] ?? entry.area}</span>}
           {entry.fromRecords && <span title="Read from the record itself - kept since before the activity log started" className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">From records</span>}
         </div>
         <p className="mt-1 break-words">{entry.summary}</p>

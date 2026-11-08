@@ -8,11 +8,18 @@ import { ActivityRow, AREA_LABELS, type ActivityEntry } from '@/components/activ
 type Employee = { id: string; firstName: string; lastName: string | null }
 const PAGE_SIZE = 50
 
+type DateMode = 'date' | 'range'
+const hourLabel = (h: number) => `${String(h).padStart(2, '0')}:00`
+
 const dayStamp = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
 /** Who did what, across the property: voids, cancellations, adjustments, setting changes. */
 export default function ActivityLog() {
   const toast = useToast()
+  // Date: one business day, run on the property's shift hours (e.g. 10:00 to 10:00). Range: from - to.
+  const [mode, setMode] = useState<DateMode>('date')
+  const [startHour, setStartHour] = useState(0)
+  const [date, setDate] = useState(() => dayStamp(new Date()))
   const [from, setFrom] = useState(() => dayStamp(new Date(Date.now() - 6 * 86_400_000)))
   const [to, setTo] = useState(() => dayStamp(new Date()))
   const [actorId, setActorId] = useState('')
@@ -25,6 +32,14 @@ export default function ActivityLog() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    api<{ profile: { businessDayStartHour?: number } | null }>('/business-profile')
+      .then((r) => {
+        const h = r.profile?.businessDayStartHour ?? 0
+        setStartHour(h)
+        // Before the start hour it is still the previous business day.
+        setDate(dayStamp(new Date(Date.now() - h * 3_600_000)))
+      })
+      .catch(() => {})
     api<{ employees: Employee[] }>('/employees').then((r) => setEmployees(r.employees)).catch(() => {})
   }, [])
 
@@ -32,8 +47,11 @@ export default function ActivityLog() {
     setLoading(true)
     try {
       const query = new URLSearchParams({ page: String(nextPage), pageSize: String(PAGE_SIZE) })
-      if (from) query.set('from', from)
-      if (to) query.set('to', to)
+      if (mode === 'date') { if (date) query.set('date', date) }
+      else {
+        if (from) query.set('from', from)
+        if (to) query.set('to', to)
+      }
       if (actorId) query.set('actorId', actorId)
       if (area) query.set('area', area)
       if (search.trim()) query.set('search', search.trim())
@@ -46,7 +64,7 @@ export default function ActivityLog() {
     } finally {
       setLoading(false)
     }
-  }, [from, to, actorId, area, search, toast])
+  }, [mode, date, from, to, actorId, area, search, toast])
 
   useEffect(() => {
     const timer = window.setTimeout(() => void load(1), 300)
@@ -62,8 +80,25 @@ export default function ActivityLog() {
             <h2 className="font-display text-xl font-semibold leading-tight">Who did what</h2>
             <p className="text-xs text-muted-foreground">Voids, cancellations, returns, stock changes, stay changes and more, newest first.</p>
           </div>
-          <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">From<input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="input mt-1 block font-normal normal-case tracking-normal" /></label>
-          <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">To<input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="input mt-1 block font-normal normal-case tracking-normal" /></label>
+          <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+            Period
+            <div className="mt-1 flex border">
+              {(['date', 'range'] as const).map((m) => (
+                <button key={m} type="button" onClick={() => setMode(m)} className={`px-3 py-2 text-xs font-bold uppercase tracking-wider ${mode === m ? 'bg-primary text-primary-foreground' : 'bg-background hover:bg-muted'}`}>{m === 'date' ? 'Date' : 'Range'}</button>
+              ))}
+            </div>
+          </div>
+          {mode === 'date' ? (
+            <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Date
+              <input type="date" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} className="input mt-1 block font-normal normal-case tracking-normal" />
+              <span className="mt-0.5 block text-[10px] font-medium normal-case tracking-normal">{startHour ? `${hourLabel(startHour)} to ${hourLabel(startHour)} next day` : 'Whole day'}</span>
+            </label>
+          ) : (
+            <>
+              <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">From<input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="input mt-1 block font-normal normal-case tracking-normal" /></label>
+              <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">To<input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="input mt-1 block font-normal normal-case tracking-normal" /></label>
+            </>
+          )}
           <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Person
             <select value={actorId} onChange={(e) => setActorId(e.target.value)} className="input mt-1 block font-normal normal-case tracking-normal">
               <option value="">Everyone</option>
