@@ -78,7 +78,7 @@ function CustomerRules() {
           <span className="font-semibold">Require a phone number</span>
           {saving && <LuLoaderCircle className="ml-2 inline size-3.5 animate-spin" />}
           <span className="block text-xs text-muted-foreground">
-            On: every customer needs a real phone number (at least 9 digits - "0000" is refused). Off: the phone can be left blank.
+            On: every customer needs a real phone number (at least 9 digits - "0000" is refused). Off: any phone is accepted as typed, or none at all.
           </span>
         </span>
       </label>
