@@ -17,3 +17,8 @@ Full detail: [`src/components/ui/README.md`](src/components/ui/README.md).
 
 When you add a new page with summary numbers or a create action, wire these in
 from the start rather than copying another page's raw markup.
+
+## App version
+
+Bump with `npm run bump` for every shipped change. Each part runs 0-9, never 10:
+1.2.9 -> 1.3.0, 1.9.9 -> 2.0.0. See RELEASING.md.
