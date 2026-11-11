@@ -60,6 +60,8 @@ export default function ProductHistoryModal({ product, onClose }: { product: His
   const [movements, setMovements] = useState<Movement[] | null>(null)
   const [error, setError] = useState('')
   const [locationId, setLocationId] = useState('')
+  // The movement opened to show the stock either side of it.
+  const [openId, setOpenId] = useState('')
 
   useEffect(() => {
     let live = true
@@ -94,7 +96,7 @@ export default function ProductHistoryModal({ product, onClose }: { product: His
             <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.2em] text-secondary"><LuHistory /> Stock history</p>
             <h2 className="mt-1 truncate font-display text-2xl font-semibold">{product.name}</h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              {movements === null ? 'Loading…' : `${shown.length} movement${shown.length === 1 ? '' : 's'}${locationId ? '' : ' across all locations'}`}
+              {movements === null ? 'Loadingâ¦' : `${shown.length} movement${shown.length === 1 ? '' : 's'}${locationId ? '' : ' across all locations'}`}
             </p>
           </div>
           <button type="button" onClick={onClose} title="Close" className="bg-black p-2 text-white transition hover:bg-black/80"><LuX className="size-4" /></button>
@@ -117,7 +119,7 @@ export default function ProductHistoryModal({ product, onClose }: { product: His
 
         <div className="flex-1 space-y-3 overflow-y-auto px-6 py-5">
           {error && <p className="flex items-center gap-2 border border-destructive/25 bg-destructive/10 p-3 text-sm text-destructive"><LuCircleAlert /> {error}</p>}
-          {movements === null && <p className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground"><LuLoaderCircle className="animate-spin" /> Loading history…</p>}
+          {movements === null && <p className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground"><LuLoaderCircle className="animate-spin" /> Loading historyâ¦</p>}
           {movements !== null && !error && shown.length === 0 && <p className="border border-dashed p-8 text-center text-sm text-muted-foreground">No stock movements recorded yet.</p>}
 
           {shown.map((m) => {
@@ -125,10 +127,20 @@ export default function ProductHistoryModal({ product, onClose }: { product: His
             const incoming = amount > 0
             const unitCost = m.unitCost != null ? Number(m.unitCost) : null
             const value = m.value != null ? Number(m.value) : null
-            // A receipt's default note ("Goods receipt GRN-…") says nothing the purchase line doesn't.
+            // A receipt's default note ("Goods receipt GRN-â¦") says nothing the purchase line doesn't.
             const note = m.note && !(m.purchase && m.note === `Goods receipt ${m.purchase.receiptNo}`) ? m.note : null
+            const open = openId === m.id
+            const hasBalance = m.balanceBefore != null && m.balanceAfter != null
             return (
-              <article key={m.id} className={cn('border-l-4 border bg-background p-4', incoming ? 'border-l-success' : amount < 0 ? 'border-l-destructive' : 'border-l-muted-foreground/40')}>
+              <article
+                key={m.id}
+                role="button"
+                tabIndex={0}
+                aria-expanded={open}
+                title={open ? 'Hide stock before and after' : 'Show stock before and after'}
+                onClick={() => setOpenId(open ? '' : m.id)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpenId(open ? '' : m.id) } }}
+                className={cn('cursor-pointer border-l-4 border bg-background p-4 transition hover:bg-muted/40', open && 'ring-1 ring-secondary/40', incoming ? 'border-l-success' : amount < 0 ? 'border-l-destructive' : 'border-l-muted-foreground/40')}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex min-w-0 items-start gap-3">
                     <span className={cn('mt-0.5 flex size-8 shrink-0 items-center justify-center', incoming ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive')}>
@@ -149,14 +161,14 @@ export default function ProductHistoryModal({ product, onClose }: { product: His
                     <LuReceiptText className="text-secondary" />
                     <span className="font-bold text-secondary">{m.purchase.purchaseNo}</span>
                     {m.purchase.supplierName && <span className="font-semibold">{m.purchase.supplierName}</span>}
-                    <span className="text-muted-foreground">· delivery {m.purchase.receiptNo}</span>
+                    <span className="text-muted-foreground">Â· delivery {m.purchase.receiptNo}</span>
                   </p>
                 )}
 
                 <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs text-muted-foreground sm:grid-cols-3">
                   <Detail icon={<LuMapPin />}>{m.location.name}</Detail>
                   {m.balanceBefore != null && m.balanceAfter != null && (
-                    <Detail>Balance {qty(Number(m.balanceBefore))} → <strong className="text-foreground">{qty(Number(m.balanceAfter))}</strong></Detail>
+                    <Detail>Balance {qty(Number(m.balanceBefore))} â <strong className="text-foreground">{qty(Number(m.balanceAfter))}</strong></Detail>
                   )}
                   {m.employee && <Detail icon={<LuUserRound />}>{m.employee.firstName} {m.employee.lastName}</Detail>}
                   {unitCost != null && unitCost > 0 && <Detail>Unit cost {kes(unitCost)}</Detail>}
@@ -164,11 +176,32 @@ export default function ProductHistoryModal({ product, onClose }: { product: His
                 </div>
 
                 {note && <p className="mt-2 border-t pt-2 text-xs italic text-muted-foreground">{note}</p>}
+
+                {open && (
+                  hasBalance ? (
+                    <div className="mt-3 grid grid-cols-3 border bg-card text-center">
+                      <BalanceCell label={`Before at ${m.location.name}`} value={qty(Number(m.balanceBefore))} />
+                      <BalanceCell label="This movement" value={`${incoming ? '+' : ''}${qty(amount)}`} tone={incoming ? 'text-success' : amount < 0 ? 'text-destructive' : undefined} />
+                      <BalanceCell label={`After at ${m.location.name}`} value={qty(Number(m.balanceAfter))} strong />
+                    </div>
+                  ) : (
+                    <p className="mt-3 border border-dashed p-3 text-center text-xs text-muted-foreground">Stock before and after wasn't recorded for this movement — it was made before balances were kept.</p>
+                  )
+                )}
               </article>
             )
           })}
         </div>
       </div>
+    </div>
+  )
+}
+
+function BalanceCell({ label, value, tone, strong }: { label: string; value: string; tone?: string; strong?: boolean }) {
+  return (
+    <div className="border-r p-3 last:border-r-0">
+      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</p>
+      <p className={cn('mt-1 font-display text-base tabular-nums', strong ? 'font-bold text-foreground' : 'font-semibold', tone)}>{value}</p>
     </div>
   )
 }
