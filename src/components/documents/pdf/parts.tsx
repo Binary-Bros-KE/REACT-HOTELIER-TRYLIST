@@ -4,7 +4,7 @@ import { palette, s, statusColor, dateTime } from './theme'
 import type { DocProfile } from './theme'
 
 export function Letterhead({ profile, docType, docNo, status }: { profile: DocProfile; docType: string; docNo: string; status: string }) {
-  const contact = [profile?.address, [profile?.city, profile?.county].filter(Boolean).join(', ')].filter(Boolean).join(' · ')
+  const contact = [profile?.address, [profile?.city, profile?.county].filter(Boolean).join(', ')].filter(Boolean).join(' Â· ')
   const color = statusColor[status] ?? palette.muted
   const mode = profile?.documentBrandingMode ?? 'NAME'
   const logoUrl = profile?.documentLogoUrl ? resolveLogoUrl(profile.documentLogoUrl) : null
@@ -20,7 +20,7 @@ export function Letterhead({ profile, docType, docNo, status }: { profile: DocPr
           </View>
           {contact ? <Text style={s.bizLine}>{contact}</Text> : null}
           <Text style={s.bizLine}>
-            {[profile?.primaryPhone, profile?.email].filter(Boolean).join('  ·  ') || ' '}
+            {[profile?.primaryPhone, profile?.email].filter(Boolean).join('  Â·  ') || ' '}
           </Text>
           {profile?.kraPin ? <Text style={s.bizLine}>PIN: {profile.kraPin}</Text> : null}
         </View>
@@ -53,22 +53,28 @@ export function MetaGrid({ cells }: { cells: { key: string; value: string }[] })
       {cells.map((c, i) => (
         <View key={c.key} style={i === cells.length - 1 ? s.metaCellLast : s.metaCell}>
           <Text style={s.metaKey}>{c.key.toUpperCase()}</Text>
-          <Text style={s.metaVal}>{c.value || '—'}</Text>
+          <Text style={s.metaVal}>{c.value || 'â'}</Text>
         </View>
       ))}
     </View>
   )
 }
 
-export type DocLine = { name: string; sub?: string; qty: string; unit: string; total: string }
+// before / after: stock at the destination either side of the line (purchase orders only).
+export type DocLine = { name: string; sub?: string; qty: string; unit: string; total: string; before?: string; after?: string }
+
+const colStock = { width: 66, textAlign: 'right' as const }
 
 export function ItemsTable({ unitHeader, lines }: { unitHeader: string; lines: DocLine[] }) {
+  const withStock = lines.some((l) => l.before !== undefined || l.after !== undefined)
   return (
     <View style={s.table}>
       <View style={s.th} fixed>
         <Text style={[s.thText, s.colIdx, s.divide]}>#</Text>
         <Text style={[s.thText, s.colName, s.divide]}>DESCRIPTION</Text>
         <Text style={[s.thText, s.colNum, s.divide]}>QTY</Text>
+        {withStock ? <Text style={[s.thText, colStock, s.divide]}>STOCK BEFORE</Text> : null}
+        {withStock ? <Text style={[s.thText, colStock, s.divide]}>STOCK AFTER</Text> : null}
         <Text style={[s.thText, s.colMoney, s.divide]}>{unitHeader.toUpperCase()}</Text>
         <Text style={[s.thText, s.colMoney]}>LINE TOTAL</Text>
       </View>
@@ -80,6 +86,8 @@ export function ItemsTable({ unitHeader, lines }: { unitHeader: string; lines: D
             {l.sub ? <Text style={s.tdSub}>{l.sub}</Text> : null}
           </View>
           <Text style={[s.td, s.colNum, s.divide]}>{l.qty}</Text>
+          {withStock ? <Text style={[s.td, colStock, s.divide]}>{l.before ?? '—'}</Text> : null}
+          {withStock ? <Text style={[s.td, colStock, s.divide]}>{l.after ?? '—'}</Text> : null}
           <Text style={[s.td, s.colMoney, s.divide]}>{l.unit}</Text>
           <Text style={[s.td, s.colMoney]}>{l.total}</Text>
         </View>
@@ -114,7 +122,7 @@ export function SignatureBlock({ columns }: { columns: { role: string; name?: st
         <View key={c.role} style={s.signCol}>
           <View style={s.signLine} />
           <Text style={s.signName}>{c.name || ' '}</Text>
-          <Text style={s.signRole}>{c.role.toUpperCase()}{c.date ? `  ·  ${c.date}` : ''}</Text>
+          <Text style={s.signRole}>{c.role.toUpperCase()}{c.date ? `  Â·  ${c.date}` : ''}</Text>
         </View>
       ))}
     </View>
@@ -124,7 +132,7 @@ export function SignatureBlock({ columns }: { columns: { role: string; name?: st
 export function Footer({ profile }: { profile: DocProfile }) {
   return (
     <View style={s.footer} fixed>
-      <Text style={s.footerText}>Generated {dateTime(new Date())}{profile?.businessName ? `  ·  ${profile.businessName}` : ''}</Text>
+      <Text style={s.footerText}>Generated {dateTime(new Date())}{profile?.businessName ? `  Â·  ${profile.businessName}` : ''}</Text>
       <Text style={s.footerText} render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`} />
     </View>
   )

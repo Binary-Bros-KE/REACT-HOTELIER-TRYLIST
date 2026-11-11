@@ -27,8 +27,6 @@ export type PurchaseOrderDocData = {
 
 const fullName = (e: Employee) => (e ? `${e.firstName} ${e.lastName}` : '')
 
-const stockCol = { name: { flex: 1 }, num: { width: 105, textAlign: 'right' as const } }
-
 export default function PurchaseOrderDocument({ data, profile }: { data: PurchaseOrderDocData; profile: DocProfile }) {
   const currency = profile?.currency ?? 'KES'
   // Group the taxed lines by rate - the header rate is never set, so it can't
@@ -44,20 +42,24 @@ export default function PurchaseOrderDocument({ data, profile }: { data: Purchas
     return bands.set(rate, band)
   }, new Map<number, { rate: number; net: number; tax: number; gross: number }>()).values()].sort((a, b) => a.rate - b.rate)
   const taxLabel = taxBands.length === 1 ? `VAT (${taxBands[0].rate}%)` : taxBands.length > 1 ? 'VAT' : 'Tax'
-  const lines: DocLine[] = data.items.map((i) => ({
-    name: i.product.name,
-    sub: i.note ?? undefined,
-    qty: packAndUnit(Number(i.quantity), Number(i.product.packSize) || 0, i.product.packLabel ?? '', i.product.packUnit?.name ?? i.product.unit),
-    unit: money(i.unitCost, currency),
-    total: money(i.lineTotal, currency),
-  }))
-  // Stock at the receiving location on either side of this purchase (expense items carry none).
-  const stockLines = data.items
-    .filter((i) => i.stockBefore != null || i.stockAfter != null)
-    .map((i) => {
-      const show = (v: number | null | undefined) => (v == null ? '—' : packAndUnit(v, Number(i.product.packSize) || 0, i.product.packLabel ?? '', i.product.packUnit?.name ?? i.product.unit))
-      return { name: i.product.name, before: show(i.stockBefore), after: show(i.stockAfter), expected: Boolean(i.stockExpected) }
-    })
+  // Stock at the receiving location either side of each line, when the purchase was
+  // loaded with its levels (expense items carry none and show a dash).
+  const withStock = data.items.some((i) => i.stockBefore !== undefined)
+  const expected = data.items.some((i) => i.stockExpected && i.stockAfter != null)
+  const lines: DocLine[] = data.items.map((i) => {
+    const show = (v: number) => packAndUnit(v, Number(i.product.packSize) || 0, i.product.packLabel ?? '', i.product.packUnit?.name ?? i.product.unit)
+    return {
+      name: i.product.name,
+      sub: i.note ?? undefined,
+      qty: packAndUnit(Number(i.quantity), Number(i.product.packSize) || 0, i.product.packLabel ?? '', i.product.packUnit?.name ?? i.product.unit),
+      unit: money(i.unitCost, currency),
+      total: money(i.lineTotal, currency),
+      ...(withStock ? {
+        before: i.stockBefore == null ? undefined : show(i.stockBefore),
+        after: i.stockAfter == null ? undefined : `${show(i.stockAfter)}${i.stockExpected ? ' *' : ''}`,
+      } : {}),
+    }
+  })
 
   return (
     <Document title={`Purchase Order ${data.purchaseNo}`} author={profile?.businessName ?? 'HOTELIER'}>
@@ -78,6 +80,7 @@ export default function PurchaseOrderDocument({ data, profile }: { data: Purchas
         {data.requisition ? <Text style={s.note}>Raised from requisition {data.requisition.requisitionNo}</Text> : null}
 
         <ItemsTable unitHeader="Unit price" lines={lines} />
+        {expected ? <Text style={s.note}>* Expected: what the stock will be once the rest of the item is received.</Text> : null}
 
         <Totals
           rows={[
@@ -106,27 +109,6 @@ export default function PurchaseOrderDocument({ data, profile }: { data: Purchas
                 </View>
               ))}
             </View>
-          </View>
-        ) : null}
-
-        {stockLines.length > 0 ? (
-          <View wrap={false}>
-            <Text style={s.breakLabel}>STOCK AT {(data.location?.name ?? 'DESTINATION').toUpperCase()}</Text>
-            <View style={s.table}>
-              <View style={s.th}>
-                <Text style={[s.thText, stockCol.name, s.divide]}>PRODUCT</Text>
-                <Text style={[s.thText, stockCol.num, s.divide]}>BEFORE</Text>
-                <Text style={[s.thText, stockCol.num]}>AFTER</Text>
-              </View>
-              {stockLines.map((l, index) => (
-                <View key={index} style={[s.tr, index === stockLines.length - 1 ? { borderBottomWidth: 0 } : {}]}>
-                  <Text style={[s.td, stockCol.name, s.divide]}>{l.name}</Text>
-                  <Text style={[s.td, stockCol.num, s.divide]}>{l.before}</Text>
-                  <Text style={[s.td, stockCol.num]}>{l.after}{l.expected ? ' (expected)' : ''}</Text>
-                </View>
-              ))}
-            </View>
-            {stockLines.some((l) => l.expected) ? <Text style={s.note}>Expected: what the stock will be once the rest of the item is received.</Text> : null}
           </View>
         ) : null}
 
