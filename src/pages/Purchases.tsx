@@ -243,6 +243,12 @@ export default function Purchases() {
   const [productQuery, setProductQuery] = useState('')
   const [profile, setProfile] = useState<DocProfile>(null)
   const [printing, setPrinting] = useState<Purchase | null>(null)
+  // Print from the full purchase so each line carries its stock before / after at the destination.
+  const print = (purchase: Purchase) => {
+    api<{ purchase: Purchase }>(`/purchases/${purchase.id}`)
+      .then((r) => setPrinting(r.purchase))
+      .catch(() => setPrinting(purchase))
+  }
   const [receiving, setReceiving] = useState<Purchase | null>(null)
   const [paying, setPaying] = useState<Purchase | null>(null)
 
@@ -521,7 +527,7 @@ export default function Purchases() {
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex items-center justify-end gap-1">
-                        <ActionButton tone="neutral" icon={<LuPrinter />} title="Print / PDF" onClick={() => setPrinting(p)} />
+                        <ActionButton tone="neutral" icon={<LuPrinter />} title="Print / PDF" onClick={() => print(p)} />
                         {(p.status === 'ORDERED' || p.status === 'PARTIALLY_RECEIVED') && (
                           <ActionButton tone="secondary" icon={<LuPackageCheck />} onClick={() => setReceiving(p)}>Receive</ActionButton>
                         )}
@@ -884,7 +890,7 @@ export default function Purchases() {
             </p>
 
             <div className="mt-6 flex flex-wrap justify-end gap-2 border-t pt-5">
-              <button onClick={() => setPrinting(detail)} className="mr-auto inline-flex items-center gap-1.5 border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted"><LuPrinter className="size-4" /> Print</button>
+              <button onClick={() => print(detail)} className="mr-auto inline-flex items-center gap-1.5 border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted"><LuPrinter className="size-4" /> Print</button>
               <button onClick={() => setDetail(null)} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted">Close</button>
               {(detail.status === 'DRAFT' || (detail.status === 'ORDERED' && detail.payments.length === 0 && detail.items.every((i) => Number(i.receivedQuantity) <= 0))) && <button onClick={() => { const d = detail; setDetail(null); openEdit(d) }} className="border-2 border-foreground/20 bg-card px-4 py-2 text-xs font-bold uppercase tracking-wider hover:bg-muted">Edit</button>}
               {(detail.status === 'ORDERED' || detail.status === 'PARTIALLY_RECEIVED') && (

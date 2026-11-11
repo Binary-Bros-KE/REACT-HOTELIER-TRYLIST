@@ -19,12 +19,15 @@ export type PurchaseOrderDocData = {
   taxAmount: string
   total: string
   supplier: { name: string }
+  location?: { name: string } | null
   requisition: { requisitionNo: string } | null
   createdByEmployee: Employee
-  items: { product: { name: string; unit: string; packSize: string | null; packLabel: string | null; packUnit: { id: string; name: string } | null }; quantity: string; unitCost: string; lineTotal: string; note: string | null; taxRate?: string; taxAmount?: string; taxTreatment?: string }[]
+  items: { product: { name: string; unit: string; packSize: string | null; packLabel: string | null; packUnit: { id: string; name: string } | null }; quantity: string; unitCost: string; lineTotal: string; note: string | null; taxRate?: string; taxAmount?: string; taxTreatment?: string; stockBefore?: number | null; stockAfter?: number | null; stockExpected?: boolean }[]
 }
 
 const fullName = (e: Employee) => (e ? `${e.firstName} ${e.lastName}` : '')
+
+const stockCol = { name: { flex: 1 }, num: { width: 105, textAlign: 'right' as const } }
 
 export default function PurchaseOrderDocument({ data, profile }: { data: PurchaseOrderDocData; profile: DocProfile }) {
   const currency = profile?.currency ?? 'KES'
@@ -48,6 +51,13 @@ export default function PurchaseOrderDocument({ data, profile }: { data: Purchas
     unit: money(i.unitCost, currency),
     total: money(i.lineTotal, currency),
   }))
+  // Stock at the receiving location on either side of this purchase (expense items carry none).
+  const stockLines = data.items
+    .filter((i) => i.stockBefore != null || i.stockAfter != null)
+    .map((i) => {
+      const show = (v: number | null | undefined) => (v == null ? '—' : packAndUnit(v, Number(i.product.packSize) || 0, i.product.packLabel ?? '', i.product.packUnit?.name ?? i.product.unit))
+      return { name: i.product.name, before: show(i.stockBefore), after: show(i.stockAfter), expected: Boolean(i.stockExpected) }
+    })
 
   return (
     <Document title={`Purchase Order ${data.purchaseNo}`} author={profile?.businessName ?? 'HOTELIER'}>
@@ -60,7 +70,7 @@ export default function PurchaseOrderDocument({ data, profile }: { data: Purchas
           cells={[
             { key: 'Order Date', value: shortDate(data.orderDate) },
             { key: 'Expected', value: shortDate(data.expectedDate) },
-            { key: 'Reference', value: data.reference ?? '—' },
+            { key: 'Reference', value: data.reference ?? 'â' },
             { key: 'Status', value: data.status },
           ]}
         />
@@ -96,6 +106,27 @@ export default function PurchaseOrderDocument({ data, profile }: { data: Purchas
                 </View>
               ))}
             </View>
+          </View>
+        ) : null}
+
+        {stockLines.length > 0 ? (
+          <View wrap={false}>
+            <Text style={s.breakLabel}>STOCK AT {(data.location?.name ?? 'DESTINATION').toUpperCase()}</Text>
+            <View style={s.table}>
+              <View style={s.th}>
+                <Text style={[s.thText, stockCol.name, s.divide]}>PRODUCT</Text>
+                <Text style={[s.thText, stockCol.num, s.divide]}>BEFORE</Text>
+                <Text style={[s.thText, stockCol.num]}>AFTER</Text>
+              </View>
+              {stockLines.map((l, index) => (
+                <View key={index} style={[s.tr, index === stockLines.length - 1 ? { borderBottomWidth: 0 } : {}]}>
+                  <Text style={[s.td, stockCol.name, s.divide]}>{l.name}</Text>
+                  <Text style={[s.td, stockCol.num, s.divide]}>{l.before}</Text>
+                  <Text style={[s.td, stockCol.num]}>{l.after}{l.expected ? ' (expected)' : ''}</Text>
+                </View>
+              ))}
+            </View>
+            {stockLines.some((l) => l.expected) ? <Text style={s.note}>Expected: what the stock will be once the rest of the item is received.</Text> : null}
           </View>
         ) : null}
 
