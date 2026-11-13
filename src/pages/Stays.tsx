@@ -160,7 +160,8 @@ export default function Stays() {
     setLoading(true)
     setError('')
     try {
-      const query = new URLSearchParams()
+      // Newest check-in date first.
+      const query = new URLSearchParams({ sort: 'checkIn' })
       if (search.trim()) query.set('search', search.trim())
       if (statusFilter) query.set('status', statusFilter)
       if (stayFrom) query.set('stayFrom', stayFrom)
