@@ -213,16 +213,15 @@ export default function Stays() {
         </div>
       )}
 
-      {!loading && (
-        <section className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
-          <StatCard index={4} label="Stays" value={stats.stays} hint={`${stats.guests} guest${stats.guests === 1 ? '' : 's'}`} />
-          <StatCard tone="success" label="Settled" value={stats.settled} hint="Paid in full" />
-          <StatCard tone="warn" label="Not settled" value={stats.owing} hint={`${formatKes(stats.outstanding)} owing`} />
-          <StatCard index={2} label="Complimentary" value={stats.complimentary} />
-          <StatCard tone="danger" label="Cancelled / no-show" value={stats.closed} />
-          <StatCard index={6} label="Collected" value={formatKes(stats.collected)} hint={`of ${formatKes(stats.charges)} charged`} />
-        </section>
-      )}
+      {/* Always on screen - a pulsing bar stands in for each number while the list loads, so nothing jumps. */}
+      <section className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+        <StatCard index={4} label="Stays" value={loading ? <StatSkeleton /> : stats.stays} hint={loading ? <StatSkeleton small /> : `${stats.guests} guest${stats.guests === 1 ? '' : 's'}`} />
+        <StatCard tone="success" label="Settled" value={loading ? <StatSkeleton /> : stats.settled} hint="Paid in full" />
+        <StatCard tone="warn" label="Not settled" value={loading ? <StatSkeleton /> : stats.owing} hint={loading ? <StatSkeleton small /> : `${formatKes(stats.outstanding)} owing`} />
+        <StatCard index={2} label="Complimentary" value={loading ? <StatSkeleton /> : stats.complimentary} hint="Free stays" />
+        <StatCard tone="danger" label="Cancelled / no-show" value={loading ? <StatSkeleton /> : stats.closed} hint="Not counted above" />
+        <StatCard index={6} label="Collected" value={loading ? <StatSkeleton /> : formatKes(stats.collected)} hint={loading ? <StatSkeleton small /> : `of ${formatKes(stats.charges)} charged`} />
+      </section>
 
       <section className="mt-6 overflow-hidden border bg-card shadow-sm">
         <div className="flex flex-col gap-3 border-b p-4 sm:flex-row sm:items-center">
@@ -302,6 +301,11 @@ export default function Stays() {
       {selected && <StayDetailModal stay={selected} onClose={() => setSelected(null)} onChanged={() => void load()} />}
     </div>
   )
+}
+
+/** Placeholder for a stat card number (or its hint line) while the list loads - same height, so the card doesn't resize. */
+function StatSkeleton({ small = false }: { small?: boolean }) {
+  return <span className={cn('inline-block animate-pulse rounded bg-black/15 align-middle', small ? 'h-3 w-20' : 'h-7 w-14')} />
 }
 
 function SectionTitle({ children }: { children: string }) {
