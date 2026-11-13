@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import PageBanner from '@/components/ui/PageBanner'
 import ModalShell from '@/components/ui/ModalShell'
 import StatusPill, { type PillTone } from '@/components/ui/StatusPill'
+import StatCard from '@/components/ui/StatCard'
 import ActionButton from '@/components/ui/ActionButton'
 import { ActivityHistoryButton, useCanViewActivity } from '@/components/activity/ActivityHistory'
 import { computeFinancialsFromRows } from '@/lib/orderTotals'
@@ -184,6 +185,22 @@ export default function Stays() {
   }, [stays])
   // Every stay is already loaded, so the payment filter works on the list in hand.
   const visibleStays = paymentFilter ? stays.filter((stay) => matchesPaymentFilter(stay, folioTotals(stay.folio, bizTax), paymentFilter)) : stays
+  // The cards count the list on screen, so a picked day (or search / filter) narrows them too.
+  const stats = visibleStays.reduce((acc, stay) => {
+    const totals = folioTotals(stay.folio, bizTax)
+    if (stay.status === 'CANCELLED' || stay.status === 'NO_SHOW') { acc.closed += 1; return acc }
+    acc.stays += 1
+    acc.guests += 1 + stay.additionalGuests.length
+    if (matchesPaymentFilter(stay, totals, 'COMPLIMENTARY')) acc.complimentary += 1
+    else if (matchesPaymentFilter(stay, totals, 'PAID')) acc.settled += 1
+    if (matchesPaymentFilter(stay, totals, 'OWING')) {
+      acc.owing += 1
+      acc.outstanding += Number(stay.folio?.creditAmount ?? 0) > 0 ? stay.folio?.creditOutstanding ?? 0 : totals.balance
+    }
+    acc.charges += totals.charges
+    acc.collected += totals.paid
+    return acc
+  }, { stays: 0, guests: 0, settled: 0, owing: 0, outstanding: 0, complimentary: 0, closed: 0, charges: 0, collected: 0 })
 
   return (
     <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
@@ -194,6 +211,17 @@ export default function Stays() {
           <LuCircleAlert />
           {error}
         </div>
+      )}
+
+      {!loading && (
+        <section className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+          <StatCard index={4} label="Stays" value={stats.stays} hint={`${stats.guests} guest${stats.guests === 1 ? '' : 's'}`} />
+          <StatCard tone="success" label="Settled" value={stats.settled} hint="Paid in full" />
+          <StatCard tone="warn" label="Not settled" value={stats.owing} hint={`${formatKes(stats.outstanding)} owing`} />
+          <StatCard index={2} label="Complimentary" value={stats.complimentary} />
+          <StatCard tone="danger" label="Cancelled / no-show" value={stats.closed} />
+          <StatCard index={6} label="Collected" value={formatKes(stats.collected)} hint={`of ${formatKes(stats.charges)} charged`} />
+        </section>
       )}
 
       <section className="mt-6 overflow-hidden border bg-card shadow-sm">
