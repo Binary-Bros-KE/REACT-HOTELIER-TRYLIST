@@ -144,6 +144,8 @@ export default function Stays() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [paymentFilter, setPaymentFilter] = useState<PaymentFilter | ''>('')
+  // One business day (the property's shift hours): stays checked in during it.
+  const [checkedInOn, setCheckedInOn] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [selected, setSelected] = useState<Stay | null>(null)
@@ -160,6 +162,7 @@ export default function Stays() {
       const query = new URLSearchParams()
       if (search.trim()) query.set('search', search.trim())
       if (statusFilter) query.set('status', statusFilter)
+      if (checkedInOn) query.set('checkedInOn', checkedInOn)
       const response = await api<{ reservations: Stay[] }>(`/reception/reservations${query.size ? `?${query}` : ''}`)
       setStays(response.reservations)
     } catch (cause) {
@@ -169,7 +172,7 @@ export default function Stays() {
     } finally {
       setLoading(false)
     }
-  }, [search, statusFilter, toast])
+  }, [search, statusFilter, checkedInOn, toast])
 
   useEffect(() => {
     const timer = window.setTimeout(() => void load(), 250)
@@ -197,7 +200,7 @@ export default function Stays() {
         <div className="flex flex-col gap-3 border-b p-4 sm:flex-row sm:items-center">
           <div className="border-l-4 border-accent pl-3 sm:mr-auto">
             <h2 className="font-display text-xl font-semibold leading-tight">All stays</h2>
-            <p className="text-xs text-muted-foreground">Active, past, cancelled and no-show — with full folio history.</p>
+            <p className="text-xs text-muted-foreground">{checkedInOn ? `Checked in on ${new Date(`${checkedInOn}T12:00:00`).toLocaleDateString('en-KE', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })} (shift hours).` : 'Active, past, cancelled and no-show — with full folio history.'}</p>
           </div>
           <label className="relative sm:w-72">
             <LuSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -211,6 +214,10 @@ export default function Stays() {
             <option value="">All payments</option>
             {PAYMENT_FILTERS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
+          <label className="flex items-center gap-1" title="Stays checked in during this business day (your shift hours)">
+            <input type="date" value={checkedInOn} onChange={(e) => setCheckedInOn(e.target.value)} aria-label="Checked in on" className="w-40 border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring" />
+            {checkedInOn && <button type="button" onClick={() => setCheckedInOn('')} className="px-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground">Clear</button>}
+          </label>
         </div>
 
         {loading ? (
