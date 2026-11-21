@@ -761,7 +761,7 @@ export default function Products() {
             </FieldGroup>
 
             <FieldGroup title="Stock tracking">
-              <p className="text-xs text-muted-foreground sm:col-span-2">How this product leaves a location. Per dish: the recipe takes it off on every sale (bottles, pieces, portions). Issued and used up: when the storekeeper issues it, it's gone on issue (sugar bowls, salt) - a recipe that uses it still takes it off on every sale, like any ingredient. Counted at close: it stays on the kitchen shelf and the closing count posts what was used (frying oil).</p>
+              <p className="text-xs text-muted-foreground sm:col-span-2">How this product leaves a location. Per dish: the recipe takes it off on every sale (bottles, pieces, portions). Issued and used up: when the storekeeper issues it, it's gone on issue (sugar bowls, salt). Counted at close: when issued it stays on the kitchen shelf and the closing count posts what was used (frying oil). Either way, a recipe that uses the product still takes it off on every sale, like any ingredient.</p>
               <Field label="Stock tracking" className="sm:col-span-2">
                 <select className="input" value={form.trackingMode} onChange={(e) => setForm({ ...form, trackingMode: e.target.value as TrackingMode })}>
                   <option value="PER_SALE">Per dish (recipe deducts on sale)</option>
