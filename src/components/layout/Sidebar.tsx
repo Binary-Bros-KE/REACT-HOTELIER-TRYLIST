@@ -3,7 +3,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { LuChevronLeft, LuChevronRight, LuLogOut, LuRefreshCw, LuSearch, LuX } from 'react-icons/lu'
 import { IoPersonCircleSharp } from 'react-icons/io5'
-import { navigation, navItemAllowed, navItemMatchesExactly, sectionModuleEnabled, type PermissionSection } from '@/config/navigation'
+import { itemModuleEnabled, navigation, navItemAllowed, navItemMatchesExactly, sectionModuleEnabled, type PermissionSection } from '@/config/navigation'
 import { cn } from '@/lib/utils'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import { logout } from '@/store/authSlice'
@@ -57,7 +57,7 @@ export default function Sidebar({ className, mobile = false, onNavigate }: Sideb
   const allowedNavigation = useMemo(
     () => navigation
       .filter((group) => sectionModuleEnabled(group.section, moduleKeys))
-      .map((group) => ({ ...group, items: group.items.filter((item) => navItemAllowed(item, allowedSections.includes(group.section), permissions)) }))
+      .map((group) => ({ ...group, items: group.items.filter((item) => itemModuleEnabled(item, moduleKeys) && navItemAllowed(item, allowedSections.includes(group.section), permissions)) }))
       .filter((group) => group.items.length > 0),
     [allowedSections, moduleKeys, permissions],
   )

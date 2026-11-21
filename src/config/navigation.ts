@@ -15,7 +15,6 @@ import {
   LuSearch,
   LuShoppingCart,
   LuTable2,
-  LuBike,
   LuTruck,
   LuClipboardList,
   LuUtensils,
@@ -85,6 +84,14 @@ export const SECTION_MODULE: Partial<Record<PermissionSection, string>> = {
 export function sectionModuleEnabled(section: PermissionSection, moduleKeys: string[]) {
   const need = SECTION_MODULE[section]
   return !need || moduleKeys.includes(need)
+}
+
+// Item moduleKeys are only enforced for these modules, so an item can need one even
+// inside a section that doesn't (Rooms Report sits in Reports, which every tenant has).
+const ENFORCED_ITEM_MODULES = new Set(['ROOMS'])
+
+export function itemModuleEnabled(item: { moduleKey?: string }, moduleKeys: string[]) {
+  return !item.moduleKey || !ENFORCED_ITEM_MODULES.has(item.moduleKey) || moduleKeys.includes(item.moduleKey)
 }
 
 export interface NavItem {
@@ -161,8 +168,6 @@ export const navigation: NavGroup[] = [
       { label: 'Stock Requests', href: '/sales/stock-requests', icon: LuClipboardList },
       { label: 'Tables', href: '/sales/tables', icon: LuTable2 },
       { label: 'Customers', href: '/sales/customers', icon: LuUsers },
-      { label: 'Riders', href: '/sales/riders', icon: LuBike },
-      { label: 'Deliveries', href: '/sales/deliveries', icon: LuTruck },
       { label: 'Payment Methods', href: '/sales/payment-methods', icon: LuCreditCard },
       { label: 'Printer Settings', href: '/sales/printer-settings', icon: LuPrinter },
     ],
