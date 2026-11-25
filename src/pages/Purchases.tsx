@@ -400,6 +400,8 @@ export default function Purchases() {
       }))
     if (!form.supplierId) { setFormError('Choose a supplier'); return }
     if (!items.length) { setFormError('Add at least one item with a quantity'); return }
+    const unpriced = items.filter((i) => !(i.unitCost > 0)).map((i) => products.find((p) => p.id === i.productId)?.name ?? 'every item')
+    if (unpriced.length) { setFormError(`Enter a buying price for ${unpriced.join(', ')}`); return }
     setSaving(true)
     setFormError('')
     setNotice('')
@@ -983,6 +985,8 @@ function ReceiveGoodsModal({ purchase, locations, onClose, onReceived }: {
     const items = lines.filter((l) => Number(l.quantity) > 0).map((l) => ({ purchaseItemId: l.purchaseItemId, quantity: Number(l.quantity), unitCost: Number(l.unitCost) || 0 }))
     if (!locationId) { setError('Choose a location to receive into'); return }
     if (!items.length) { setError('Enter a quantity for at least one item'); return }
+    const unpriced = lines.filter((l) => Number(l.quantity) > 0 && !(Number(l.unitCost) > 0)).map((l) => l.productName)
+    if (unpriced.length) { setError(`Enter a buying price for ${unpriced.join(', ')}`); return }
     setSaving(true)
     setError('')
     try {
