@@ -126,6 +126,8 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
   const [dateTo, setDateTo] = useState('')
   const [overridesOnly, setOverridesOnly] = useState(false)
   const [loading, setLoading] = useState(true)
+  // False until locations and staff first arrive, so their filters hold a skeleton instead of popping in.
+  const [optionsLoaded, setOptionsLoaded] = useState(false)
   const [error, setError] = useState('')
   const [manageId, setManageId] = useState<string | null>(null)
   const [receiptOrderId, setReceiptOrderId] = useState<string | null>(null)
@@ -176,6 +178,7 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
       setLocations(locationResponse.locations)
       setEmployees(employeeResponse.employees)
       setPaymentMethods(methodsResponse.methods.filter((m) => m.code !== 'ROOM_CHARGE'))
+      setOptionsLoaded(true)
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Could not load receipts'
       setError(message)
@@ -210,16 +213,17 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
   const staffNames = useMemo(() => Object.fromEntries(employees.map((e) => [e.id, `${e.firstName} ${e.lastName ?? ''}`.trim()])), [employees])
 
   const visible = useMemo(() => mergeLinkedRows(orders), [orders])
+  const statSkeleton = <span className="inline-block h-7 w-24 animate-pulse rounded bg-current align-middle opacity-15" />
 
   return (
     <div className="dashboard-square mx-auto max-w-7xl px-6 py-6 sm:px-8 sm:py-8 lg:px-10">
       <PageBanner kicker={isServices ? 'Service center' : isReception ? 'Reception' : 'Sales'} title={isServices ? 'Service Receipts' : 'Receipts'} />
 
       <section className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatCard index={0} icon={<LuReceiptText className="size-4" />} label="Sales" value={formatKes(summary.sales)} hint={`${summary.salesCount} order${summary.salesCount === 1 ? '' : 's'}`} />
-        <StatCard tone="success" icon={<LuWallet className="size-4" />} label="Collected" value={formatKes(summary.collected)} />
-        <StatCard tone="warn" icon={<LuWallet className="size-4" />} label="Outstanding" value={formatKes(summary.outstanding)} />
-        <StatCard tone="danger" icon={<LuBan className="size-4" />} label="Cancelled" value={String(summary.cancelledCount)} hint={formatKes(summary.cancelled)} />
+        <StatCard index={0} icon={<LuReceiptText className="size-4" />} label="Sales" value={optionsLoaded ? formatKes(summary.sales) : statSkeleton} hint={`${summary.salesCount} order${summary.salesCount === 1 ? '' : 's'}`} />
+        <StatCard tone="success" icon={<LuWallet className="size-4" />} label="Collected" value={optionsLoaded ? formatKes(summary.collected) : statSkeleton} />
+        <StatCard tone="warn" icon={<LuWallet className="size-4" />} label="Outstanding" value={optionsLoaded ? formatKes(summary.outstanding) : statSkeleton} />
+        <StatCard tone="danger" icon={<LuBan className="size-4" />} label="Cancelled" value={optionsLoaded ? String(summary.cancelledCount) : statSkeleton} hint={formatKes(summary.cancelled)} />
       </section>
 
       {error && (
@@ -271,7 +275,12 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
               </select>
             </label>
 
-            {fixedLocation ? (
+            {!optionsLoaded ? (
+              <label className="flex flex-col gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                Location
+                <span className="input flex w-44 items-center"><span className="h-3 w-24 animate-pulse rounded bg-muted-foreground/20" /></span>
+              </label>
+            ) : fixedLocation ? (
               <label className="flex flex-col gap-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
                 Location
                 <span className="input flex items-center gap-1.5 font-normal normal-case tracking-normal text-muted-foreground"><LuMapPin className="size-3.5" /> {fixedLocation.name}</span>
@@ -327,7 +336,18 @@ export default function Receipts({ channel }: { channel?: 'FOOD' | 'PRODUCTS' | 
         </div>
 
         {loading ? (
-          <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><LuLoaderCircle className="animate-spin" /> Loading receipts…</div>
+          <div className="min-h-64 divide-y" aria-busy="true" aria-label="Loading receipts">
+            {Array.from({ length: 8 }, (_, i) => (
+              <div key={i} className="flex items-center gap-4 px-4 py-4">
+                <span className="h-4 w-20 animate-pulse rounded bg-muted-foreground/15" />
+                <span className="h-4 w-16 animate-pulse rounded bg-muted-foreground/15" />
+                <span className="hidden h-4 w-28 animate-pulse rounded bg-muted-foreground/15 sm:block" />
+                <span className="hidden h-4 w-32 animate-pulse rounded bg-muted-foreground/15 md:block" />
+                <span className="ml-auto h-4 w-20 animate-pulse rounded bg-muted-foreground/15" />
+                <span className="h-4 w-16 animate-pulse rounded bg-muted-foreground/15" />
+              </div>
+            ))}
+          </div>
         ) : visible.length === 0 ? (
           <div className="min-h-64 p-16 text-center text-sm text-muted-foreground">No sales {search.trim() || paymentFilter !== 'ALL' || statusFilter !== 'ALL' || employeeFilter || dateFrom || dateTo || periodMode === 'shift' ? 'match this view' : 'yet'}.</div>
         ) : (
