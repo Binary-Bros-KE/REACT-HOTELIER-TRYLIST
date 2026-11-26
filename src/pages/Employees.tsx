@@ -163,7 +163,8 @@ export default function Employees() {
       if (departmentFilter) query.set('departmentId', departmentFilter)
       if (statusFilter) query.set('status', statusFilter)
       const response = await api<{ employees: Employee[]; summary: Summary }>(`/employees${query.size ? `?${query}` : ''}`)
-      setEmployees(response.employees)
+      // Terminated staff only show when the Terminated filter is picked.
+      setEmployees(statusFilter ? response.employees : response.employees.filter((e) => e.status !== 'TERMINATED'))
       setSummary(response.summary)
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Could not load employees'
@@ -322,7 +323,7 @@ export default function Employees() {
             {departmentOptions.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
           </select>
           <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="rounded-sm border bg-background px-3 py-2.5 text-sm outline-none">
-            <option value="">All statuses</option>
+            <option value="">All except terminated</option>
             {statuses.map((s) => <option key={s} value={s}>{titleCase(s)}</option>)}
           </select>
           <ActionButton tone="neutral" icon={<LuBanknote />} onClick={() => navigate('/finance/salaries')}>Salaries</ActionButton>
